@@ -1,0 +1,114 @@
+name = "Basic scenario for development"
+game_version = "0.1.0"
+map = "maps/basic_map.map"
+
+start_date = 1941-06-22
+turn_length = 7
+
+players_count = 2
+player_1 = {"Axis", "AX"}
+player_2 = {"Soviet Union", "SU"}
+
+[[units_generic]]
+name = "SU_inf_div_41a"
+size = "D"
+start_date = 1941-01-01
+end_date = 1941-08-01
+[[units_generic.elements]]
+name = "SU_inf_squad"
+amount = 200
+[[units_generic.elements]]
+name = "SU_45mm_at_gun"
+amount = 40
+[[units_generic.elements]]
+name = "SU_122mm_howitzer_M1938"
+amount = 20
+
+
+[[units_generic]]
+name = "GE_pz_div_41"
+size = "D"
+start_date = 1941-01-01
+end_date = 1941-10-01
+[[units_generic.elements]]
+name = "GE_pz_g_squad"
+amount = 200
+[[units_generic.elements]]
+name = "GE_pz_2"
+amount = 20
+[[units_generic.elements]]
+name = "GE_pz_4"
+amount = 30
+
+[[elements_generic]]
+name = "SU_inf_squad"
+#[[device]]
+type = "inf"
+CV = 4
+ACC = 20
+RNG = 100
+vINF = 100
+vARM = 3
+ 
+[[elements_generic]]
+name = "SU_45mm_at_gun"
+type = "at_gun"
+CV = 0.2
+ACC = 60
+RNG = 300
+vINF = 10
+vARM = 50
+
+[[elements_generic]]
+name = "SU_122mm_howitzer_M1938"
+type = "ligt_art"
+CV = 0.5
+ACC = 5
+RNG = 11000
+vINF = 100
+vARM = 10
+
+[[elements_generic]]
+name = "GE_pz_g_squad"
+type = "mot_inf"
+CV = 4
+ACC = 20
+RNG = 100
+vINF = 100
+vARM = 3
+
+[[elements_generic]]
+name = "GE_pz_2"
+type = "light_tank"
+CV = 8
+ACC = 60
+RNG = 600
+vINF = 100
+vARM = 30
+
+[[elements_generic]]
+name = "GE_pz_4"
+type = "medium_tank"
+CV = 12
+ACC = 60
+RNG = 800
+vINF = 100
+vARM = 100
+
+[[units]]
+name = "101st Infantry division"
+units_generic = "SU_inf_div_41a"
+faction = "SU"
+location.x = 3
+location.y = 3
+
+[[units]]
+name = "4th Panzer Division"
+units_generic = "GE_pz_div_41"
+faction = "AX"
+location.x = 3
+location.y = 4
+
+#[events]
+#[victory_conditions]
+

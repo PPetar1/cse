@@ -1,0 +1,148 @@
+name = "basic_map"
+width = 5
+height = 5
+
+[[locations]]
+x = 0
+y = 0
+terrain = "plains"
+[[locations]]
+x = 0
+y = 1
+terrain = "hills"
+[[locations]]
+x = 0
+y = 2
+terrain = "plains"
+[[locations]]
+x = 0
+y = 3
+terrain = "plains"
+[[locations]]
+x = 0
+y = 4
+terrain = "plains"
+[[locations]]
+x = 0
+y = 5
+terrain = "plains"
+[[locations]]
+x = 1
+y = 0
+terrain = "plains"
+[[locations]]
+x = 1
+y = 1
+terrain = "plains"
+[[locations]]
+x = 1
+y = 2
+terrain = "forest"
+[[locations]]
+x = 1
+y = 3
+terrain = "water"
+[[locations]]
+x = 1
+y = 4
+terrain = "plains"
+[[locations]]
+x = 1
+y = 5
+terrain = "plains"
+[[locations]]
+x = 2
+y = 0
+terrain = "plains"
+[[locations]]
+x = 2
+y = 1
+terrain = "plains"
+[[locations]]
+x = 2
+y = 2
+terrain = "plains"
+[[locations]]
+x = 2
+y = 3
+terrain = "plains"
+[[locations]]
+x = 2 
+y = 4 
+terrain = "plains"
+[[locations]]
+x = 2
+y = 5
+terrain = "plains"
+[[locations]]
+x = 3
+y = 0
+terrain = "plains"
+[[locations]]
+x = 3
+y = 1
+terrain = "plains"
+[[locations]]
+x = 3
+y = 2
+terrain = "plains"
+[[locations]]
+x = 3
+y = 3
+terrain = "forest"
+[[locations]]
+x = 3
+y = 4
+terrain = "plains"
+[[locations]]
+x = 3
+y = 5
+terrain = "plains"
+[[locations]]
+x = 4
+y = 0
+terrain = "plains"
+[[locations]]
+x = 4
+y = 1
+terrain = "plains"
+[[locations]]
+x = 4
+y = 2
+terrain = "plains"
+[[locations]]
+x = 4
+y = 3
+terrain = "plains"
+[[locations]]
+x = 4
+y = 4
+terrain = "plains"
+[[locations]]
+x = 4
+y = 5
+terrain = "plains"
+[[locations]]
+x = 5
+y = 0
+terrain = "plains"
+[[locations]]
+x = 5
+y = 1
+terrain = "plains"
+[[locations]]
+x = 5
+y = 2
+terrain = "plains"
+[[locations]]
+x = 5
+y = 3
+terrain = "plains"
+[[locations]]
+x = 5
+y = 4
+terrain = "plains"
+[[locations]]
+x = 5
+y = 5
+terrain = "plains"
