@@ -5,7 +5,7 @@ mod utils;
 
 use game::Game;
 
-pub fn run(command: &str, current_game: Option<Game>) -> Result<Game, Error> {
+pub fn run<'a>(command: &str, current_game: Option<Game<'a>>) -> Result<Game<'a>, Error<'a>> {
     let mut slices = command.split_whitespace();
     
     let command = slices.next();
@@ -117,19 +117,19 @@ pub fn run(command: &str, current_game: Option<Game>) -> Result<Game, Error> {
     }
 }
 
-fn new_game(arguments: Vec<&str>) -> Result<Game, Error> {
+fn new_game<'a>(arguments: Vec<&str>) -> Result<Game<'a>, Error<'a>> {
     Game::build()
 }
 
-fn load_game(arguments: Vec<&str>) -> Result<Game, Error> { 
+fn load_game<'a>(arguments: Vec<&str>) -> Result<Game<'a>, Error<'a>> { 
     Err(Error { error_message: "Not implemented yet.".to_string(), game: None })
 }
 
-fn save_game(arguments: Vec<&str>) -> Result<(), Error> {
+fn save_game<'a>(arguments: Vec<&str>) -> Result<(), Error<'a>> {
     Err(Error { error_message: "Not implemented yet.".to_string(), game: None })
 }
 
-pub struct Error {
+pub struct Error<'a> {
     pub error_message: String,
-    pub game: Option<Game>,
+    pub game: Option<Game<'a>>,
 }

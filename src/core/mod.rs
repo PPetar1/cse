@@ -1,6 +1,6 @@
 mod location;
 mod map;
-mod unit;
+pub mod unit;
 
 use map::Map;
 
