@@ -15,7 +15,7 @@ pub fn run(command: &str, current_game: Option<Game>) -> Result<Game, Error> {
         Some("new") => {
             if arguments.len() == 0 { 
                 return Err(Error { 
-                    error_message: "Please specify a scenario file to start a new game.".to_string(),
+                    error_message: "No scenario file provided. Unable to start a new game.".to_string(),
                     game: current_game,
                 });
             }
@@ -28,7 +28,7 @@ pub fn run(command: &str, current_game: Option<Game>) -> Result<Game, Error> {
         Some("load") => {
             if arguments.len() == 0 { 
                 return Err(Error { 
-                    error_message: "Please specify a savefile to load.".to_string(),
+                    error_message: "No file provided. Unable to load a new game.".to_string(),
                     game: current_game,
                 });
             }
@@ -38,55 +38,95 @@ pub fn run(command: &str, current_game: Option<Game>) -> Result<Game, Error> {
             
             load_game(arguments)
         }
-        Some("inspect") => {
-            if arguments.len() < 2 {
-                Err(Error { 
-                    error_message: "Please specify the coordinates of the hex you want to inspect".to_string(),
-                    game: current_game,    
-                })
+        Some("save") => {
+             if arguments.len() == 0 { 
+                return Err(Error { 
+                    error_message: "Path to use for the save not specified.".to_string(),
+                    game: current_game,
+                });
+            }
+
+            if let Some(game) = current_game {
+                match save_game(arguments) {
+                    Ok(_) => Ok(game),
+                    Err(mut error) => {
+                        error.game = Some(game);
+                        Err(error)
+                    }
+                }
             }
             else {
-                if let (Ok(x), Ok(y)) = (arguments[0].parse(), arguments[1].parse()) {
-                    if let Some(game) = current_game {
-                        if let Some(location) = game.state.inspect_location(x, y) {
-                            println!("{}", location);
-                            Ok(game)
-                        }
-                        else {
-                            Err (Error { 
-                                error_message: "Hex not in range".to_string(),
-                                game: Some(game),
-                            })
-                        } 
+                Err(Error {
+                    error_message: "No game active to save.".to_string(),
+                    game: None,
+                })
+            }
+        }
+        Some("inspect") => {
+            if let Some(game) = current_game {
+                if arguments.len() == 1 {
+                    if let Some(location) = game.state.map.inspect_offmap_location(arguments[0]) {
+                        println!("{}", location);
+                        Ok(game)
                     }
                     else {
                         Err (Error { 
-                            error_message: "No game loaded".to_string(),
-                            game: current_game,
+                            error_message: "Offmap location not found.".to_string(),
+                            game: Some(game),
+                        })
+                    } 
+                }
+                else if arguments.len() < 2 {
+                    Err(Error { 
+                        error_message: "Missing hex coordinate or offmap hex name arguments for inspect.".to_string(),
+                        game: Some(game),    
+                    })
+                }
+                else {
+                    if let (Ok(x), Ok(y)) = (arguments[0].parse(), arguments[1].parse()) {
+                            if let Some(location) = game.state.map.inspect_location(x, y) {
+                                println!("{}", location);
+                                Ok(game)
+                            }
+                            else {
+                                Err (Error { 
+                                    error_message: "Hex not in range.".to_string(),
+                                    game: Some(game),
+                                })
+                            } 
+                        }
+                    else {
+                        Err(Error { 
+                            error_message: "Invalid hex coordinates.".to_string(),
+                            game: Some(game),
                         })
                     }
                 }
-                else {
-                    Err(Error { 
-                        error_message: "Please provide valid coordinates for the hex".to_string(),
-                        game: current_game,
-                    })
-                }
+            }
+            else {
+                Err (Error { 
+                    error_message: "No game loaded.".to_string(),
+                    game: current_game,
+                })
             }
         }
         _ => Err(Error{ 
-            error_message: "Unknown command".to_string(),
+            error_message: "Unknown command.".to_string(),
             game: current_game,
         }),
     }
 }
 
 fn new_game(arguments: Vec<&str>) -> Result<Game, Error> {
-   Game::build()
+    Game::build()
 }
 
 fn load_game(arguments: Vec<&str>) -> Result<Game, Error> { 
-    Game::load()
+    Err(Error { error_message: "Not implemented yet.".to_string(), game: None })
+}
+
+fn save_game(arguments: Vec<&str>) -> Result<(), Error> {
+    Err(Error { error_message: "Not implemented yet.".to_string(), game: None })
 }
 
 pub struct Error {
