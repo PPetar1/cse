@@ -1,5 +1,6 @@
 mod location;
 mod map;
+mod unit;
 
 use map::Map;
 
