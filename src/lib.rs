@@ -1,5 +1,5 @@
 mod game;
-mod state;
+mod core;
 mod procedures;
 mod utils;
 

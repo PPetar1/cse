@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use crate::state::location::*;
+use crate::core::location::*;
 
 pub struct Map {
     map: HashMap<(u32, u32), Location>,

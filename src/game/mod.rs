@@ -1,4 +1,4 @@
-use crate::state::State;
+use crate::core::State;
 use crate::Error;
 
 pub struct Game {
