@@ -2,18 +2,21 @@ name = "Basic scenario for development"
 game_version = "0.1.0"
 map = "maps/basic_map.map"
 
-start_date = 1941-06-22
+start_date = "1941-06-22"
 turn_length = 7
 
-players_count = 2
-player_1 = {"Axis", "AX"}
-player_2 = {"Soviet Union", "SU"}
+[[players]]
+faction_name = "Axis" 
+faction_tag = "AX"
+[[players]]
+faction_name = "Soviet Union"
+faction_tag = "SU"
 
 [[toe]]
 name = "SU_inf_div_41a"
 size = "D"
-start_date = 1941-01-01
-end_date = 1941-08-01
+start_date = "1941-01-01"
+end_date = "1941-08-01"
 [[toe.elements]]
 name = "SU_inf_squad"
 amount = 200
@@ -28,8 +31,8 @@ amount = 20
 [[toe]]
 name = "GE_pz_div_41"
 size = "D"
-start_date = 1941-01-01
-end_date = 1941-10-01
+start_date = "1941-01-01"
+end_date = "1941-10-01"
 [[toe.elements]]
 name = "GE_pz_g_squad"
 amount = 200
@@ -43,57 +46,57 @@ amount = 30
 [[elements]]
 name = "SU_inf_squad"
 #[[device]]
-type = "inf"
-CV = 4
-ACC = 20
-RNG = 100
-vINF = 100
-vARM = 3
+class = "Inf"
+cv = 4
+accuracy = 20
+range = 100
+v_inf = 100
+v_arm = 3
  
 [[elements]]
-name = "SU_45mm_at_gun"
-type = "at_gun"
-CV = 0.2
-ACC = 60
-RNG = 300
-vINF = 10
-vARM = 50
+name = "SU_45mm_AtGun"
+class = "AtGun"
+cv = 0.2
+accuracy = 60
+range = 300
+v_inf = 10
+v_arm = 50
 
 [[elements]]
 name = "SU_122mm_howitzer_M1938"
-type = "ligt_art"
-CV = 0.5
-ACC = 5
-RNG = 11000
-vINF = 100
-vARM = 10
+class = "LightArt"
+cv = 0.5
+accuracy = 5
+range = 11000
+v_inf = 100
+v_arm = 10
 
 [[elements]]
 name = "GE_pz_g_squad"
-type = "mot_inf"
-CV = 4
-ACC = 20
-RNG = 100
-vINF = 100
-vARM = 3
+class = "MotInf"
+cv = 4
+accuracy = 20
+range = 100
+v_inf = 100
+v_arm = 3
 
 [[elements]]
 name = "GE_pz_2"
-type = "light_tank"
-CV = 8
-ACC = 60
-RNG = 600
-vINF = 100
-vARM = 30
+class = "LightTank"
+cv = 8
+accuracy = 60
+range = 600
+v_inf = 100
+v_arm = 30
 
 [[elements]]
 name = "GE_pz_4"
-type = "medium_tank"
-CV = 12
-ACC = 60
-RNG = 800
-vINF = 100
-vARM = 100
+class = "MedTank"
+cv = 12
+accuracy = 60
+range = 800
+v_inf = 100
+v_arm = 100
 
 [[units]]
 name = "101st Infantry division"
@@ -108,6 +111,14 @@ toe = "GE_pz_div_41"
 faction = "AX"
 location.x = 3
 location.y = 4
+
+[[units]]
+name = "10th Panzer Division"
+toe = "GE_pz_div_41"
+faction = "AX"
+location.x = 3
+location.y = 4
+location.name = "GEReserve"
 
 #[events]
 #[victory_conditions]

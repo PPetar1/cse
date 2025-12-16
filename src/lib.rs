@@ -3,6 +3,8 @@ mod core;
 mod procedures;
 mod utils;
 
+use std::{fs::File, io::Read};
+
 use game::Game;
 
 pub fn run<'a>(command: &str, current_game: Option<Game<'a>>) -> Result<Game<'a>, Error<'a>> {
@@ -118,7 +120,19 @@ pub fn run<'a>(command: &str, current_game: Option<Game<'a>>) -> Result<Game<'a>
 }
 
 fn new_game<'a>(arguments: Vec<&str>) -> Result<Game<'a>, Error<'a>> {
-    Game::build()
+    let scen_file_path = arguments[0];
+    match File::open(scen_file_path) {
+        Ok(mut scen_file) => { 
+            let mut contents = String::new();
+            scen_file.read_to_string(&mut contents)?;
+            Game::build(contents)
+        }
+        Err(error) => Err(Error {
+            error_message: error.to_string(),
+            game: None,
+        }),
+    }
+    
 }
 
 fn load_game<'a>(arguments: Vec<&str>) -> Result<Game<'a>, Error<'a>> { 
@@ -132,4 +146,31 @@ fn save_game<'a>(arguments: Vec<&str>) -> Result<(), Error<'a>> {
 pub struct Error<'a> {
     pub error_message: String,
     pub game: Option<Game<'a>>,
+}
+
+impl<'a> Error<'a> {
+    pub fn from_str(error_message: &str) -> Error<'a> {
+        Error {
+            error_message: error_message.to_string(),
+            game: None,
+        }
+    }
+}
+
+impl<'a> From<toml::de::Error> for Error<'a> {
+    fn from(error: toml::de::Error) -> Error<'a> {
+        Error {
+            error_message: error.to_string(),
+            game: None,
+        }
+    } 
+}
+
+impl<'a> From<std::io::Error> for Error<'a> {
+    fn from(error: std::io::Error) -> Error<'a> {
+        Error {
+            error_message: error.to_string(),
+            game: None,
+        }
+    } 
 }

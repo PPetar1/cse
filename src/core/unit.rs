@@ -40,10 +40,11 @@ pub enum Size {
     Corps,
 }
 
+#[derive(serde::Deserialize)]
 pub struct Element {
     name: String,
     class: ElementClass,
-    cv: u32,
+    cv: f32,
     accuracy: u32,
     range: u32,
     v_inf: u32,
@@ -51,11 +52,12 @@ pub struct Element {
 }
 
 impl Element {
-    pub fn new(name: String, class: ElementClass, cv: u32, accuracy: u32, range: u32, v_inf: u32, v_arm: u32) -> Element {
+    pub fn new(name: String, class: ElementClass, cv: f32, accuracy: u32, range: u32, v_inf: u32, v_arm: u32) -> Element {
         Element { name, class, cv, accuracy, range, v_inf, v_arm }
     }
 }
 
+#[derive(serde::Deserialize)]
 pub enum ElementClass {
     Inf,
     LightTank,

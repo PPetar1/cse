@@ -29,6 +29,10 @@ impl Map {
             off_map,
         }
     }
+
+    pub fn map_from_string(string: &str) -> Map {
+        Map::new_debug_map(5, 5)
+    }
     
     pub fn inspect_location(&self, x: u32, y: u32) -> Option<&Location> {
        self.map.get(&(x, y))

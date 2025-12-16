@@ -5,5 +5,6 @@ edition = "2024"
 
 [dependencies]
 hexx = { version = "0.23.0", features = ["serde"] }
-serde = "1.0.228"
+serde = { version = "1.0.228", features = ["derive"] }
 time = { version = "0.3.44", features = ["serde"] }
+toml = "0.9.8"
