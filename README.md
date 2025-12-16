@@ -10,5 +10,6 @@ Commands:
 new g - start a new game on an example map  
 inspect x y - inspect the location at x, y  
 inspect offmap-location-name - inspect the offmap location with the given name  
+units - prints a list of all units; units detail gives more details  
 exit  
 
