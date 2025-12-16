@@ -14,7 +14,7 @@ faction_tag = "SU"
 
 [[toe]]
 name = "SU_inf_div_41a"
-size = "D"
+size = "Division"
 start_date = "1941-01-01"
 end_date = "1941-08-01"
 [[toe.elements]]
@@ -27,10 +27,9 @@ amount = 40
 name = "SU_122mm_howitzer_M1938"
 amount = 20
 
-
 [[toe]]
 name = "GE_pz_div_41"
-size = "D"
+size = "Division"
 start_date = "1941-01-01"
 end_date = "1941-10-01"
 [[toe.elements]]
@@ -102,23 +101,21 @@ v_arm = 100
 name = "101st Infantry division"
 toe = "SU_inf_div_41a"
 faction = "SU"
-location.x = 3
-location.y = 3
+location.Left.x = 3
+location.Left.y = 3
 
 [[units]]
 name = "4th Panzer Division"
 toe = "GE_pz_div_41"
 faction = "AX"
-location.x = 3
-location.y = 4
+location.Left.x = 3
+location.Left.y = 4
 
 [[units]]
 name = "10th Panzer Division"
 toe = "GE_pz_div_41"
 faction = "AX"
-location.x = 3
-location.y = 4
-location.name = "GEReserve"
+location.Right.name = "GEReserve"
 
 #[events]
 #[victory_conditions]

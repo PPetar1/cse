@@ -1,38 +1,66 @@
 use time::Date;
+use either::Either;
 
-use crate::core::location::Location;
+use std::fmt::Display;
 
-pub struct Unit<'a> {
-    name: String,
-    toe: &'a Toe<'a>,
-    faction: String,
-    location: &'a Location,
-    pub elements: Vec<(&'a Element, u32, u32)>// Tuple holds the reference to the element in question,
+#[derive(serde::Deserialize, Debug)]
+pub struct Unit {
+    pub name: String,
+    pub toe: String,
+    pub faction: String,
+    pub location: Either<LocationCoords, OffmapLocationName>,
+    pub elements: Vec<ElementInUnit>// Tuple holds the name of the element in question,
                                           // number of ready elements in unit, number of damaged
-                                          // elements in unit (&ele, rdy, dmg)
+                                          // elements in unit (ele, rdy, dmg)
 }
 
-impl<'a> Unit<'a> {
-    pub fn new(name: String, toe: &'a Toe<'a>, faction: String, location: &'a Location, elements: Vec<(&'a Element, u32, u32)>) -> Unit<'a> {
+impl Unit {
+    pub fn new(name: String, toe: String, faction: String, location: Either<LocationCoords, OffmapLocationName>, elements: Vec<ElementInUnit>) -> Unit {
         Unit { name, toe, faction, location, elements }
     }
 }
 
-pub struct Toe<'a> {
-    name: String,
-    size: Size,
-    start_date: Date,
-    end_date: Date,
-    elements: Vec<(&'a Element, u32)>,// Tuple holds the reference to the element in question,
-                                      // number of elements the toe prescribes 
+impl Display for Unit {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        if self.location.is_left() {
+            write!(f, "{}\nFaction: {}\nLocation: ({}, {})", self.name, self.faction, self.location.as_ref().left().unwrap().x, self.location.as_ref().left().unwrap().y)
+        }
+        else {
+            write!(f, "{}\nFaction: {}\nLocation: {}(offmap)", self.name, self.faction, self.location.as_ref().right().unwrap().name)
+        }
+    }
 }
 
-impl<'a> Toe<'a> {
-    pub fn new(&self, name: String, size: Size, start_date: Date, end_date: Date, elements: Vec<(&'a Element, u32)>) -> Toe<'a> {
+#[derive(serde::Deserialize, Debug)]
+pub struct ElementInUnit {
+    pub name: String,
+    pub ready: u32,
+    pub damaged: u32,
+}
+
+#[derive(serde::Deserialize, Debug)]
+pub struct Toe {
+    pub name: String,
+    pub size: Size,
+    pub start_date: Date,
+    pub end_date: Date,
+    pub elements: Vec<ElementInToe>,// Tuple holds the name of the element in question,
+                                 // number of elements the toe prescribes 
+}
+
+#[derive(serde::Deserialize, Debug)]
+pub struct ElementInToe {
+    pub name: String,
+    pub amount: u32,
+}
+
+impl Toe {
+    pub fn new(&self, name: String, size: Size, start_date: Date, end_date: Date, elements: Vec<ElementInToe>) -> Toe {
         Toe { name, size, start_date, end_date, elements }
     }
 }
 
+#[derive(serde::Deserialize, Debug)]
 pub enum Size {
     Division,
     Brigade,
@@ -40,15 +68,15 @@ pub enum Size {
     Corps,
 }
 
-#[derive(serde::Deserialize)]
+#[derive(serde::Deserialize, Debug)]
 pub struct Element {
-    name: String,
-    class: ElementClass,
-    cv: f32,
-    accuracy: u32,
-    range: u32,
-    v_inf: u32,
-    v_arm: u32,
+    pub name: String,
+    pub class: ElementClass,
+    pub cv: f32,
+    pub accuracy: u32,
+    pub range: u32,
+    pub v_inf: u32,
+    pub v_arm: u32,
 }
 
 impl Element {
@@ -57,7 +85,7 @@ impl Element {
     }
 }
 
-#[derive(serde::Deserialize)]
+#[derive(serde::Deserialize, Debug)]
 pub enum ElementClass {
     Inf,
     LightTank,
@@ -65,4 +93,15 @@ pub enum ElementClass {
     MotInf,
     LightArt,
     AtGun,
+}
+
+#[derive(serde::Deserialize, Debug)]
+pub struct LocationCoords {
+    pub x: u32,
+    pub y: u32,
+}
+
+#[derive(serde::Deserialize, Debug)]
+pub struct OffmapLocationName {
+    pub name: String
 }

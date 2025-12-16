@@ -7,7 +7,7 @@ use std::{fs::File, io::Read};
 
 use game::Game;
 
-pub fn run<'a>(command: &str, current_game: Option<Game<'a>>) -> Result<Game<'a>, Error<'a>> {
+pub fn run(command: &str, current_game: Option<Game>) -> Result<Game, Error> {
     let mut slices = command.split_whitespace();
     
     let command = slices.next();
@@ -69,6 +69,9 @@ pub fn run<'a>(command: &str, current_game: Option<Game<'a>>) -> Result<Game<'a>
                 if arguments.len() == 1 {
                     if let Some(location) = game.state.map.inspect_offmap_location(arguments[0]) {
                         println!("{}", location);
+                        for unit in game.units_at_location(location) {
+                            println!("{}", unit);
+                        }
                         Ok(game)
                     }
                     else {
@@ -88,6 +91,9 @@ pub fn run<'a>(command: &str, current_game: Option<Game<'a>>) -> Result<Game<'a>
                     if let (Ok(x), Ok(y)) = (arguments[0].parse(), arguments[1].parse()) {
                             if let Some(location) = game.state.map.inspect_location(x, y) {
                                 println!("{}", location);
+                                for unit in game.units_at_location(location) {
+                                    println!("{}", unit);
+                                }
                                 Ok(game)
                             }
                             else {
@@ -98,10 +104,19 @@ pub fn run<'a>(command: &str, current_game: Option<Game<'a>>) -> Result<Game<'a>
                             } 
                         }
                     else {
-                        Err(Error { 
-                            error_message: "Invalid hex coordinates.".to_string(),
-                            game: Some(game),
-                        })
+                        if let Some(location) = game.state.map.inspect_offmap_location(&arguments.join(" ")) {
+                            println!("{}", location);
+                            for unit in game.units_at_location(location) {
+                                println!("{}", unit);
+                            }
+                            Ok(game)
+                        }
+                        else {
+                            Err (Error { 
+                                error_message: "Location not found.".to_string(),
+                                game: Some(game),
+                            })
+                        } 
                     }
                 }
             }
@@ -112,6 +127,22 @@ pub fn run<'a>(command: &str, current_game: Option<Game<'a>>) -> Result<Game<'a>
                 })
             }
         }
+        Some("units") => {
+            if let Some(game) = current_game {
+                if arguments.len() > 0 {
+                    if arguments[0] == "detail" {
+                        game.list_units_detail();
+                    }
+                }
+                else {
+                    game.list_units();
+                }
+                Ok(game)
+            }
+            else {
+                Err(Error::from_str("No game loaded."))
+            }
+        }
         _ => Err(Error{ 
             error_message: "Unknown command.".to_string(),
             game: current_game,
@@ -119,7 +150,7 @@ pub fn run<'a>(command: &str, current_game: Option<Game<'a>>) -> Result<Game<'a>
     }
 }
 
-fn new_game<'a>(arguments: Vec<&str>) -> Result<Game<'a>, Error<'a>> {
+fn new_game(arguments: Vec<&str>) -> Result<Game, Error> {
     let scen_file_path = arguments[0];
     match File::open(scen_file_path) {
         Ok(mut scen_file) => { 
@@ -135,21 +166,21 @@ fn new_game<'a>(arguments: Vec<&str>) -> Result<Game<'a>, Error<'a>> {
     
 }
 
-fn load_game<'a>(arguments: Vec<&str>) -> Result<Game<'a>, Error<'a>> { 
+fn load_game(arguments: Vec<&str>) -> Result<Game, Error> { 
     Err(Error { error_message: "Not implemented yet.".to_string(), game: None })
 }
 
-fn save_game<'a>(arguments: Vec<&str>) -> Result<(), Error<'a>> {
+fn save_game(arguments: Vec<&str>) -> Result<(), Error> {
     Err(Error { error_message: "Not implemented yet.".to_string(), game: None })
 }
 
-pub struct Error<'a> {
+pub struct Error {
     pub error_message: String,
-    pub game: Option<Game<'a>>,
+    pub game: Option<Game>,
 }
 
-impl<'a> Error<'a> {
-    pub fn from_str(error_message: &str) -> Error<'a> {
+impl Error {
+    pub fn from_str(error_message: &str) -> Error {
         Error {
             error_message: error_message.to_string(),
             game: None,
@@ -157,8 +188,8 @@ impl<'a> Error<'a> {
     }
 }
 
-impl<'a> From<toml::de::Error> for Error<'a> {
-    fn from(error: toml::de::Error) -> Error<'a> {
+impl From<toml::de::Error> for Error {
+    fn from(error: toml::de::Error) -> Error {
         Error {
             error_message: error.to_string(),
             game: None,
@@ -166,8 +197,8 @@ impl<'a> From<toml::de::Error> for Error<'a> {
     } 
 }
 
-impl<'a> From<std::io::Error> for Error<'a> {
-    fn from(error: std::io::Error) -> Error<'a> {
+impl From<std::io::Error> for Error {
+    fn from(error: std::io::Error) -> Error {
         Error {
             error_message: error.to_string(),
             game: None,

@@ -2,6 +2,7 @@ use std::fmt::Display;
 
 use hexx::*;
 
+#[derive(serde::Deserialize, PartialEq)]
 pub struct Location {
     hex: Option<Hex>, 
     pub terrain: Terrain,
@@ -44,7 +45,7 @@ impl Display for Location {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq, serde::Deserialize)]
 pub enum Terrain {
     Mountain,
     Plains,
@@ -56,6 +57,7 @@ pub enum Terrain {
     Urban,
 }
 
+#[derive(serde::Deserialize)]
 pub struct OffmapLocations {
     locations: Vec<Location>,
 }

@@ -5,144 +5,152 @@ height = 5
 [[locations]]
 x = 0
 y = 0
-terrain = "plains"
+terrain = "Plains"
 [[locations]]
 x = 0
 y = 1
-terrain = "hills"
+terrain = "Hills"
 [[locations]]
 x = 0
 y = 2
-terrain = "plains"
+terrain = "Plains"
 [[locations]]
 x = 0
 y = 3
-terrain = "plains"
+terrain = "Plains"
 [[locations]]
 x = 0
 y = 4
-terrain = "plains"
+terrain = "Plains"
 [[locations]]
 x = 0
 y = 5
-terrain = "plains"
+terrain = "Plains"
 [[locations]]
 x = 1
 y = 0
-terrain = "plains"
+terrain = "Plains"
 [[locations]]
 x = 1
 y = 1
-terrain = "plains"
+terrain = "Plains"
 [[locations]]
 x = 1
 y = 2
-terrain = "forest"
+terrain = "Forest"
 [[locations]]
 x = 1
 y = 3
-terrain = "water"
+terrain = "Water"
 [[locations]]
 x = 1
 y = 4
-terrain = "plains"
+terrain = "Plains"
 [[locations]]
 x = 1
 y = 5
-terrain = "plains"
+terrain = "Plains"
 [[locations]]
 x = 2
 y = 0
-terrain = "plains"
+terrain = "Plains"
 [[locations]]
 x = 2
 y = 1
-terrain = "plains"
+terrain = "Plains"
 [[locations]]
 x = 2
 y = 2
-terrain = "plains"
+terrain = "Plains"
 [[locations]]
 x = 2
 y = 3
-terrain = "plains"
+terrain = "Plains"
 [[locations]]
 x = 2 
 y = 4 
-terrain = "plains"
+terrain = "Plains"
 [[locations]]
 x = 2
 y = 5
-terrain = "plains"
+terrain = "Plains"
 [[locations]]
 x = 3
 y = 0
-terrain = "plains"
+terrain = "Plains"
 [[locations]]
 x = 3
 y = 1
-terrain = "plains"
+terrain = "Plains"
 [[locations]]
 x = 3
 y = 2
-terrain = "plains"
+terrain = "Plains"
 [[locations]]
 x = 3
 y = 3
-terrain = "forest"
+terrain = "Forest"
 [[locations]]
 x = 3
 y = 4
-terrain = "plains"
+terrain = "Plains"
 [[locations]]
 x = 3
 y = 5
-terrain = "plains"
+terrain = "Plains"
 [[locations]]
 x = 4
 y = 0
-terrain = "plains"
+terrain = "Plains"
 [[locations]]
 x = 4
 y = 1
-terrain = "plains"
+terrain = "Plains"
 [[locations]]
 x = 4
 y = 2
-terrain = "plains"
+terrain = "Plains"
 [[locations]]
 x = 4
 y = 3
-terrain = "plains"
+terrain = "Plains"
 [[locations]]
 x = 4
 y = 4
-terrain = "plains"
+terrain = "Plains"
 [[locations]]
 x = 4
 y = 5
-terrain = "plains"
+terrain = "Plains"
 [[locations]]
 x = 5
 y = 0
-terrain = "plains"
+terrain = "Plains"
 [[locations]]
 x = 5
 y = 1
-terrain = "plains"
+terrain = "Plains"
 [[locations]]
 x = 5
 y = 2
-terrain = "plains"
+terrain = "Plains"
 [[locations]]
 x = 5
 y = 3
-terrain = "plains"
+terrain = "Plains"
 [[locations]]
 x = 5
 y = 4
-terrain = "plains"
+terrain = "Plains"
 [[locations]]
 x = 5
 y = 5
-terrain = "plains"
+terrain = "Plains"
+
+[[offmap_locations]]
+name = "SU Reserve"
+terrain = "Urban"
+
+[[offmap_locations]]
+name = "GE Reserve"
+terrain = "Urban"
