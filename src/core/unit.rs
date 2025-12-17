@@ -95,13 +95,13 @@ pub enum ElementClass {
     AtGun,
 }
 
-#[derive(serde::Deserialize, Debug)]
+#[derive(serde::Deserialize, Debug, PartialEq)]
 pub struct LocationCoords {
     pub x: u32,
     pub y: u32,
 }
 
-#[derive(serde::Deserialize, Debug)]
+#[derive(serde::Deserialize, Debug, PartialEq)]
 pub struct OffmapLocationName {
     pub name: String
 }

@@ -55,11 +55,11 @@ impl Map {
         })
     }
     
-    pub fn inspect_location(&self, x: u32, y: u32) -> Option<&Location> {
+    pub fn get_location(&self, x: u32, y: u32) -> Option<&Location> {
        self.map.get(&(x, y))
     }
 
-    pub fn inspect_offmap_location(&self, name: &str) -> Option<&Location> {
+    pub fn get_offmap_location(&self, name: &str) -> Option<&Location> {
         self.off_map.get(name)
     }
 }

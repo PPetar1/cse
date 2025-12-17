@@ -115,7 +115,7 @@ location.Left.y = 4
 name = "10th Panzer Division"
 toe = "GE_pz_div_41"
 faction = "AX"
-location.Right.name = "GEReserve"
+location.Right.name = "GE Reserve"
 
 #[events]
 #[victory_conditions]

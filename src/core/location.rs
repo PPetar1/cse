@@ -1,6 +1,9 @@
 use std::fmt::Display;
 
 use hexx::*;
+use either::Either;
+
+use crate::core::unit::{LocationCoords, OffmapLocationName};
 
 #[derive(serde::Deserialize, PartialEq)]
 pub struct Location {
@@ -24,6 +27,16 @@ impl Location {
                  terrain: terrain,
                  name: name,
             }
+        }
+    }
+
+    pub fn get_coords(&self) -> Either<LocationCoords, OffmapLocationName> {
+        if let Some(hex) = self.hex {
+            let coords = hex.to_offset_coordinates(OffsetHexMode::Even, HexOrientation::Pointy);
+            Either::Left(LocationCoords { x: coords[0] as u32, y: coords[1] as u32 })
+        }
+        else {
+            Either::Right(OffmapLocationName { name: self.name.clone().unwrap() })
         }
     }
 }

@@ -6,8 +6,9 @@ mod utils;
 use std::{fs::File, io::Read};
 
 use game::Game;
+use time::format_description::parse;
 
-pub fn run(command: &str, current_game: Option<Game>) -> Result<Game, Error> {
+pub fn run(command: &str, current_game: Option<&mut Game>) -> Result<Option<Game>, Error> {
     let mut slices = command.split_whitespace();
     
     let command = slices.next();
@@ -18,103 +19,84 @@ pub fn run(command: &str, current_game: Option<Game>) -> Result<Game, Error> {
             if arguments.len() == 0 { 
                 return Err(Error { 
                     error_message: "No scenario file provided. Unable to start a new game.".to_string(),
-                    game: current_game,
                 });
             }
-
-            // Droping current_game early to prevent potential memory issues 
-            std::mem::drop(current_game);
             
-            new_game(arguments)
+            Ok(Some(new_game(arguments)?))
         }
         Some("load") => {
             if arguments.len() == 0 { 
                 return Err(Error { 
                     error_message: "No file provided. Unable to load a new game.".to_string(),
-                    game: current_game,
                 });
             }
 
-            // Droping current_game early to prevent potential memory issues
-            std::mem::drop(current_game);
-            
-            load_game(arguments)
+            Ok(Some(load_game(arguments)?))
         }
         Some("save") => {
              if arguments.len() == 0 { 
                 return Err(Error { 
                     error_message: "Path to use for the save not specified.".to_string(),
-                    game: current_game,
                 });
             }
 
             if let Some(game) = current_game {
-                match save_game(arguments) {
-                    Ok(_) => Ok(game),
-                    Err(mut error) => {
-                        error.game = Some(game);
-                        Err(error)
-                    }
-                }
+                save_game(arguments, game)?;
+                Ok(None)
             }
             else {
                 Err(Error {
                     error_message: "No game active to save.".to_string(),
-                    game: None,
                 })
             }
         }
         Some("inspect") => {
             if let Some(game) = current_game {
                 if arguments.len() == 1 {
-                    if let Some(location) = game.state.map.inspect_offmap_location(arguments[0]) {
+                    if let Some(location) = game.state.map.get_offmap_location(arguments[0]) {
                         println!("{}", location);
                         for unit in game.units_at_location(location) {
                             println!("{}", unit);
                         }
-                        Ok(game)
+                        Ok(None)
                     }
                     else {
                         Err (Error { 
                             error_message: "Offmap location not found.".to_string(),
-                            game: Some(game),
                         })
                     } 
                 }
                 else if arguments.len() < 2 {
                     Err(Error { 
                         error_message: "Missing hex coordinate or offmap hex name arguments for inspect.".to_string(),
-                        game: Some(game),    
                     })
                 }
                 else {
                     if let (Ok(x), Ok(y)) = (arguments[0].parse(), arguments[1].parse()) {
-                            if let Some(location) = game.state.map.inspect_location(x, y) {
+                            if let Some(location) = game.state.map.get_location(x, y) {
                                 println!("{}", location);
                                 for unit in game.units_at_location(location) {
                                     println!("{}", unit);
                                 }
-                                Ok(game)
+                                Ok(None)
                             }
                             else {
                                 Err (Error { 
                                     error_message: "Hex not in range.".to_string(),
-                                    game: Some(game),
                                 })
                             } 
                         }
                     else {
-                        if let Some(location) = game.state.map.inspect_offmap_location(&arguments.join(" ")) {
+                        if let Some(location) = game.state.map.get_offmap_location(&arguments.join(" ")) {
                             println!("{}", location);
                             for unit in game.units_at_location(location) {
                                 println!("{}", unit);
                             }
-                            Ok(game)
+                            Ok(None)
                         }
                         else {
                             Err (Error { 
                                 error_message: "Location not found.".to_string(),
-                                game: Some(game),
                             })
                         } 
                     }
@@ -123,7 +105,6 @@ pub fn run(command: &str, current_game: Option<Game>) -> Result<Game, Error> {
             else {
                 Err (Error { 
                     error_message: "No game loaded.".to_string(),
-                    game: current_game,
                 })
             }
         }
@@ -137,7 +118,30 @@ pub fn run(command: &str, current_game: Option<Game>) -> Result<Game, Error> {
                 else {
                     game.list_units();
                 }
-                Ok(game)
+                Ok(None)
+            }
+            else {
+                Err(Error::from_str("No game loaded."))
+            }
+        }
+        Some("move") => {
+            if let Some(mut game) = current_game {
+                if arguments.len() < 5 {
+                    Err(Error::from_str("Need source, destination and index of the unit to move it."))
+                }
+                else {
+                    if let (Ok(x_start), Ok(y_start), Ok(x_end), Ok(y_end), Ok(unit_i)) 
+                        = (arguments[0].parse(), arguments[1].parse(), arguments[2].parse(), arguments[3].parse(), arguments[4].parse())
+                    {
+                        game.move_unit(x_start, y_start, x_end, y_end,  unit_i)?;
+                        Ok(None)
+                    }
+                    else {
+                        Err(Error {
+                            error_message: "Unable to parse arguments for move order.".to_string(),
+                        })
+                    }
+                }
             }
             else {
                 Err(Error::from_str("No game loaded."))
@@ -145,7 +149,6 @@ pub fn run(command: &str, current_game: Option<Game>) -> Result<Game, Error> {
         }
         _ => Err(Error{ 
             error_message: "Unknown command.".to_string(),
-            game: current_game,
         }),
     }
 }
@@ -160,30 +163,27 @@ fn new_game(arguments: Vec<&str>) -> Result<Game, Error> {
         }
         Err(error) => Err(Error {
             error_message: error.to_string(),
-            game: None,
         }),
     }
     
 }
 
 fn load_game(arguments: Vec<&str>) -> Result<Game, Error> { 
-    Err(Error { error_message: "Not implemented yet.".to_string(), game: None })
+    Err(Error { error_message: "Not implemented yet.".to_string() })
 }
 
-fn save_game(arguments: Vec<&str>) -> Result<(), Error> {
-    Err(Error { error_message: "Not implemented yet.".to_string(), game: None })
+fn save_game(arguments: Vec<&str>, game: &mut Game) -> Result<(), Error> {
+    Err(Error { error_message: "Not implemented yet.".to_string() })
 }
 
 pub struct Error {
     pub error_message: String,
-    pub game: Option<Game>,
 }
 
 impl Error {
     pub fn from_str(error_message: &str) -> Error {
         Error {
             error_message: error_message.to_string(),
-            game: None,
         }
     }
 }
@@ -192,7 +192,6 @@ impl From<toml::de::Error> for Error {
     fn from(error: toml::de::Error) -> Error {
         Error {
             error_message: error.to_string(),
-            game: None,
         }
     } 
 }
@@ -201,7 +200,6 @@ impl From<std::io::Error> for Error {
     fn from(error: std::io::Error) -> Error {
         Error {
             error_message: error.to_string(),
-            game: None,
         }
     } 
 }

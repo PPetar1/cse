@@ -43,7 +43,7 @@ impl Game {
     }
 
     pub fn load() -> Result<Game, Error> {
-        Err(Error { error_message: "Not implemented yet.".to_string(), game: None })
+        Err(Error { error_message: "Not implemented yet.".to_string() })
     }
 
     pub fn list_units(&self) {
@@ -62,13 +62,41 @@ impl Game {
         let mut units = Vec::new();
         for (_, unit) in &self.state.units {
             if Some(location) == unit.location.as_ref().either(
-                |location_coords| self.state.map.inspect_location(location_coords.x, location_coords.y), 
-                |offmap_location| self.state.map.inspect_offmap_location(&offmap_location.name)
+                |location_coords| self.state.map.get_location(location_coords.x, location_coords.y), 
+                |offmap_location| self.state.map.get_offmap_location(&offmap_location.name)
             ) {
                 units.push(unit)
             }
         }
         units
+    }
+
+    pub fn move_unit(&mut self, x_start: u32, y_start: u32, x_end: u32, y_end: u32, unit_i: usize) -> Result<(), Error> {
+        self.state.map.get_location(x_start, y_start).ok_or(Error {
+            error_message: "Invalid starting location.".to_string(),
+        })?;
+        self.state.map.get_location(x_end, y_end).ok_or(Error {
+                error_message: "Invalid destination.".to_string(),
+        })?;
+       
+        let location_start = LocationCoords { x: x_start, y: y_start };
+        let location_end = LocationCoords { x: x_end, y: y_end };
+        let mut units = Vec::new();
+        for (_, unit) in &mut self.state.units {
+            if let Some(location) = unit.location.as_ref().left() {
+                if *location == location_start {
+                   units.push(unit)
+                }
+            }
+        }
+    
+        if units.len() < unit_i + 1 {
+            return Err(Error::from_str("No unit with index {} at {}"))
+        }
+        
+        units[unit_i].location = Either::Left(location_end);
+      
+        Ok(())
     }
 }
 

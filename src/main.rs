@@ -9,12 +9,10 @@ fn main() {
         
         if input.trim() == "exit" { break; }
 
-        match cse::run(&input, current_game.take()) {
-            Ok(game) => current_game = Some(game),
-            Err(error) => {
-                current_game = error.game;
-                println!("{}", error.error_message)
-            },
+        match cse::run(&input, current_game.as_mut()) {
+            Ok(Some(game)) => current_game = Some(game),
+            Ok(None) => (),
+            Err(error) => println!("{}", error.error_message),
         }
     }
 }
