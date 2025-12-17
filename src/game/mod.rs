@@ -5,7 +5,7 @@ use crate::Error;
 use crate::core::unit::*;
 use crate::core::location::Location;
 
-#[derive(serde::Deserialize)]
+#[derive(serde::Deserialize, serde::Serialize)]
 pub struct Game {
     pub state: State,
     players: Vec<Player>,
@@ -100,7 +100,7 @@ impl Game {
     }
 }
 
-#[derive(serde::Deserialize)]
+#[derive(serde::Deserialize, serde::Serialize)]
 struct Player {
     faction_name: String,
     faction_tag: String,
@@ -115,7 +115,7 @@ impl Player {
     }
 }
 
-#[derive(serde::Deserialize)]
+#[derive(serde::Deserialize, serde::Serialize)]
 struct TurnPhase {
     player_on_turn: u32,
 }

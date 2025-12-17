@@ -3,7 +3,7 @@ use either::Either;
 
 use std::fmt::Display;
 
-#[derive(serde::Deserialize, Debug)]
+#[derive(serde::Deserialize, Debug, serde::Serialize)]
 pub struct Unit {
     pub name: String,
     pub toe: String,
@@ -31,14 +31,14 @@ impl Display for Unit {
     }
 }
 
-#[derive(serde::Deserialize, Debug)]
+#[derive(serde::Deserialize, Debug, serde::Serialize)]
 pub struct ElementInUnit {
     pub name: String,
     pub ready: u32,
     pub damaged: u32,
 }
 
-#[derive(serde::Deserialize, Debug)]
+#[derive(serde::Deserialize, Debug, serde::Serialize)]
 pub struct Toe {
     pub name: String,
     pub size: Size,
@@ -48,7 +48,7 @@ pub struct Toe {
                                  // number of elements the toe prescribes 
 }
 
-#[derive(serde::Deserialize, Debug)]
+#[derive(serde::Deserialize, Debug, serde::Serialize)]
 pub struct ElementInToe {
     pub name: String,
     pub amount: u32,
@@ -60,7 +60,7 @@ impl Toe {
     }
 }
 
-#[derive(serde::Deserialize, Debug)]
+#[derive(serde::Deserialize, Debug, serde::Serialize)]
 pub enum Size {
     Division,
     Brigade,
@@ -68,7 +68,7 @@ pub enum Size {
     Corps,
 }
 
-#[derive(serde::Deserialize, Debug)]
+#[derive(serde::Deserialize, Debug, serde::Serialize)]
 pub struct Element {
     pub name: String,
     pub class: ElementClass,
@@ -85,7 +85,7 @@ impl Element {
     }
 }
 
-#[derive(serde::Deserialize, Debug)]
+#[derive(serde::Deserialize, Debug, serde::Serialize)]
 pub enum ElementClass {
     Inf,
     LightTank,
@@ -95,13 +95,13 @@ pub enum ElementClass {
     AtGun,
 }
 
-#[derive(serde::Deserialize, Debug, PartialEq)]
+#[derive(serde::Deserialize, Debug, PartialEq, serde::Serialize)]
 pub struct LocationCoords {
     pub x: u32,
     pub y: u32,
 }
 
-#[derive(serde::Deserialize, Debug, PartialEq)]
+#[derive(serde::Deserialize, Debug, PartialEq, serde::Serialize)]
 pub struct OffmapLocationName {
     pub name: String
 }

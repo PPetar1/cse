@@ -5,7 +5,7 @@ use either::Either;
 
 use crate::core::unit::{LocationCoords, OffmapLocationName};
 
-#[derive(serde::Deserialize, PartialEq)]
+#[derive(serde::Deserialize, PartialEq, serde::Serialize)]
 pub struct Location {
     hex: Option<Hex>, 
     pub terrain: Terrain,
@@ -58,7 +58,7 @@ impl Display for Location {
     }
 }
 
-#[derive(Debug, PartialEq, serde::Deserialize)]
+#[derive(Debug, PartialEq, serde::Deserialize, serde::Serialize)]
 pub enum Terrain {
     Mountain,
     Plains,
@@ -70,7 +70,7 @@ pub enum Terrain {
     Urban,
 }
 
-#[derive(serde::Deserialize)]
+#[derive(serde::Deserialize, serde::Serialize)]
 pub struct OffmapLocations {
     locations: Vec<Location>,
 }

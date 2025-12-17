@@ -2,7 +2,7 @@ use std::collections::HashMap;
 
 use crate::{Error, core::location::*};
 
-#[derive(serde::Deserialize)]
+#[derive(serde::Deserialize, serde::Serialize)]
 pub struct Map {
     name: String,
     map: HashMap<(u32, u32), Location>,
@@ -73,7 +73,7 @@ struct MapFile {
     offmap_locations: Vec<OffmapLocation_>,
 }
 
-#[derive(serde::Deserialize)]
+#[derive(serde::Deserialize, serde::Serialize)]
 struct Location_ {
     x: u32,
     y: u32,
@@ -81,7 +81,7 @@ struct Location_ {
     name: Option<String>,
 }
 
-#[derive(serde::Deserialize)]
+#[derive(serde::Deserialize, serde::Serialize)]
 struct OffmapLocation_ {
     name: String,
     terrain: Terrain,

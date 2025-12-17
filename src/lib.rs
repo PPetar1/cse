@@ -3,10 +3,13 @@ mod core;
 mod procedures;
 mod utils;
 
-use std::{fs::File, io::Read};
+use serde::{Serialize, Deserialize};
+use postcard::{from_bytes, to_allocvec};
+extern crate alloc;
+
+use std::{fs::File, io::{Read, Write}};
 
 use game::Game;
-use time::format_description::parse;
 
 pub fn run(command: &str, current_game: Option<&mut Game>) -> Result<Option<Game>, Error> {
     let mut slices = command.split_whitespace();
@@ -169,11 +172,24 @@ fn new_game(arguments: Vec<&str>) -> Result<Game, Error> {
 }
 
 fn load_game(arguments: Vec<&str>) -> Result<Game, Error> { 
-    Err(Error { error_message: "Not implemented yet.".to_string() })
+    let load_file_path = arguments[0];
+    let mut file = File::open(load_file_path)?;
+    let mut contents = Vec::new();
+    file.read_to_end(&mut contents)?;
+
+    let game: Game = from_bytes(&contents)?;
+    Ok(game)
 }
 
-fn save_game(arguments: Vec<&str>, game: &mut Game) -> Result<(), Error> {
-    Err(Error { error_message: "Not implemented yet.".to_string() })
+fn save_game(arguments: Vec<&str>, game: &Game) -> Result<(), Error> {
+    let save_file_path = arguments[0];
+    let mut file = File::create(save_file_path)?;
+    
+    let bin: alloc::vec::Vec<u8> = to_allocvec(game)?;
+    
+    file.write_all(&bin)?;
+
+    Ok(())
 }
 
 pub struct Error {
@@ -198,6 +214,14 @@ impl From<toml::de::Error> for Error {
 
 impl From<std::io::Error> for Error {
     fn from(error: std::io::Error) -> Error {
+        Error {
+            error_message: error.to_string(),
+        }
+    } 
+}
+
+impl From<postcard::Error> for Error {
+    fn from(error: postcard::Error) -> Error {
         Error {
             error_message: error.to_string(),
         }

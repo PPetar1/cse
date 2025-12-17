@@ -9,7 +9,7 @@ use crate::{Error, game::Scenario};
 use map::Map;
 use unit::*;
 
-#[derive(serde::Deserialize)]
+#[derive(serde::Deserialize, serde::Serialize)]
 pub struct State {
     pub map: Map,
     pub units: HashMap<String, Unit>,
