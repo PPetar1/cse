@@ -17,15 +17,15 @@ impl Location {
         if let Some((x, y)) = hex {
             Location { 
                  hex: Some(Hex::from_offset_coordinates([x as i32, y as i32], OffsetHexMode::Even, HexOrientation::Pointy)), 
-                 terrain: terrain,
-                 name: name,
+                 terrain,
+                 name,
             }
         }
         else {
             Location { 
                  hex: None, 
-                 terrain: terrain,
-                 name: name,
+                 terrain,
+                 name,
             }
         }
     }
@@ -82,23 +82,20 @@ impl OffmapLocations {
 
     pub fn get(&self, name: &str) -> Option<&Location> {
         for location in &self.locations {
-            if let Some(location_name) = &location.name {
-                if location_name == name {
-                    return Some(&location)
-                }
-            } 
+            if let Some(location_name) = &location.name
+                && location_name == name {
+                    return Some(location)
+                } 
         }
         None
     }
 
     pub fn insert(&mut self, location: Location) {
-        if let None = location.hex {
-            if let Some(name) = &location.name {
-                if let None = self.get(name) {
+        if location.hex.is_none()
+            && let Some(name) = &location.name
+                && self.get(name).is_none() {
                     self.locations.push(location);
                 }
-            }
-        }
     }
 
 }

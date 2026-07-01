@@ -34,7 +34,7 @@ impl Map {
     }
 
     pub fn map_from_string(contents: &str) -> Result<Map, Error> {
-        let map_file: MapFile = toml::from_str(&contents)?;
+        let map_file: MapFile = toml::from_str(contents)?;
         
         let mut map = HashMap::new();
 

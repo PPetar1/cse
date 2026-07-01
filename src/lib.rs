@@ -19,7 +19,7 @@ pub fn run(command: &str, current_game: Option<&mut Game>) -> Result<Option<Game
 
     match command {
         Some("new") => {
-            if arguments.len() == 0 { 
+            if arguments.is_empty() { 
                 return Err(Error { 
                     error_message: "No scenario file provided. Unable to start a new game.".to_string(),
                 });
@@ -28,7 +28,7 @@ pub fn run(command: &str, current_game: Option<&mut Game>) -> Result<Option<Game
             Ok(Some(new_game(arguments)?))
         }
         Some("load") => {
-            if arguments.len() == 0 { 
+            if arguments.is_empty() { 
                 return Err(Error { 
                     error_message: "No file provided. Unable to load a new game.".to_string(),
                 });
@@ -37,7 +37,7 @@ pub fn run(command: &str, current_game: Option<&mut Game>) -> Result<Option<Game
             Ok(Some(load_game(arguments)?))
         }
         Some("save") => {
-             if arguments.len() == 0 { 
+             if arguments.is_empty() { 
                 return Err(Error { 
                     error_message: "Path to use for the save not specified.".to_string(),
                 });
@@ -113,7 +113,7 @@ pub fn run(command: &str, current_game: Option<&mut Game>) -> Result<Option<Game
         }
         Some("units") => {
             if let Some(game) = current_game {
-                if arguments.len() > 0 {
+                if !arguments.is_empty() {
                     if arguments[0] == "detail" {
                         game.list_units_detail();
                     }
@@ -124,13 +124,13 @@ pub fn run(command: &str, current_game: Option<&mut Game>) -> Result<Option<Game
                 Ok(None)
             }
             else {
-                Err(Error::from_str("No game loaded."))
+                Err(Error::new("No game loaded."))
             }
         }
         Some("move") => {
             if let Some(game) = current_game {
                 if arguments.len() < 5 {
-                    Err(Error::from_str("Need source, destination and index of the unit to move it."))
+                    Err(Error::new("Need source, destination and index of the unit to move it."))
                 }
                 else {
                     if let (Ok(x_start), Ok(y_start), Ok(x_end), Ok(y_end), Ok(unit_i)) 
@@ -147,7 +147,7 @@ pub fn run(command: &str, current_game: Option<&mut Game>) -> Result<Option<Game
                 }
             }
             else {
-                Err(Error::from_str("No game loaded."))
+                Err(Error::new("No game loaded."))
             }
         }
         Some("view") => {
@@ -171,7 +171,7 @@ pub fn run(command: &str, current_game: Option<&mut Game>) -> Result<Option<Game
                 spawn_view_subprocess(visualiser::MapSnapshot { hexes, units })?;
                 Ok(None)
             } else {
-                Err(Error::from_str("No game loaded."))
+                Err(Error::new("No game loaded."))
             }
         }
         _ => Err(Error{
@@ -263,12 +263,20 @@ pub struct Error {
 }
 
 impl Error {
-    pub fn from_str(error_message: &str) -> Error {
+    pub fn new(error_message: &str) -> Error {
         Error {
             error_message: error_message.to_string(),
         }
     }
 }
+
+impl std::fmt::Display for Error {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.error_message)
+    }
+}
+
+impl std::error::Error for Error {}
 
 impl From<toml::de::Error> for Error {
     fn from(error: toml::de::Error) -> Error {

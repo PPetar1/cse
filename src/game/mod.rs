@@ -21,14 +21,11 @@ impl Game {
     fn parse_scen_from_toml(scenario_toml: String) -> Result<Game, Error>  {
        let scenario: Scenario = toml::from_str(&scenario_toml)?;
 
-       if scenario.players.len() == 0 {
-           return Err(Error::from_str("The game must have at least 1 player."))
+       if scenario.players.is_empty() {
+           return Err(Error::new("The game must have at least 1 player."))
        }
        
-       let mut players = Vec::new();
-       for player in &scenario.players {
-            players.push(player.clone());
-       }
+       let players = scenario.players.clone();
 
        let state = State::build(scenario)?;
        
@@ -47,20 +44,20 @@ impl Game {
     }
 
     pub fn list_units(&self) {
-        for (_, unit) in &self.state.units {
+        for unit in self.state.units.values() {
             println!("{}", unit);
         }
     }
 
     pub fn list_units_detail(&self) {
-        for (_, unit) in &self.state.units {
+        for unit in self.state.units.values() {
             println!("{:?}", unit);
         }
     }
     
     pub fn units_at_location(&self, location: &Location) -> Vec<&Unit> {
         let mut units = Vec::new();
-        for (_, unit) in &self.state.units {
+        for unit in self.state.units.values() {
             if Some(location) == unit.location.as_ref().either(
                 |location_coords| self.state.map.get_location(location_coords.x, location_coords.y), 
                 |offmap_location| self.state.map.get_offmap_location(&offmap_location.name)
@@ -82,12 +79,11 @@ impl Game {
         let location_start = LocationCoords { x: x_start, y: y_start };
         let location_end = LocationCoords { x: x_end, y: y_end };
         let mut units = Vec::new();
-        for (_, unit) in &mut self.state.units {
-            if let Some(location) = unit.location.as_ref().left() {
-                if *location == location_start {
+        for unit in self.state.units.values_mut() {
+            if let Some(location) = unit.location.as_ref().left()
+                && *location == location_start {
                    units.push(unit)
                 }
-            }
         }
     
         if units.len() < unit_i + 1 {
@@ -102,19 +98,10 @@ impl Game {
     }
 }
 
-#[derive(Debug, serde::Deserialize, serde::Serialize)]
+#[derive(Debug, Clone, serde::Deserialize, serde::Serialize)]
 struct Player {
     faction_name: String,
     faction_tag: String,
-}
-
-impl Player {
-    fn clone(&self) -> Player {
-        Player {
-            faction_name: self.faction_name.clone(),
-            faction_tag: self.faction_tag.clone(),
-        }
-    }
 }
 
 #[derive(Debug, serde::Deserialize, serde::Serialize)]

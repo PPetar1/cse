@@ -95,7 +95,8 @@ Conventions used throughout:
   it decoupled; don't hand it `&State`.
 - Fields deserialized from config but not yet read (`Scenario.start_date`,
   `MapFile.width`…) carry `#[allow(dead_code)]`; remove the attribute when a
-  system starts using them. The build is warning-free — keep it that way.
+  system starts using them. The build is warning-free and `cargo clippy` is
+  clean — keep both that way.
 - Scenario element names must match TOE element names exactly — `State::build`
   validates this (errors on unknown TOE and on TOE entries referencing undefined
   elements), and `builds_the_real_basic_scenario` guards the shipped scenario.

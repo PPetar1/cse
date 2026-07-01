@@ -14,12 +14,6 @@ pub struct Unit {
                                           // elements in unit (ele, rdy, dmg)
 }
 
-impl Unit {
-    pub fn new(name: String, toe: String, faction: String, location: Either<LocationCoords, OffmapLocationName>, elements: Vec<ElementInUnit>) -> Unit {
-        Unit { name, toe, faction, location, elements }
-    }
-}
-
 impl Display for Unit {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         if self.location.is_left() {
@@ -54,12 +48,6 @@ pub struct ElementInToe {
     pub amount: u32,
 }
 
-impl Toe {
-    pub fn new(&self, name: String, size: Size, start_date: Date, end_date: Date, elements: Vec<ElementInToe>) -> Toe {
-        Toe { name, size, start_date, end_date, elements }
-    }
-}
-
 #[derive(serde::Deserialize, Debug, serde::Serialize)]
 pub enum Size {
     Division,
@@ -77,12 +65,6 @@ pub struct Element {
     pub range: u32,
     pub v_inf: u32,
     pub v_arm: u32,
-}
-
-impl Element {
-    pub fn new(name: String, class: ElementClass, cv: f32, accuracy: u32, range: u32, v_inf: u32, v_arm: u32) -> Element {
-        Element { name, class, cv, accuracy, range, v_inf, v_arm }
-    }
 }
 
 #[derive(serde::Deserialize, Debug, serde::Serialize)]
