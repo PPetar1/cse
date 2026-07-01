@@ -91,7 +91,9 @@ impl Game {
         }
     
         if units.len() < unit_i + 1 {
-            return Err(Error::from_str("No unit with index {} at {}"))
+            return Err(Error {
+                error_message: format!("No unit with index {} at ({}, {}).", unit_i, x_start, y_start),
+            })
         }
         
         units[unit_i].location = Either::Left(location_end);
@@ -154,7 +156,30 @@ pub struct Unit_ {
 mod tests {
     use super::*;
 
-    fn minimal_scenario(players: &str) -> String {
+    const ONE_PLAYER: &str = r#"
+[[players]]
+faction_name = "Axis"
+faction_tag = "AX"
+"#;
+
+    const ONMAP_UNIT: &str = r#"
+[[units]]
+name = "1st Test Division"
+toe = "test_toe"
+faction = "AX"
+location.Left.x = 1
+location.Left.y = 1
+"#;
+
+    const OFFMAP_UNIT: &str = r#"
+[[units]]
+name = "Reserve Division"
+toe = "test_toe"
+faction = "AX"
+location.Right.name = "GE Reserve"
+"#;
+
+    fn minimal_scenario(players: &str, units: &str) -> String {
         let map_path = concat!(env!("CARGO_MANIFEST_DIR"), "/maps/basic_map.map");
         format!(r#"
 name = "test scenario"
@@ -182,23 +207,17 @@ range = 100
 v_inf = 100
 v_arm = 3
 
-[[units]]
-name = "1st Test Division"
-toe = "test_toe"
-faction = "AX"
-location.Left.x = 1
-location.Left.y = 1
+{units}
 "#)
+    }
+
+    fn one_unit_game() -> Game {
+        Game::build(minimal_scenario(ONE_PLAYER, ONMAP_UNIT)).unwrap()
     }
 
     #[test]
     fn builds_a_game_from_a_minimal_scenario() {
-        let players = r#"
-[[players]]
-faction_name = "Axis"
-faction_tag = "AX"
-"#;
-        let game = Game::build(minimal_scenario(players)).unwrap();
+        let game = one_unit_game();
 
         assert_eq!(game.turn, 1);
         assert_eq!(game.players.len(), 1);
@@ -208,9 +227,68 @@ faction_tag = "AX"
 
     #[test]
     fn rejects_a_scenario_with_no_players() {
-        let error = Game::build(minimal_scenario("players = []")).unwrap_err();
+        let error = Game::build(minimal_scenario("players = []", ONMAP_UNIT)).unwrap_err();
 
         assert!(error.error_message.contains("at least 1 player"));
+    }
+
+    #[test]
+    fn move_unit_updates_the_units_location() {
+        let mut game = one_unit_game();
+
+        game.move_unit(1, 1, 2, 2, 0).unwrap();
+
+        let unit = &game.state.units["1st Test Division"];
+        assert_eq!(unit.location, Either::Left(LocationCoords { x: 2, y: 2 }));
+    }
+
+    #[test]
+    fn move_unit_rejects_invalid_start_hex() {
+        let mut game = one_unit_game();
+
+        let error = game.move_unit(99, 99, 2, 2, 0).unwrap_err();
+        assert!(error.error_message.contains("starting location"));
+    }
+
+    #[test]
+    fn move_unit_rejects_invalid_destination_hex() {
+        let mut game = one_unit_game();
+
+        let error = game.move_unit(1, 1, 99, 99, 0).unwrap_err();
+        assert!(error.error_message.contains("destination"));
+    }
+
+    #[test]
+    fn move_unit_rejects_index_with_no_unit() {
+        let mut game = one_unit_game();
+
+        let error = game.move_unit(1, 1, 2, 2, 5).unwrap_err();
+        assert!(error.error_message.contains("index 5"));
+        assert!(error.error_message.contains("(1, 1)"));
+    }
+
+    #[test]
+    fn units_at_location_finds_onmap_and_offmap_units() {
+        let units = format!("{ONMAP_UNIT}\n{OFFMAP_UNIT}");
+        let game = Game::build(minimal_scenario(ONE_PLAYER, &units)).unwrap();
+
+        let hex = game.state.map.get_location(1, 1).unwrap();
+        let found = game.units_at_location(hex);
+        assert_eq!(found.len(), 1);
+        assert_eq!(found[0].name, "1st Test Division");
+
+        let reserve = game.state.map.get_offmap_location("GE Reserve").unwrap();
+        let found = game.units_at_location(reserve);
+        assert_eq!(found.len(), 1);
+        assert_eq!(found[0].name, "Reserve Division");
+    }
+
+    #[test]
+    fn units_at_location_returns_empty_for_an_empty_hex() {
+        let game = one_unit_game();
+
+        let hex = game.state.map.get_location(0, 0).unwrap();
+        assert!(game.units_at_location(hex).is_empty());
     }
 
     #[test]
