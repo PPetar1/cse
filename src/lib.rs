@@ -2,8 +2,8 @@ mod game;
 mod core;
 mod procedures;
 mod utils;
+mod visualiser;
 
-use serde::{Serialize, Deserialize};
 use postcard::{from_bytes, to_allocvec};
 extern crate alloc;
 
@@ -128,7 +128,7 @@ pub fn run(command: &str, current_game: Option<&mut Game>) -> Result<Option<Game
             }
         }
         Some("move") => {
-            if let Some(mut game) = current_game {
+            if let Some(game) = current_game {
                 if arguments.len() < 5 {
                     Err(Error::from_str("Need source, destination and index of the unit to move it."))
                 }
@@ -150,7 +150,31 @@ pub fn run(command: &str, current_game: Option<&mut Game>) -> Result<Option<Game
                 Err(Error::from_str("No game loaded."))
             }
         }
-        _ => Err(Error{ 
+        Some("view") => {
+            if let Some(game) = current_game {
+                let hexes = game.state.map.all_locations()
+                    .into_iter()
+                    .map(|((x, y), terrain)| visualiser::HexDisplay { x, y, terrain })
+                    .collect();
+
+                let units = game.state.units.values()
+                    .filter_map(|unit| {
+                        unit.location.as_ref().left().map(|loc| visualiser::UnitDisplay {
+                            x: loc.x,
+                            y: loc.y,
+                            name: unit.name.clone(),
+                            faction: unit.faction.clone(),
+                        })
+                    })
+                    .collect();
+
+                spawn_view_subprocess(visualiser::MapSnapshot { hexes, units })?;
+                Ok(None)
+            } else {
+                Err(Error::from_str("No game loaded."))
+            }
+        }
+        _ => Err(Error{
             error_message: "Unknown command.".to_string(),
         }),
     }
@@ -179,6 +203,47 @@ fn load_game(arguments: Vec<&str>) -> Result<Game, Error> {
 
     let game: Game = from_bytes(&contents)?;
     Ok(game)
+}
+
+// winit event loops can only be created once per process, so each `view` runs
+// the visualiser in a fresh subprocess (this binary re-invoked with --view).
+// The snapshot crosses over via a temp file the subprocess deletes after reading.
+fn spawn_view_subprocess(snapshot: visualiser::MapSnapshot) -> Result<(), Error> {
+    let bin: alloc::vec::Vec<u8> = to_allocvec(&snapshot)?;
+
+    let unique = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_nanos())
+        .unwrap_or(0);
+    let snapshot_path = std::env::temp_dir().join(format!("cse_view_{}_{}.snapshot", std::process::id(), unique));
+    let mut file = File::create(&snapshot_path)?;
+    file.write_all(&bin)?;
+
+    let current_exe = std::env::current_exe()?;
+    let mut child = std::process::Command::new(current_exe)
+        .arg("--view")
+        .arg(&snapshot_path)
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .spawn()?;
+
+    // Reap the child when the window closes so it doesn't linger as a zombie.
+    std::thread::spawn(move || {
+        let _ = child.wait();
+    });
+
+    Ok(())
+}
+
+pub fn run_view_subprocess(snapshot_path: &str) -> Result<(), Error> {
+    let mut file = File::open(snapshot_path)?;
+    let mut contents = Vec::new();
+    file.read_to_end(&mut contents)?;
+    let _ = std::fs::remove_file(snapshot_path);
+
+    let snapshot: visualiser::MapSnapshot = from_bytes(&contents)?;
+    visualiser::launch(snapshot);
+    Ok(())
 }
 
 fn save_game(arguments: Vec<&str>, game: &Game) -> Result<(), Error> {

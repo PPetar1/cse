@@ -58,7 +58,7 @@ impl Display for Location {
     }
 }
 
-#[derive(Debug, PartialEq, serde::Deserialize, serde::Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, serde::Deserialize, serde::Serialize)]
 pub enum Terrain {
     Mountain,
     Plains,

@@ -1,0 +1,106 @@
+# CSE — Combat Simulation Engine
+
+A WW2 operational wargame engine in Rust, inspired by Gary Grigsby's *War in the East*.
+Design goal: scalable engine-first architecture — terminal-driven simulation core now,
+richer frontends later. Unit/TOE/element attributes come from easy-to-edit TOML config
+files, so scenarios are data, not code.
+
+**Standing rules from the author:**
+- After every code change, update README.md and this file in the same pass
+  (commands/usage in README; architecture, conventions, gotchas, roadmap here).
+- Prioritize clean, simple, reviewable code — the author reviews everything and may
+  pick the project up solo later. Work in small chunks rather than big diffs.
+  Modularity/expandability matter (the end goal is a complex game), but get them
+  from clean seams and data-driven design, not speculative abstraction.
+- The project doubles as a learning exercise in AI-driven development; the README
+  carries a disclaimer that code is heavily AI-generated.
+
+## Build & run
+
+```
+cargo build          # first build is slow (Bevy); incremental is fast
+cargo run            # starts the interactive command loop (reads stdin)
+```
+
+No tests exist yet. There is no CI.
+
+## Command loop
+
+`main.rs` reads lines from stdin and passes them to `cse::run(command, current_game)`
+in `lib.rs`, which parses and dispatches. Commands:
+
+- `new <path.scen>` — start a game from a scenario file (e.g. `new scenarios/basic_scenario.scen`)
+- `load <path.sav>` / `save <path.sav>` — postcard (binary serde) save/load of the whole `Game`
+- `inspect <x> <y>` or `inspect <offmap name>` — show location + units there
+- `units` / `units detail` — list all units
+- `move <x1> <y1> <x2> <y2> <unit_index>` — teleport-style move (no distance/cost checks yet)
+- `view` — open the Bevy map window in a detached subprocess (terminal stays usable;
+  Esc closes the window; can be called repeatedly)
+- `exit`
+
+## Architecture
+
+```
+src/
+  main.rs        — stdin loop + `--view <snapshot>` subprocess entry
+  lib.rs         — command parsing/dispatch, save/load, view subprocess
+                   spawning (spawn_view_subprocess/run_view_subprocess), Error type
+  game/mod.rs    — Game (state + players + turn/phase), Scenario TOML schema, move_unit
+  core/mod.rs    — State::build: resolves a Scenario into runtime State (units get
+                   their element rosters instantiated from their TOE here)
+  core/map.rs    — Map: HashMap<(u32,u32), Location> + offmap locations; TOML map parsing
+  core/location.rs — Location wraps Option<hexx::Hex> (None = offmap), Terrain enum
+  core/unit.rs   — Unit, Toe, Element, ElementClass, Size + config structs
+  visualiser.rs  — self-contained Bevy 0.15 debug map view (see below)
+  procedures/    — empty; intended home for combat resolution etc.
+  utils/         — empty
+```
+
+Key data model (all TOML-configurable, see `scenarios/basic_scenario.scen`):
+- **Element** — a weapon system type (rifle squad, Pz IV…): `class`, `cv`, `accuracy`,
+  `range` (meters), `v_inf`, `v_arm` (vulnerability vs inf/armor fire)
+- **TOE** — table of equipment: named list of (element, amount), with validity dates
+- **Unit** — a division etc.: points at a TOE by name; holds live `ElementInUnit`
+  counts (`ready`/`damaged`); location is `Either<LocationCoords, OffmapLocationName>`
+- **Map files** (`maps/*.map`) — TOML: per-hex terrain + named offmap boxes ("GE Reserve")
+
+Conventions used throughout:
+- Hex coords: offset coordinates, `OffsetHexMode::Even`, `HexOrientation::Pointy`
+  (conversion happens inside `Location`; the rest of the code speaks (x, y) u32)
+- Lookups by name: `State` keeps `HashMap<String, _>` registries for units/toe/elements
+- Errors: crate-local `Error { error_message }` with `From` impls for io/toml/postcard;
+  command handlers return `Result<Option<Game>, Error>` (Some = a new game was created)
+
+## Gotchas
+
+- **glam version split**: hexx 0.23 uses glam 0.30, Bevy 0.15 uses glam 0.29. Their
+  `Vec2`s are incompatible. In `visualiser.rs`, hexx's re-exported `Vec2` is aliased
+  as `HexVec2` for `HexLayout`; positions cross into Bevy as plain f32 x/y. Keep any
+  new hexx↔bevy math on this pattern (or unify versions when upgrading).
+- **winit event loops can only be created once per process**, so `view` re-invokes
+  the binary as `cse --view <snapshot-file>` (postcard temp file, deleted by the
+  child after reading; child stdout/stderr nulled; a reaper thread `wait()`s the
+  child to avoid zombies). Never call `visualiser::launch` directly from the
+  command loop — a second call would crash the process.
+- `.map`/`.scen`/`.sav` are all project file formats: TOML, TOML, postcard binary.
+- The visualiser gets a `MapSnapshot` (plain serde data, no game references) — keep
+  it decoupled; don't hand it `&State`.
+- Fields deserialized from config but not yet read (`Scenario.start_date`,
+  `MapFile.width`…) carry `#[allow(dead_code)]`; remove the attribute when a
+  system starts using them. The build is warning-free — keep it that way.
+- Scenario element names must match TOE element names exactly — `State::build` errors
+  on unknown TOE, but element-name typos (e.g. `SU_45mm_at_gun` vs `SU_45mm_AtGun` in
+  the basic scenario) currently slip through silently.
+
+## Roadmap (agreed with the author)
+
+1. **Combat resolution** (next up — design first, then implement in `procedures/`):
+   fires-based model is the leaning (elements shoot by class matchup using
+   accuracy/range/v_inf/v_arm), but resolution model, round structure, range handling,
+   loss flow (ready→damaged?), and terrain modifiers are still open design questions.
+2. Turn/phase system — `end_turn`, alternating players, date advancement
+   (`turn_length` exists in scenarios but is unused).
+3. Movement rules — adjacency/cost/MP budget on the hex grid.
+4. Supply system — later, WitE-style depth.
+5. Visualiser growth — the Bevy `MapViewPlugin` is meant to accrete systems
+   (hover-inspect, selection) and maybe become the real frontend eventually.

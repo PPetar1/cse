@@ -62,12 +62,21 @@ impl Map {
     pub fn get_offmap_location(&self, name: &str) -> Option<&Location> {
         self.off_map.get(name)
     }
+
+    pub fn all_locations(&self) -> Vec<((u32, u32), Terrain)> {
+        self.map
+            .iter()
+            .map(|(&coords, loc)| (coords, loc.terrain))
+            .collect()
+    }
 }
 
 #[derive(serde::Deserialize)]
 struct MapFile {
     name: String,
+    #[allow(dead_code)] // will be read once map dimension validation lands
     width: u32,
+    #[allow(dead_code)]
     height: u32,
     locations: Vec<Location_>,
     offmap_locations: Vec<OffmapLocation_>,

@@ -122,11 +122,15 @@ struct TurnPhase {
 
 #[derive(serde::Deserialize)]
 pub struct Scenario {
+    #[allow(dead_code)] // will be read once the turn system lands
     name: String,
+    #[allow(dead_code)]
     game_version: String,
     pub map: String,
 
+    #[allow(dead_code)]
     start_date: String,
+    #[allow(dead_code)]
     turn_length: u32,
 
     players: Vec<Player>,
