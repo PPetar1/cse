@@ -28,7 +28,7 @@ cargo test    # run the test suite
 | `inspect <x> <y>` | inspect the location at (x, y) |
 | `inspect <name>` | inspect the offmap location with the given name |
 | `units` | list all units (`units detail` for more detail) |
-| `move <x1> <y1> <x2> <y2> <unit_index>` | move the unit with the given index from the start hex to the destination hex |
+| `move <x1> <y1> <x2> <y2> <unit_index>` | move the unit with the given index from the start hex to the destination hex; stacked units are indexed in alphabetical order, matching the order `inspect` lists them |
 | `view` | open a window visualising the map and unit positions; the terminal stays usable while the window is open, and `view` can be called again after closing it (Esc or close the window to dismiss) |
 | `save <path>` | save the game state to a file |
 | `load <path>` | load a game state from a file |

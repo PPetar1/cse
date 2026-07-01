@@ -53,6 +53,9 @@ impl Game {
         }
     }
     
+    /// Units at a location, sorted by name. Sorting matters: the unit index
+    /// used by `move_unit` must be stable across calls (HashMap iteration
+    /// order is not), and must match what `inspect` shows the player.
     pub fn units_at_location(&self, location: &Location) -> Vec<&Unit> {
         let mut units = Vec::new();
         for unit in self.state.units.values() {
@@ -64,6 +67,7 @@ impl Game {
                 units.push(unit)
             }
         }
+        units.sort_by(|a, b| a.name.cmp(&b.name));
         units
     }
 
@@ -82,6 +86,9 @@ impl Game {
                 units.push(unit)
             }
         }
+        // Same ordering as units_at_location, so the index the player saw
+        // via inspect addresses the same unit here.
+        units.sort_by(|a, b| a.name.cmp(&b.name));
 
         if units.len() < unit_i + 1 {
             return Err(Error {
@@ -282,6 +289,46 @@ v_arm = 3
         let found = game.units_at_location(reserve);
         assert_eq!(found.len(), 1);
         assert_eq!(found[0].name, "Reserve Division");
+    }
+
+    #[test]
+    fn stacked_units_are_indexed_in_name_order() {
+        let units = r#"
+[[units]]
+name = "Bravo Division"
+toe = "test_toe"
+faction = "AX"
+location = { x = 1, y = 1 }
+
+[[units]]
+name = "Alpha Division"
+toe = "test_toe"
+faction = "AX"
+location = { x = 1, y = 1 }
+
+[[units]]
+name = "Charlie Division"
+toe = "test_toe"
+faction = "AX"
+location = { x = 1, y = 1 }
+"#;
+        let mut game = Game::build(minimal_scenario(ONE_PLAYER, units)).unwrap();
+
+        let hex = game.state.map.get_location(1, 1).unwrap();
+        let found = game.units_at_location(hex);
+        let names: Vec<&str> = found.iter().map(|unit| unit.name.as_str()).collect();
+        assert_eq!(names, ["Alpha Division", "Bravo Division", "Charlie Division"]);
+
+        // Index 1 must address the same unit move_unit sees: Bravo.
+        game.move_unit(1, 1, 2, 2, 1).unwrap();
+        assert_eq!(
+            game.state.units["Bravo Division"].location,
+            UnitLocation::OnMap(LocationCoords { x: 2, y: 2 })
+        );
+        assert_eq!(
+            game.state.units["Alpha Division"].location,
+            UnitLocation::OnMap(LocationCoords { x: 1, y: 1 })
+        );
     }
 
     #[test]
