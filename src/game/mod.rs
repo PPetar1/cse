@@ -1,5 +1,3 @@
-use either::Either;
-
 use crate::core::State;
 use crate::Error;
 use crate::core::unit::*;
@@ -58,10 +56,11 @@ impl Game {
     pub fn units_at_location(&self, location: &Location) -> Vec<&Unit> {
         let mut units = Vec::new();
         for unit in self.state.units.values() {
-            if Some(location) == unit.location.as_ref().either(
-                |location_coords| self.state.map.get_location(location_coords.x, location_coords.y), 
-                |offmap_location| self.state.map.get_offmap_location(&offmap_location.name)
-            ) {
+            let units_location = match &unit.location {
+                UnitLocation::OnMap(coords) => self.state.map.get_location(coords.x, coords.y),
+                UnitLocation::Offmap(name) => self.state.map.get_offmap_location(name),
+            };
+            if Some(location) == units_location {
                 units.push(unit)
             }
         }
@@ -76,24 +75,22 @@ impl Game {
                 error_message: "Invalid destination.".to_string(),
         })?;
        
-        let location_start = LocationCoords { x: x_start, y: y_start };
-        let location_end = LocationCoords { x: x_end, y: y_end };
+        let location_start = UnitLocation::OnMap(LocationCoords { x: x_start, y: y_start });
         let mut units = Vec::new();
         for unit in self.state.units.values_mut() {
-            if let Some(location) = unit.location.as_ref().left()
-                && *location == location_start {
-                   units.push(unit)
-                }
+            if unit.location == location_start {
+                units.push(unit)
+            }
         }
-    
+
         if units.len() < unit_i + 1 {
             return Err(Error {
                 error_message: format!("No unit with index {} at ({}, {}).", unit_i, x_start, y_start),
             })
         }
-        
-        units[unit_i].location = Either::Left(location_end);
-      
+
+        units[unit_i].location = UnitLocation::OnMap(LocationCoords { x: x_end, y: y_end });
+
         Ok(())
     }
 }
@@ -128,15 +125,33 @@ pub struct Scenario {
     
     pub elements: Vec<Element>,
 
-    pub units: Vec<Unit_>,
+    pub units: Vec<UnitConfig>,
 }
 
 #[derive(serde::Deserialize)]
-pub struct Unit_ {
+pub struct UnitConfig {
     pub name: String,
     pub toe: String,
     pub faction: String,
-    pub location: Either<LocationCoords, OffmapLocationName>,
+    pub location: UnitLocationConfig,
+}
+
+/// Scenario-file form of a unit location. Untagged so the TOML reads naturally:
+/// `location = { x = 3, y = 3 }` for a hex, `location = "GE Reserve"` for offmap.
+#[derive(serde::Deserialize)]
+#[serde(untagged)]
+pub enum UnitLocationConfig {
+    OnMap { x: u32, y: u32 },
+    Offmap(String),
+}
+
+impl From<UnitLocationConfig> for UnitLocation {
+    fn from(config: UnitLocationConfig) -> UnitLocation {
+        match config {
+            UnitLocationConfig::OnMap { x, y } => UnitLocation::OnMap(LocationCoords { x, y }),
+            UnitLocationConfig::Offmap(name) => UnitLocation::Offmap(name),
+        }
+    }
 }
 
 #[cfg(test)]
@@ -154,8 +169,7 @@ faction_tag = "AX"
 name = "1st Test Division"
 toe = "test_toe"
 faction = "AX"
-location.Left.x = 1
-location.Left.y = 1
+location = { x = 1, y = 1 }
 "#;
 
     const OFFMAP_UNIT: &str = r#"
@@ -163,7 +177,7 @@ location.Left.y = 1
 name = "Reserve Division"
 toe = "test_toe"
 faction = "AX"
-location.Right.name = "GE Reserve"
+location = "GE Reserve"
 "#;
 
     fn minimal_scenario(players: &str, units: &str) -> String {
@@ -226,7 +240,7 @@ v_arm = 3
         game.move_unit(1, 1, 2, 2, 0).unwrap();
 
         let unit = &game.state.units["1st Test Division"];
-        assert_eq!(unit.location, Either::Left(LocationCoords { x: 2, y: 2 }));
+        assert_eq!(unit.location, UnitLocation::OnMap(LocationCoords { x: 2, y: 2 }));
     }
 
     #[test]

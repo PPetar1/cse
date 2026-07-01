@@ -69,7 +69,9 @@ Key data model (all TOML-configurable, see `scenarios/basic_scenario.scen`):
   `range` (meters), `v_inf`, `v_arm` (vulnerability vs inf/armor fire)
 - **TOE** — table of equipment: named list of (element, amount), with validity dates
 - **Unit** — a division etc.: points at a TOE by name; holds live `ElementInUnit`
-  counts (`ready`/`damaged`); location is `Either<LocationCoords, OffmapLocationName>`
+  counts (`ready`/`damaged`); location is the `UnitLocation` enum (`OnMap(coords)` /
+  `Offmap(name)`); scenario TOML writes it as `location = { x = 3, y = 3 }` or
+  `location = "GE Reserve"`
 - **Map files** (`maps/*.map`) — TOML: per-hex terrain + named offmap boxes ("GE Reserve")
 
 Conventions used throughout:
@@ -91,6 +93,10 @@ Conventions used throughout:
   child to avoid zombies). Never call `visualiser::launch` directly from the
   command loop — a second call would crash the process.
 - `.map`/`.scen`/`.sav` are all project file formats: TOML, TOML, postcard binary.
+- **`#[serde(untagged)]` breaks postcard** (it needs self-describing formats), so
+  TOML-facing config types (`UnitLocationConfig`) are separate from runtime types
+  (`UnitLocation`, normally tagged). Keep any new untagged enums on the config side
+  only, with a `From` impl to the runtime type.
 - The visualiser gets a `MapSnapshot` (plain serde data, no game references) — keep
   it decoupled; don't hand it `&State`.
 - Fields deserialized from config but not yet read (`Scenario.start_date`,

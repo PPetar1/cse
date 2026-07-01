@@ -59,7 +59,7 @@ impl State {
                 name: unit.name,
                 toe: unit.toe,
                 faction: unit.faction,
-                location: unit.location,
+                location: unit.location.into(),
                 elements,
             });
         }
@@ -77,7 +77,6 @@ impl State {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use either::Either;
 
     // Uses the real map file so fixtures only have to vary scenario data.
     fn scenario_toml(toe_elements: &str, units: &str) -> String {
@@ -131,8 +130,7 @@ amount = 10
 name = "1st Test Division"
 toe = "test_toe"
 faction = "AX"
-location.Left.x = 1
-location.Left.y = 1
+location = { x = 1, y = 1 }
 "#;
         let state = build_state(VALID_TOE_ELEMENTS, units).unwrap();
 
@@ -150,15 +148,12 @@ location.Left.y = 1
 name = "Reserve Division"
 toe = "test_toe"
 faction = "AX"
-location.Right.name = "GE Reserve"
+location = "GE Reserve"
 "#;
         let state = build_state(VALID_TOE_ELEMENTS, units).unwrap();
 
         let unit = &state.units["Reserve Division"];
-        assert_eq!(
-            unit.location,
-            Either::Right(OffmapLocationName { name: "GE Reserve".to_string() })
-        );
+        assert_eq!(unit.location, UnitLocation::Offmap("GE Reserve".to_string()));
     }
 
     #[test]
@@ -168,8 +163,7 @@ location.Right.name = "GE Reserve"
 name = "1st Test Division"
 toe = "no_such_toe"
 faction = "AX"
-location.Left.x = 1
-location.Left.y = 1
+location = { x = 1, y = 1 }
 "#;
         let error = build_state(VALID_TOE_ELEMENTS, units).unwrap_err();
 
@@ -189,8 +183,7 @@ amount = 10
 name = "1st Test Division"
 toe = "test_toe"
 faction = "AX"
-location.Left.x = 1
-location.Left.y = 1
+location = { x = 1, y = 1 }
 "#;
         let error = build_state(toe_elements, units).unwrap_err();
 

@@ -1,9 +1,8 @@
 use std::fmt::Display;
 
 use hexx::*;
-use either::Either;
 
-use crate::core::unit::{LocationCoords, OffmapLocationName};
+use crate::core::unit::{LocationCoords, UnitLocation};
 
 #[derive(Debug, serde::Deserialize, PartialEq, serde::Serialize)]
 pub struct Location {
@@ -30,13 +29,13 @@ impl Location {
         }
     }
 
-    pub fn get_coords(&self) -> Either<LocationCoords, OffmapLocationName> {
+    pub fn get_coords(&self) -> UnitLocation {
         if let Some(hex) = self.hex {
             let coords = hex.to_offset_coordinates(OffsetHexMode::Even, HexOrientation::Pointy);
-            Either::Left(LocationCoords { x: coords[0] as u32, y: coords[1] as u32 })
+            UnitLocation::OnMap(LocationCoords { x: coords[0] as u32, y: coords[1] as u32 })
         }
         else {
-            Either::Right(OffmapLocationName { name: self.name.clone().unwrap() })
+            UnitLocation::Offmap(self.name.clone().unwrap())
         }
     }
 }
@@ -109,7 +108,7 @@ mod tests {
         let location = Location::new(Some((3, 4)), Terrain::Plains, None);
 
         let coords = location.get_coords();
-        assert_eq!(coords, Either::Left(LocationCoords { x: 3, y: 4 }));
+        assert_eq!(coords, UnitLocation::OnMap(LocationCoords { x: 3, y: 4 }));
     }
 
     #[test]
@@ -117,7 +116,7 @@ mod tests {
         let location = Location::new(None, Terrain::Urban, Some("Reserve".to_string()));
 
         let coords = location.get_coords();
-        assert_eq!(coords, Either::Right(OffmapLocationName { name: "Reserve".to_string() }));
+        assert_eq!(coords, UnitLocation::Offmap("Reserve".to_string()));
     }
 
     #[test]

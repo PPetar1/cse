@@ -1,5 +1,4 @@
 use time::Date;
-use either::Either;
 
 use std::fmt::Display;
 
@@ -8,21 +7,32 @@ pub struct Unit {
     pub name: String,
     pub toe: String,
     pub faction: String,
-    pub location: Either<LocationCoords, OffmapLocationName>,
-    pub elements: Vec<ElementInUnit>// Tuple holds the name of the element in question,
-                                          // number of ready elements in unit, number of damaged
-                                          // elements in unit (ele, rdy, dmg)
+    pub location: UnitLocation,
+    pub elements: Vec<ElementInUnit>,
 }
 
 impl Display for Unit {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        if self.location.is_left() {
-            write!(f, "{}\nFaction: {}\nLocation: ({}, {})", self.name, self.faction, self.location.as_ref().left().unwrap().x, self.location.as_ref().left().unwrap().y)
-        }
-        else {
-            write!(f, "{}\nFaction: {}\nLocation: {}(offmap)", self.name, self.faction, self.location.as_ref().right().unwrap().name)
+        match &self.location {
+            UnitLocation::OnMap(coords) => {
+                write!(f, "{}\nFaction: {}\nLocation: ({}, {})", self.name, self.faction, coords.x, coords.y)
+            }
+            UnitLocation::Offmap(name) => {
+                write!(f, "{}\nFaction: {}\nLocation: {}(offmap)", self.name, self.faction, name)
+            }
         }
     }
+}
+
+/// Where a unit currently is: a hex on the map, or a named offmap box.
+///
+/// Externally tagged (serde default) on purpose — postcard save files cannot
+/// handle `#[serde(untagged)]`. The scenario TOML uses the friendlier untagged
+/// `UnitLocationConfig` instead.
+#[derive(serde::Deserialize, Debug, PartialEq, serde::Serialize)]
+pub enum UnitLocation {
+    OnMap(LocationCoords),
+    Offmap(String),
 }
 
 #[derive(serde::Deserialize, Debug, serde::Serialize)]
@@ -81,9 +91,4 @@ pub enum ElementClass {
 pub struct LocationCoords {
     pub x: u32,
     pub y: u32,
-}
-
-#[derive(serde::Deserialize, Debug, PartialEq, serde::Serialize)]
-pub struct OffmapLocationName {
-    pub name: String
 }

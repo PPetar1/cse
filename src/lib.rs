@@ -158,13 +158,14 @@ pub fn run(command: &str, current_game: Option<&mut Game>) -> Result<Option<Game
                     .collect();
 
                 let units = game.state.units.values()
-                    .filter_map(|unit| {
-                        unit.location.as_ref().left().map(|loc| visualiser::UnitDisplay {
-                            x: loc.x,
-                            y: loc.y,
+                    .filter_map(|unit| match &unit.location {
+                        core::unit::UnitLocation::OnMap(coords) => Some(visualiser::UnitDisplay {
+                            x: coords.x,
+                            y: coords.y,
                             name: unit.name.clone(),
                             faction: unit.faction.clone(),
-                        })
+                        }),
+                        core::unit::UnitLocation::Offmap(_) => None,
                     })
                     .collect();
 
