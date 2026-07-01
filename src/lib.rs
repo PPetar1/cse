@@ -9,201 +9,172 @@ extern crate alloc;
 
 use std::{fs::File, io::{Read, Write}};
 
+use crate::core::unit::UnitLocation;
 use game::Game;
 
-pub fn run(command: &str, current_game: Option<&mut Game>) -> Result<Option<Game>, Error> {
-    let mut slices = command.split_whitespace();
-    
-    let command = slices.next();
-    let arguments: Vec<&str> = slices.collect();
-
-    match command {
-        Some("new") => {
-            if arguments.is_empty() { 
-                return Err(Error { 
-                    error_message: "No scenario file provided. Unable to start a new game.".to_string(),
-                });
-            }
-            
-            Ok(Some(new_game(arguments)?))
+pub fn run(input: &str, current_game: Option<&mut Game>) -> Result<Option<Game>, Error> {
+    match Command::parse(input)? {
+        Command::New { scenario_path } => Ok(Some(new_game(scenario_path)?)),
+        Command::Load { save_path } => Ok(Some(load_game(save_path)?)),
+        Command::Save { save_path } => {
+            save_game(save_path, require_game(current_game)?)?;
+            Ok(None)
         }
-        Some("load") => {
-            if arguments.is_empty() { 
-                return Err(Error { 
-                    error_message: "No file provided. Unable to load a new game.".to_string(),
-                });
-            }
-
-            Ok(Some(load_game(arguments)?))
+        Command::Inspect(target) => {
+            inspect(require_game(current_game)?, &target)?;
+            Ok(None)
         }
-        Some("save") => {
-             if arguments.is_empty() { 
-                return Err(Error { 
-                    error_message: "Path to use for the save not specified.".to_string(),
-                });
-            }
-
-            if let Some(game) = current_game {
-                save_game(arguments, game)?;
-                Ok(None)
-            }
-            else {
-                Err(Error {
-                    error_message: "No game active to save.".to_string(),
-                })
-            }
-        }
-        Some("inspect") => {
-            if let Some(game) = current_game {
-                if arguments.len() == 1 {
-                    if let Some(location) = game.state.map.get_offmap_location(arguments[0]) {
-                        println!("{}", location);
-                        for unit in game.units_at_location(location) {
-                            println!("{}", unit);
-                        }
-                        Ok(None)
-                    }
-                    else {
-                        Err (Error { 
-                            error_message: "Offmap location not found.".to_string(),
-                        })
-                    } 
-                }
-                else if arguments.len() < 2 {
-                    Err(Error { 
-                        error_message: "Missing hex coordinate or offmap hex name arguments for inspect.".to_string(),
-                    })
-                }
-                else {
-                    if let (Ok(x), Ok(y)) = (arguments[0].parse(), arguments[1].parse()) {
-                            if let Some(location) = game.state.map.get_location(x, y) {
-                                println!("{}", location);
-                                for unit in game.units_at_location(location) {
-                                    println!("{}", unit);
-                                }
-                                Ok(None)
-                            }
-                            else {
-                                Err (Error { 
-                                    error_message: "Hex not in range.".to_string(),
-                                })
-                            } 
-                        }
-                    else {
-                        if let Some(location) = game.state.map.get_offmap_location(&arguments.join(" ")) {
-                            println!("{}", location);
-                            for unit in game.units_at_location(location) {
-                                println!("{}", unit);
-                            }
-                            Ok(None)
-                        }
-                        else {
-                            Err (Error { 
-                                error_message: "Location not found.".to_string(),
-                            })
-                        } 
-                    }
-                }
-            }
-            else {
-                Err (Error { 
-                    error_message: "No game loaded.".to_string(),
-                })
-            }
-        }
-        Some("units") => {
-            if let Some(game) = current_game {
-                if !arguments.is_empty() {
-                    if arguments[0] == "detail" {
-                        game.list_units_detail();
-                    }
-                }
-                else {
-                    game.list_units();
-                }
-                Ok(None)
-            }
-            else {
-                Err(Error::new("No game loaded."))
-            }
-        }
-        Some("move") => {
-            if let Some(game) = current_game {
-                if arguments.len() < 5 {
-                    Err(Error::new("Need source, destination and index of the unit to move it."))
-                }
-                else {
-                    if let (Ok(x_start), Ok(y_start), Ok(x_end), Ok(y_end), Ok(unit_i)) 
-                        = (arguments[0].parse(), arguments[1].parse(), arguments[2].parse(), arguments[3].parse(), arguments[4].parse())
-                    {
-                        game.move_unit(x_start, y_start, x_end, y_end,  unit_i)?;
-                        Ok(None)
-                    }
-                    else {
-                        Err(Error {
-                            error_message: "Unable to parse arguments for move order.".to_string(),
-                        })
-                    }
-                }
-            }
-            else {
-                Err(Error::new("No game loaded."))
-            }
-        }
-        Some("view") => {
-            if let Some(game) = current_game {
-                let hexes = game.state.map.all_locations()
-                    .into_iter()
-                    .map(|((x, y), terrain)| visualiser::HexDisplay { x, y, terrain })
-                    .collect();
-
-                let units = game.state.units.values()
-                    .filter_map(|unit| match &unit.location {
-                        core::unit::UnitLocation::OnMap(coords) => Some(visualiser::UnitDisplay {
-                            x: coords.x,
-                            y: coords.y,
-                            name: unit.name.clone(),
-                            faction: unit.faction.clone(),
-                        }),
-                        core::unit::UnitLocation::Offmap(_) => None,
-                    })
-                    .collect();
-
-                spawn_view_subprocess(visualiser::MapSnapshot { hexes, units })?;
-                Ok(None)
+        Command::Units { detail } => {
+            let game = require_game(current_game)?;
+            if detail {
+                game.list_units_detail();
             } else {
-                Err(Error::new("No game loaded."))
+                game.list_units();
             }
+            Ok(None)
         }
-        _ => Err(Error{
-            error_message: "Unknown command.".to_string(),
-        }),
+        Command::Move { from, to, unit_index } => {
+            require_game(current_game)?.move_unit(from.0, from.1, to.0, to.1, unit_index)?;
+            Ok(None)
+        }
+        Command::View => {
+            view(require_game(current_game)?)?;
+            Ok(None)
+        }
     }
 }
 
-fn new_game(arguments: Vec<&str>) -> Result<Game, Error> {
-    let scen_file_path = arguments[0];
-    match File::open(scen_file_path) {
-        Ok(mut scen_file) => { 
-            let mut contents = String::new();
-            scen_file.read_to_string(&mut contents)?;
-            Game::build(contents)
-        }
-        Err(error) => Err(Error {
-            error_message: error.to_string(),
-        }),
-    }
-    
+/// A fully parsed player command. Parsing is separated from execution so
+/// argument handling can be tested without a running game.
+#[derive(Debug, PartialEq)]
+enum Command<'a> {
+    New { scenario_path: &'a str },
+    Load { save_path: &'a str },
+    Save { save_path: &'a str },
+    Inspect(InspectTarget),
+    Units { detail: bool },
+    Move { from: (u32, u32), to: (u32, u32), unit_index: usize },
+    View,
 }
 
-fn load_game(arguments: Vec<&str>) -> Result<Game, Error> { 
-    let load_file_path = arguments[0];
-    let mut file = File::open(load_file_path)?;
+#[derive(Debug, PartialEq)]
+enum InspectTarget {
+    Hex { x: u32, y: u32 },
+    Offmap(String),
+}
+
+impl<'a> Command<'a> {
+    fn parse(input: &'a str) -> Result<Command<'a>, Error> {
+        let mut words = input.split_whitespace();
+        let keyword = words.next().unwrap_or("");
+        let args: Vec<&str> = words.collect();
+
+        match keyword {
+            "new" => {
+                let path = args.first().ok_or_else(|| Error::new("No scenario file provided. Unable to start a new game."))?;
+                Ok(Command::New { scenario_path: path })
+            }
+            "load" => {
+                let path = args.first().ok_or_else(|| Error::new("No file provided. Unable to load a game."))?;
+                Ok(Command::Load { save_path: path })
+            }
+            "save" => {
+                let path = args.first().ok_or_else(|| Error::new("Path to use for the save not specified."))?;
+                Ok(Command::Save { save_path: path })
+            }
+            "inspect" => {
+                if args.is_empty() {
+                    return Err(Error::new("Missing hex coordinate or offmap location name arguments for inspect."));
+                }
+                if let [x, y] = args[..]
+                    && let (Ok(x), Ok(y)) = (x.parse(), y.parse()) {
+                        return Ok(Command::Inspect(InspectTarget::Hex { x, y }));
+                    }
+                Ok(Command::Inspect(InspectTarget::Offmap(args.join(" "))))
+            }
+            "units" => Ok(Command::Units { detail: args.first() == Some(&"detail") }),
+            "move" => {
+                if args.len() < 5 {
+                    return Err(Error::new("Need source, destination and index of the unit to move it."));
+                }
+                if let (Ok(x_start), Ok(y_start), Ok(x_end), Ok(y_end), Ok(unit_index))
+                    = (args[0].parse(), args[1].parse(), args[2].parse(), args[3].parse(), args[4].parse())
+                {
+                    Ok(Command::Move { from: (x_start, y_start), to: (x_end, y_end), unit_index })
+                } else {
+                    Err(Error::new("Unable to parse arguments for move order."))
+                }
+            }
+            "view" => Ok(Command::View),
+            _ => Err(Error::new("Unknown command.")),
+        }
+    }
+}
+
+fn require_game(game: Option<&mut Game>) -> Result<&mut Game, Error> {
+    game.ok_or_else(|| Error::new("No game loaded."))
+}
+
+fn inspect(game: &Game, target: &InspectTarget) -> Result<(), Error> {
+    let location = match target {
+        InspectTarget::Hex { x, y } => game.state.map.get_location(*x, *y)
+            .ok_or_else(|| Error::new("Hex not in range."))?,
+        InspectTarget::Offmap(name) => game.state.map.get_offmap_location(name)
+            .ok_or_else(|| Error::new("Location not found."))?,
+    };
+
+    println!("{}", location);
+    for unit in game.units_at_location(location) {
+        println!("{}", unit);
+    }
+    Ok(())
+}
+
+fn view(game: &Game) -> Result<(), Error> {
+    let hexes = game.state.map.all_locations()
+        .into_iter()
+        .map(|((x, y), terrain)| visualiser::HexDisplay { x, y, terrain })
+        .collect();
+
+    let units = game.state.units.values()
+        .filter_map(|unit| match &unit.location {
+            UnitLocation::OnMap(coords) => Some(visualiser::UnitDisplay {
+                x: coords.x,
+                y: coords.y,
+                name: unit.name.clone(),
+                faction: unit.faction.clone(),
+            }),
+            UnitLocation::Offmap(_) => None,
+        })
+        .collect();
+
+    spawn_view_subprocess(visualiser::MapSnapshot { hexes, units })
+}
+
+fn new_game(scenario_path: &str) -> Result<Game, Error> {
+    let mut scen_file = File::open(scenario_path)?;
+    let mut contents = String::new();
+    scen_file.read_to_string(&mut contents)?;
+    Game::build(contents)
+}
+
+fn load_game(save_path: &str) -> Result<Game, Error> {
+    let mut file = File::open(save_path)?;
     let mut contents = Vec::new();
     file.read_to_end(&mut contents)?;
 
     let game: Game = from_bytes(&contents)?;
     Ok(game)
+}
+
+fn save_game(save_path: &str, game: &Game) -> Result<(), Error> {
+    let mut file = File::create(save_path)?;
+
+    let bin: alloc::vec::Vec<u8> = to_allocvec(game)?;
+
+    file.write_all(&bin)?;
+
+    Ok(())
 }
 
 // winit event loops can only be created once per process, so each `view` runs
@@ -247,17 +218,6 @@ pub fn run_view_subprocess(snapshot_path: &str) -> Result<(), Error> {
     Ok(())
 }
 
-fn save_game(arguments: Vec<&str>, game: &Game) -> Result<(), Error> {
-    let save_file_path = arguments[0];
-    let mut file = File::create(save_file_path)?;
-    
-    let bin: alloc::vec::Vec<u8> = to_allocvec(game)?;
-    
-    file.write_all(&bin)?;
-
-    Ok(())
-}
-
 #[derive(Debug)]
 pub struct Error {
     pub error_message: String,
@@ -284,7 +244,7 @@ impl From<toml::de::Error> for Error {
         Error {
             error_message: error.to_string(),
         }
-    } 
+    }
 }
 
 impl From<std::io::Error> for Error {
@@ -292,7 +252,7 @@ impl From<std::io::Error> for Error {
         Error {
             error_message: error.to_string(),
         }
-    } 
+    }
 }
 
 impl From<postcard::Error> for Error {
@@ -300,5 +260,65 @@ impl From<postcard::Error> for Error {
         Error {
             error_message: error.to_string(),
         }
-    } 
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn parses_a_move_command() {
+        let command = Command::parse("move 3 4 2 2 0").unwrap();
+
+        assert_eq!(command, Command::Move { from: (3, 4), to: (2, 2), unit_index: 0 });
+    }
+
+    #[test]
+    fn rejects_move_with_missing_arguments() {
+        let error = Command::parse("move 3 4").unwrap_err();
+
+        assert!(error.error_message.contains("source, destination and index"));
+    }
+
+    #[test]
+    fn rejects_move_with_unparseable_arguments() {
+        let error = Command::parse("move 3 4 a b 0").unwrap_err();
+
+        assert!(error.error_message.contains("Unable to parse"));
+    }
+
+    #[test]
+    fn parses_inspect_with_hex_coordinates() {
+        let command = Command::parse("inspect 2 3").unwrap();
+
+        assert_eq!(command, Command::Inspect(InspectTarget::Hex { x: 2, y: 3 }));
+    }
+
+    #[test]
+    fn parses_inspect_with_multi_word_offmap_name() {
+        let command = Command::parse("inspect GE Reserve").unwrap();
+
+        assert_eq!(command, Command::Inspect(InspectTarget::Offmap("GE Reserve".to_string())));
+    }
+
+    #[test]
+    fn parses_units_with_and_without_detail() {
+        assert_eq!(Command::parse("units").unwrap(), Command::Units { detail: false });
+        assert_eq!(Command::parse("units detail").unwrap(), Command::Units { detail: true });
+    }
+
+    #[test]
+    fn rejects_new_without_a_scenario_path() {
+        let error = Command::parse("new").unwrap_err();
+
+        assert!(error.error_message.contains("No scenario file provided"));
+    }
+
+    #[test]
+    fn rejects_unknown_commands() {
+        let error = Command::parse("teleport 1 2").unwrap_err();
+
+        assert!(error.error_message.contains("Unknown command"));
+    }
 }
