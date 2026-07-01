@@ -257,6 +257,7 @@ fn save_game(arguments: Vec<&str>, game: &Game) -> Result<(), Error> {
     Ok(())
 }
 
+#[derive(Debug)]
 pub struct Error {
     pub error_message: String,
 }

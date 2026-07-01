@@ -2,7 +2,7 @@ use std::collections::HashMap;
 
 use crate::{Error, core::location::*};
 
-#[derive(serde::Deserialize, serde::Serialize)]
+#[derive(Debug, serde::Deserialize, serde::Serialize)]
 pub struct Map {
     name: String,
     map: HashMap<(u32, u32), Location>,
@@ -94,4 +94,58 @@ struct Location_ {
 struct OffmapLocation_ {
     name: String,
     terrain: Terrain,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    const MAP_FIXTURE: &str = r#"
+name = "mini"
+width = 1
+height = 1
+
+[[locations]]
+x = 0
+y = 0
+terrain = "Plains"
+
+[[locations]]
+x = 0
+y = 1
+terrain = "Water"
+
+[[offmap_locations]]
+name = "Reserve"
+terrain = "Urban"
+"#;
+
+    #[test]
+    fn parses_fixture_map() {
+        let map = Map::map_from_string(MAP_FIXTURE).unwrap();
+
+        assert_eq!(map.get_location(0, 0).unwrap().terrain, Terrain::Plains);
+        assert_eq!(map.get_location(0, 1).unwrap().terrain, Terrain::Water);
+        assert!(map.get_location(5, 5).is_none());
+    }
+
+    #[test]
+    fn looks_up_offmap_locations_by_name() {
+        let map = Map::map_from_string(MAP_FIXTURE).unwrap();
+
+        assert_eq!(map.get_offmap_location("Reserve").unwrap().terrain, Terrain::Urban);
+        assert!(map.get_offmap_location("No Such Place").is_none());
+    }
+
+    #[test]
+    fn parses_real_map_file() {
+        let contents = std::fs::read_to_string(
+            concat!(env!("CARGO_MANIFEST_DIR"), "/maps/basic_map.map"),
+        ).unwrap();
+        let map = Map::map_from_string(&contents).unwrap();
+
+        assert_eq!(map.get_location(1, 3).unwrap().terrain, Terrain::Water);
+        assert!(map.get_offmap_location("GE Reserve").is_some());
+        assert!(map.get_offmap_location("SU Reserve").is_some());
+    }
 }

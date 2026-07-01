@@ -5,7 +5,7 @@ use either::Either;
 
 use crate::core::unit::{LocationCoords, OffmapLocationName};
 
-#[derive(serde::Deserialize, PartialEq, serde::Serialize)]
+#[derive(Debug, serde::Deserialize, PartialEq, serde::Serialize)]
 pub struct Location {
     hex: Option<Hex>, 
     pub terrain: Terrain,
@@ -70,7 +70,7 @@ pub enum Terrain {
     Urban,
 }
 
-#[derive(serde::Deserialize, serde::Serialize)]
+#[derive(Debug, serde::Deserialize, serde::Serialize)]
 pub struct OffmapLocations {
     locations: Vec<Location>,
 }
@@ -101,4 +101,43 @@ impl OffmapLocations {
         }
     }
 
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn get_coords_round_trips_offset_coordinates() {
+        let location = Location::new(Some((3, 4)), Terrain::Plains, None);
+
+        let coords = location.get_coords();
+        assert_eq!(coords, Either::Left(LocationCoords { x: 3, y: 4 }));
+    }
+
+    #[test]
+    fn get_coords_returns_name_for_offmap_location() {
+        let location = Location::new(None, Terrain::Urban, Some("Reserve".to_string()));
+
+        let coords = location.get_coords();
+        assert_eq!(coords, Either::Right(OffmapLocationName { name: "Reserve".to_string() }));
+    }
+
+    #[test]
+    fn insert_ignores_duplicate_names() {
+        let mut off_map = OffmapLocations::new();
+        off_map.insert(Location::new(None, Terrain::Urban, Some("Reserve".to_string())));
+        off_map.insert(Location::new(None, Terrain::Plains, Some("Reserve".to_string())));
+
+        assert_eq!(off_map.locations.len(), 1);
+        assert_eq!(off_map.get("Reserve").unwrap().terrain, Terrain::Urban);
+    }
+
+    #[test]
+    fn insert_ignores_onmap_locations() {
+        let mut off_map = OffmapLocations::new();
+        off_map.insert(Location::new(Some((0, 0)), Terrain::Plains, Some("Named Hex".to_string())));
+
+        assert_eq!(off_map.locations.len(), 0);
+    }
 }

@@ -53,7 +53,7 @@ v_inf = 100
 v_arm = 3
  
 [[elements]]
-name = "SU_45mm_AtGun"
+name = "SU_45mm_at_gun"
 class = "AtGun"
 cv = 0.2
 accuracy = 60

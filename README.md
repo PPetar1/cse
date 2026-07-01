@@ -17,6 +17,7 @@ Currently implemented: scenario/map loading, unit inspection, simple movement, s
 ```
 cargo build   # first build is slow due to Bevy; incremental builds are fast
 cargo run
+cargo test    # run the test suite
 ```
 
 ## Commands

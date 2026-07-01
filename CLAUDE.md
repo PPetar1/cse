@@ -22,7 +22,15 @@ cargo build          # first build is slow (Bevy); incremental is fast
 cargo run            # starts the interactive command loop (reads stdin)
 ```
 
-No tests exist yet. There is no CI.
+```
+cargo test           # run the test suite
+```
+
+Tests are in-crate unit tests (`#[cfg(test)] mod tests` per module) since most types
+are crate-private. Fixtures are inline TOML strings; a few tests load the real
+`scenarios/basic_scenario.scen` / `maps/basic_map.map` via
+`concat!(env!("CARGO_MANIFEST_DIR"), ...)` so shipped-config drift breaks the build.
+There is no CI.
 
 ## Command loop
 
@@ -88,9 +96,9 @@ Conventions used throughout:
 - Fields deserialized from config but not yet read (`Scenario.start_date`,
   `MapFile.width`…) carry `#[allow(dead_code)]`; remove the attribute when a
   system starts using them. The build is warning-free — keep it that way.
-- Scenario element names must match TOE element names exactly — `State::build` errors
-  on unknown TOE, but element-name typos (e.g. `SU_45mm_at_gun` vs `SU_45mm_AtGun` in
-  the basic scenario) currently slip through silently.
+- Scenario element names must match TOE element names exactly — `State::build`
+  validates this (errors on unknown TOE and on TOE entries referencing undefined
+  elements), and `builds_the_real_basic_scenario` guards the shipped scenario.
 
 ## Roadmap (agreed with the author)
 

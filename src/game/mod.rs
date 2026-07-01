@@ -5,7 +5,7 @@ use crate::Error;
 use crate::core::unit::*;
 use crate::core::location::Location;
 
-#[derive(serde::Deserialize, serde::Serialize)]
+#[derive(Debug, serde::Deserialize, serde::Serialize)]
 pub struct Game {
     pub state: State,
     players: Vec<Player>,
@@ -100,7 +100,7 @@ impl Game {
     }
 }
 
-#[derive(serde::Deserialize, serde::Serialize)]
+#[derive(Debug, serde::Deserialize, serde::Serialize)]
 struct Player {
     faction_name: String,
     faction_tag: String,
@@ -115,7 +115,7 @@ impl Player {
     }
 }
 
-#[derive(serde::Deserialize, serde::Serialize)]
+#[derive(Debug, serde::Deserialize, serde::Serialize)]
 struct TurnPhase {
     player_on_turn: u32,
 }
@@ -148,4 +148,81 @@ pub struct Unit_ {
     pub toe: String,
     pub faction: String,
     pub location: Either<LocationCoords, OffmapLocationName>,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn minimal_scenario(players: &str) -> String {
+        let map_path = concat!(env!("CARGO_MANIFEST_DIR"), "/maps/basic_map.map");
+        format!(r#"
+name = "test scenario"
+game_version = "0.1.0"
+map = "{map_path}"
+start_date = "1941-06-22"
+turn_length = 7
+{players}
+
+[[toe]]
+name = "test_toe"
+size = "Division"
+start_date = "1941-01-01"
+end_date = "1941-08-01"
+[[toe.elements]]
+name = "test_element"
+amount = 10
+
+[[elements]]
+name = "test_element"
+class = "Inf"
+cv = 4.0
+accuracy = 20
+range = 100
+v_inf = 100
+v_arm = 3
+
+[[units]]
+name = "1st Test Division"
+toe = "test_toe"
+faction = "AX"
+location.Left.x = 1
+location.Left.y = 1
+"#)
+    }
+
+    #[test]
+    fn builds_a_game_from_a_minimal_scenario() {
+        let players = r#"
+[[players]]
+faction_name = "Axis"
+faction_tag = "AX"
+"#;
+        let game = Game::build(minimal_scenario(players)).unwrap();
+
+        assert_eq!(game.turn, 1);
+        assert_eq!(game.players.len(), 1);
+        assert_eq!(game.players[0].faction_tag, "AX");
+        assert_eq!(game.state.units.len(), 1);
+    }
+
+    #[test]
+    fn rejects_a_scenario_with_no_players() {
+        let error = Game::build(minimal_scenario("players = []")).unwrap_err();
+
+        assert!(error.error_message.contains("at least 1 player"));
+    }
+
+    #[test]
+    fn builds_the_real_basic_scenario() {
+        let contents = std::fs::read_to_string(
+            concat!(env!("CARGO_MANIFEST_DIR"), "/scenarios/basic_scenario.scen"),
+        ).unwrap();
+        let game = Game::build(contents).unwrap();
+
+        assert_eq!(game.players.len(), 2);
+        assert_eq!(game.state.units.len(), 3);
+        // Guards the TOE/element referential integrity of the shipped scenario.
+        assert!(game.state.elements.contains_key("SU_45mm_at_gun"));
+    }
 }
