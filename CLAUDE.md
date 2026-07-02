@@ -65,7 +65,8 @@ When adding a command, update all three of: `Command::parse`, `HELP_TEXT`, and
 
 ```
 src/
-  main.rs        — stdin loop + `--view <snapshot>` subprocess entry
+  main.rs        — rustyline prompt loop (tab completion via COMMAND_KEYWORDS +
+                   FilenameCompleter, history) + `--view <snapshot>` subprocess entry
   lib.rs         — command parsing/dispatch, save/load, view subprocess
                    spawning (spawn_view_subprocess/run_view_subprocess), Error type
   game/mod.rs    — Game (state + players + turn/phase), Scenario TOML schema, move_unit,

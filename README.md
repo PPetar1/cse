@@ -24,6 +24,8 @@ cargo test    # run the test suite
 
 ## Commands
 
+The prompt supports tab completion (command names, and file paths for `new`/`load`/`save`) and arrow-key history.
+
 | Command | Description |
 |---|---|
 | `new <path.scen>` | start a new game from a scenario file, e.g. `new scenarios/basic_scenario.scen` |
