@@ -12,6 +12,8 @@ The engine runs in the terminal and simulates battles between units on a hex map
 
 Currently implemented: scenario/map loading, unit inspection, simple movement, save/load, map visualiser. Next up: battle resolution and combat simulation.
 
+Design notes live in `docs/` (`combat_design.md` for the battle model, `ideas.md` for the idea backlog).
+
 ## Building and running
 
 ```

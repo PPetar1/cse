@@ -46,6 +46,14 @@ in `lib.rs`, which parses and dispatches. Commands:
   Esc closes the window; can be called repeatedly)
 - `exit`
 
+## Design docs
+
+- `docs/combat_design.md` — living combat design doc: WitE2 findings (rules readable at
+  dornshuld.com/rules/wite2), the current resolution model, deliberate deviations,
+  open questions. Update it whenever the combat engine changes.
+- `docs/ideas.md` — parking lot for future game ideas; save new ideas there instead
+  of losing them in conversation.
+
 ## Architecture
 
 ```
