@@ -4,6 +4,18 @@ A parking lot for game design ideas we want to keep but aren't building yet.
 Add freely; nothing here is a commitment. When an idea graduates into real work,
 move it to the roadmap in CLAUDE.md.
 
+## UI / platform direction (discussed 2026-07, decision deferred)
+
+- The engine↔visualiser snapshot seam keeps the UI choice swappable; decide
+  only when the game is playable end-to-end in the terminal.
+- Leading candidate for the real UI: **egui/eframe** — a WitE-like is a
+  data-dense panel/table UI around a 2D hex map, which is egui's sweet spot;
+  ~10 MB binaries, fast compiles. Step up to a Bevy + bevy_egui hybrid if the
+  map view needs game-engine feel (animated pan/zoom, movement tweening).
+- Cross-platform is mostly free (all deps are pure Rust, tier-1 targets);
+  set up GitHub Actions matrix builds when nearing distribution. Habits now:
+  `Path::join` over string paths, case-sensitive asset names.
+
 ## Combat
 
 - **Low-randomness battle setting** — since battle resolution is computationally
