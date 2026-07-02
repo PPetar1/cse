@@ -39,14 +39,19 @@ in `lib.rs`, which parses and dispatches. Commands:
 
 - `new <path.scen>` — start a game from a scenario file (e.g. `new scenarios/basic_scenario.scen`)
 - `load <path.sav>` / `save <path.sav>` — postcard (binary serde) save/load of the whole `Game`
-- `inspect <x> <y>` or `inspect <offmap name>` — show location + units there
+- `inspect <x> <y>` or `inspect <offmap name>` — show location + units there with
+  their element rosters (ready/damaged per element)
 - `units` / `units detail` — list all units
 - `move <x1> <y1> <x2> <y2> <unit_index>` — teleport-style move (no distance/cost checks yet)
 - `attack <x1> <y1> <x2> <y2>` — units at hex 1 attack units at hex 2; prints a battle
   report and persists losses (retreat outcomes reported but not executed yet)
 - `view` — open the Bevy map window in a detached subprocess (terminal stays usable;
   Esc closes the window; can be called repeatedly)
+- `help` — print the command list (HELP_TEXT in lib.rs)
 - `exit`
+
+When adding a command, update all three of: `Command::parse`, `HELP_TEXT`, and
+`COMMAND_KEYWORDS` (drives tab completion; a lib.rs test guards keyword drift).
 
 ## Design docs
 

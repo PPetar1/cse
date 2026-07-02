@@ -46,8 +46,31 @@ pub fn run(input: &str, current_game: Option<&mut Game>) -> Result<Option<Game>,
             view(require_game(current_game)?)?;
             Ok(None)
         }
+        Command::Help => {
+            println!("{HELP_TEXT}");
+            Ok(None)
+        }
     }
 }
+
+/// Command keywords, used for terminal tab completion. Keep in sync with
+/// `Command::parse` and HELP_TEXT.
+pub const COMMAND_KEYWORDS: &[&str] = &[
+    "new", "load", "save", "inspect", "units", "move", "attack", "view", "help", "exit",
+];
+
+const HELP_TEXT: &str = "\
+Commands:
+  new <path.scen>                     start a new game from a scenario file
+  load <path.sav>                     load a saved game
+  save <path.sav>                     save the current game
+  inspect <x> <y> | inspect <name>    show a hex or offmap location and its units
+  units [detail]                      list all units
+  move <x1> <y1> <x2> <y2> <index>    move the unit with that index (per inspect) between hexes
+  attack <x1> <y1> <x2> <y2>          units at hex 1 attack units at hex 2
+  view                                open the map window
+  help                                show this help
+  exit                                quit";
 
 /// A fully parsed player command. Parsing is separated from execution so
 /// argument handling can be tested without a running game.
@@ -61,6 +84,7 @@ enum Command<'a> {
     Move { from: (u32, u32), to: (u32, u32), unit_index: usize },
     Attack { from: (u32, u32), to: (u32, u32) },
     View,
+    Help,
 }
 
 #[derive(Debug, PartialEq)]
@@ -124,7 +148,8 @@ impl<'a> Command<'a> {
                 }
             }
             "view" => Ok(Command::View),
-            _ => Err(Error::new("Unknown command.")),
+            "help" => Ok(Command::Help),
+            _ => Err(Error::new("Unknown command. Type 'help' for a list of commands.")),
         }
     }
 }
@@ -144,6 +169,10 @@ fn inspect(game: &Game, target: &InspectTarget) -> Result<(), Error> {
     println!("{}", location);
     for unit in game.units_at_location(location) {
         println!("{}", unit);
+        println!("TOE: {}", unit.toe);
+        for element in &unit.elements {
+            println!("  {}: {} ready, {} damaged", element.name, element.ready, element.damaged);
+        }
     }
     Ok(())
 }
@@ -352,5 +381,29 @@ mod tests {
         let error = Command::parse("teleport 1 2").unwrap_err();
 
         assert!(error.error_message.contains("Unknown command"));
+    }
+
+    #[test]
+    fn parses_a_help_command() {
+        assert_eq!(Command::parse("help").unwrap(), Command::Help);
+    }
+
+    #[test]
+    fn every_command_keyword_parses_or_is_exit() {
+        // Guards COMMAND_KEYWORDS (used by tab completion) against drifting
+        // from the parser. "exit" is handled by the main loop, not the parser.
+        for keyword in COMMAND_KEYWORDS {
+            if *keyword == "exit" {
+                continue;
+            }
+            // Parsing with dummy arguments must never hit "Unknown command".
+            let input = format!("{keyword} 1 1 2 2 0");
+            if let Err(error) = Command::parse(&input) {
+                assert!(
+                    !error.error_message.contains("Unknown command"),
+                    "keyword '{keyword}' is not known to the parser",
+                );
+            }
+        }
     }
 }
