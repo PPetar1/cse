@@ -22,6 +22,10 @@ cargo build          # first build is slow (Bevy); incremental is fast
 cargo run            # starts the interactive command loop (reads stdin)
 ```
 
+Dependencies build without debug info (`[profile.dev.package."*"] debug = false`
+in Cargo.toml) — keeps target/ at ~2 GB instead of >10 GB. Avoid `--release`
+builds on this machine; they compile a second full Bevy tree.
+
 ```
 cargo test           # run the test suite
 ```

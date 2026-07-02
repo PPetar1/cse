@@ -3,6 +3,11 @@ name = "cse"
 version = "0.1.0"
 edition = "2024"
 
+# No debug info for the ~700 dependency crates (Bevy et al.) — this keeps
+# target/ from ballooning to >10 GB. Our own code keeps full debug info.
+[profile.dev.package."*"]
+debug = false
+
 [dependencies]
 bevy = "0.15"
 hexx = { version = "0.23.0", features = ["serde"] }
