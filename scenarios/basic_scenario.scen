@@ -102,18 +102,24 @@ name = "101st Infantry division"
 toe = "SU_inf_div_41a"
 faction = "SU"
 location = { x = 3, y = 3 }
+morale = 45
+experience = 35
 
 [[units]]
 name = "4th Panzer Division"
 toe = "GE_pz_div_41"
 faction = "AX"
 location = { x = 3, y = 4 }
+morale = 80
+experience = 70
 
 [[units]]
 name = "10th Panzer Division"
 toe = "GE_pz_div_41"
 faction = "AX"
 location = "GE Reserve"
+morale = 80
+experience = 70
 
 #[events]
 #[victory_conditions]

@@ -203,9 +203,17 @@ impl Game {
                 Some((x, y)) => {
                     let unit = self.state.units.get_mut(name)
                         .expect("retreating unit vanished mid-attack");
-                    let (damaged, lost) = retreat_attrition(unit, rng);
+                    // Broken morale turns an orderly retreat into a rout:
+                    // the attrition rolls happen twice.
+                    let routed = rng.random_range(0.0..100.0) >= unit.morale as f32;
+                    let (mut damaged, mut lost) = retreat_attrition(unit, rng);
+                    if routed {
+                        let (extra_damaged, extra_lost) = retreat_attrition(unit, rng);
+                        damaged += extra_damaged;
+                        lost += extra_lost;
+                    }
                     unit.location = UnitLocation::OnMap(LocationCoords { x, y });
-                    results.push(UnitRetreat::Retreated { unit: name.clone(), to: (x, y), damaged, lost });
+                    results.push(UnitRetreat::Retreated { unit: name.clone(), to: (x, y), damaged, lost, routed });
                 }
                 None => {
                     self.state.units.remove(name);
@@ -314,7 +322,7 @@ pub struct AttackReport {
 
 #[derive(Debug, PartialEq)]
 pub enum UnitRetreat {
-    Retreated { unit: String, to: (u32, u32), damaged: u32, lost: u32 },
+    Retreated { unit: String, to: (u32, u32), damaged: u32, lost: u32, routed: bool },
     Surrendered { unit: String },
 }
 
@@ -331,10 +339,12 @@ impl Display for AttackReport {
 impl Display for UnitRetreat {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            UnitRetreat::Retreated { unit, to, damaged, lost } => write!(
+            UnitRetreat::Retreated { unit, to, damaged, lost, routed } => write!(
                 f,
-                "{} retreats to ({}, {}) — retreat losses: {} damaged, {} lost",
-                unit, to.0, to.1, damaged, lost,
+                "{} {} to ({}, {}) — retreat losses: {} damaged, {} lost",
+                unit,
+                if *routed { "routs" } else { "retreats" },
+                to.0, to.1, damaged, lost,
             ),
             UnitRetreat::Surrendered { unit } => {
                 write!(f, "{} has nowhere to retreat and surrenders!", unit)
@@ -395,6 +405,15 @@ pub struct UnitConfig {
     pub toe: String,
     pub faction: String,
     pub location: UnitLocationConfig,
+    #[serde(default = "default_unit_stat")]
+    pub morale: u32,
+    #[serde(default = "default_unit_stat")]
+    pub experience: u32,
+}
+
+/// Scenario units that don't specify morale/experience get an average rating.
+fn default_unit_stat() -> u32 {
+    50
 }
 
 /// Scenario-file form of a unit location. Untagged so the TOML reads naturally:
@@ -691,6 +710,7 @@ name = "Soviet Division"
 toe = "test_toe"
 faction = "SU"
 location = { x = 2, y = 1 }
+morale = 100
 "#;
         let mut game = Game::build(minimal_scenario(TWO_PLAYERS, units)).unwrap();
         let mut rng = StdRng::seed_from_u64(42);
@@ -698,10 +718,12 @@ location = { x = 2, y = 1 }
         let report = game.attack((1, 1), (2, 1), &mut rng).unwrap();
 
         assert_eq!(report.battle.outcome, BattleOutcome::DefenderRetreats);
-        let [UnitRetreat::Retreated { unit, to, .. }] = &report.retreat[..] else {
+        let [UnitRetreat::Retreated { unit, to, routed, .. }] = &report.retreat[..] else {
             panic!("expected exactly one retreated unit, got {:?}", report.retreat);
         };
         assert_eq!(unit, "Soviet Division");
+        // Morale 100 never routs.
+        assert!(!routed);
         assert_ne!(*to, (1, 1));
 
         let battle_hex = game.state.map.get_location(2, 1).unwrap();
@@ -713,6 +735,71 @@ location = { x = 2, y = 1 }
             game.state.units["Soviet Division"].location,
             UnitLocation::OnMap(LocationCoords { x: to.0, y: to.1 }),
         );
+    }
+
+    #[test]
+    fn unit_stats_come_from_the_scenario_with_defaults() {
+        let units = r#"
+[[units]]
+name = "Rated Division"
+toe = "test_toe"
+faction = "AX"
+location = { x = 1, y = 1 }
+morale = 80
+experience = 65
+
+[[units]]
+name = "Unrated Division"
+toe = "test_toe"
+faction = "AX"
+location = { x = 1, y = 1 }
+"#;
+        let game = Game::build(minimal_scenario(ONE_PLAYER, units)).unwrap();
+
+        let rated = &game.state.units["Rated Division"];
+        assert_eq!((rated.morale, rated.experience), (80, 65));
+        let unrated = &game.state.units["Unrated Division"];
+        assert_eq!((unrated.morale, unrated.experience), (50, 50));
+    }
+
+    #[test]
+    fn a_defender_with_broken_morale_routs() {
+        let units = r#"
+[[units]]
+name = "Axis First"
+toe = "test_toe"
+faction = "AX"
+location = { x = 1, y = 1 }
+
+[[units]]
+name = "Axis Second"
+toe = "test_toe"
+faction = "AX"
+location = { x = 1, y = 1 }
+
+[[units]]
+name = "Axis Third"
+toe = "test_toe"
+faction = "AX"
+location = { x = 1, y = 1 }
+
+[[units]]
+name = "Soviet Division"
+toe = "test_toe"
+faction = "SU"
+location = { x = 2, y = 1 }
+morale = 0
+"#;
+        let mut game = Game::build(minimal_scenario(TWO_PLAYERS, units)).unwrap();
+        let mut rng = StdRng::seed_from_u64(42);
+
+        let report = game.attack((1, 1), (2, 1), &mut rng).unwrap();
+
+        // Morale 0 always routs when forced back.
+        assert!(matches!(
+            report.retreat[..],
+            [UnitRetreat::Retreated { routed: true, .. }],
+        ));
     }
 
     #[test]

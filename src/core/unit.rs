@@ -7,6 +7,13 @@ pub struct Unit {
     pub name: String,
     pub toe: String,
     pub faction: String,
+    /// 0–100. A unit forced to retreat routs (double attrition) when a roll
+    /// beats its morale.
+    pub morale: u32,
+    /// 0–100. Chance for each of the unit's elements to commit (fire) in a
+    /// combat round. Per-element experience needs per-instance state the
+    /// ready/damaged count buckets don't hold — future work.
+    pub experience: u32,
     pub location: UnitLocation,
     pub elements: Vec<ElementInUnit>,
 }

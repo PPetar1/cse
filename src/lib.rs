@@ -189,6 +189,7 @@ fn inspect(game: &Game, target: &InspectTarget) -> Result<(), Error> {
     for unit in game.units_at_location(location) {
         println!("{}", unit);
         println!("TOE: {}", unit.toe);
+        println!("Morale: {}  Experience: {}", unit.morale, unit.experience);
         for element in &unit.elements {
             println!("  {}: {} ready, {} damaged", element.name, element.ready, element.damaged);
         }

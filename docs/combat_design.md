@@ -63,7 +63,10 @@ no first-strike advantage from code ordering.
 
 ### One shot, three rolls
 
-Each Ready, in-range element fires one shot per round (rate of fire: later):
+Each Ready, in-range element fires one shot per round (rate of fire: later),
+**if it commits**: an element fires only when a d100 roll is under its unit's
+`experience` (0–100, scenario-configurable, default 50) — WitE's "green units
+fail to commit". Then:
 
 1. **Target**: uniform random over enemy Ready elements. Because the snapshot
    is per-instance, numerous element types soak proportionally more fire — an
@@ -104,6 +107,10 @@ needs the map and unit occupancy. On a retreat outcome:
 - **Retreat attrition**: each ready element of a retreating unit has a 10%
   chance to end up damaged; each damaged element (hard to drag along, per
   WitE's capture rule) has a 25% chance to be lost for good.
+- **Rout**: a retreating unit routs when a d100 roll beats its `morale`
+  (0–100, scenario-configurable, default 50) — the attrition rolls then run
+  twice. Morale/experience are unit-level for now; per-element experience
+  needs per-instance state the ready/damaged buckets don't hold.
 - **Surrender**: if no valid destination exists, the defenders are cut off and
   surrender — the units are removed from the game.
 
@@ -150,12 +157,19 @@ the infantry division in forest — 0% retreats, attacker loses ~1.7 elements
 per defender element. Soviets counter-attacking the panzers on plains — also
 0% retreats, roughly even losses. Baseline to beat when tuning.
 
+With experience in play (panzers 70, Soviet infantry 35), the same runs move
+the right way: the forest attack now trades ~evenly (green defenders fail to
+commit most shots), the Soviet counter-attack loses ~1.7:1. Still 0% retreats
+everywhere — dislodging a dug-in division needs the AP/HE fix and probably
+odds/CV work.
+
 ## Open questions / next steps (rough order)
 
 1. Rate of fire + dual AP/HE fire values per element; retune the numeric
    knobs (severity split, cover table, CV multipliers, retreat attrition)
    with `simulate` evidence.
-2. Morale & experience (enables rout/shatter outcomes and eligibility checks).
+2. Morale/experience effects beyond commit/rout: shatter, CV scaling,
+   experience gain from battles, per-element experience.
 3. Attacker advance into the vacated hex after a retreat?
 4. Adjacency requirement for `attack` (arrives with movement rules).
 5. Longer term: swap-in experiment — 2D tactical battlefield with generated

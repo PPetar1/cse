@@ -59,6 +59,8 @@ impl State {
                 name: unit.name,
                 toe: unit.toe,
                 faction: unit.faction,
+                morale: unit.morale,
+                experience: unit.experience,
                 location: unit.location.into(),
                 elements,
             });

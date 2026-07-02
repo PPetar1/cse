@@ -94,7 +94,9 @@ Key data model (all TOML-configurable, see `scenarios/basic_scenario.scen`):
   `range` (meters), `v_inf`, `v_arm` (vulnerability vs inf/armor fire)
 - **TOE** — table of equipment: named list of (element, amount), with validity dates
 - **Unit** — a division etc.: points at a TOE by name; holds live `ElementInUnit`
-  counts (`ready`/`damaged`); location is the `UnitLocation` enum (`OnMap(coords)` /
+  counts (`ready`/`damaged`) plus `morale` and `experience` (0–100, optional in
+  scenario TOML, default 50 — experience gates element commitment in combat,
+  morale gates routs); location is the `UnitLocation` enum (`OnMap(coords)` /
   `Offmap(name)`); scenario TOML writes it as `location = { x = 3, y = 3 }` or
   `location = "GE Reserve"`
 - **Map files** (`maps/*.map`) — TOML: per-hex terrain + named offmap boxes ("GE Reserve")

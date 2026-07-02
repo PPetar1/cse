@@ -36,6 +36,7 @@ pub struct CombatElement {
     pub element_name: String,
     pub state: CombatElementState,
     cv: f32,
+    experience: u32,
     accuracy: u32,
     range: u32,
     v_inf: u32,
@@ -95,6 +96,7 @@ pub fn combat_elements(
                     element_name: element_type.name.clone(),
                     state: CombatElementState::Ready,
                     cv: element_type.cv,
+                    experience: unit.experience,
                     accuracy: element_type.accuracy,
                     range: element_type.range,
                     v_inf: element_type.v_inf,
@@ -249,6 +251,11 @@ fn fire_round(
     let mut hits = Vec::new();
     for firer in firers {
         if firer.state != CombatElementState::Ready || firer.range < band {
+            continue;
+        }
+        // Failure to commit: green elements often don't fire at all (WitE's
+        // "notional CV lost as combat progresses"). No shot is recorded.
+        if rng.random_range(0.0..100.0) >= firer.experience as f32 {
             continue;
         }
         shots += 1;
@@ -512,6 +519,10 @@ mod tests {
             name: name.to_string(),
             toe: "test_toe".to_string(),
             faction: "AX".to_string(),
+            // Veterans: every element always commits, keeping the shot
+            // counts asserted below deterministic.
+            morale: 100,
+            experience: 100,
             location: UnitLocation::Offmap("irrelevant".to_string()),
             elements,
         }
@@ -615,6 +626,22 @@ mod tests {
             assert_eq!(round.attacker_shots, expected_attacker_shots);
             assert_eq!(round.defender_shots, 5);
         }
+    }
+
+    #[test]
+    fn elements_without_experience_never_commit() {
+        let mut attackers = side(5, 100, 3000, 4.0);
+        for element in &mut attackers {
+            element.experience = 0;
+        }
+        let mut defenders = side(5, 0, 3000, 4.0);
+        let mut rng = StdRng::seed_from_u64(42);
+
+        let report =
+            resolve_battle(&mut attackers, &mut defenders, Terrain::Plains, &mut rng);
+
+        assert!(report.rounds.iter().all(|round| round.attacker_shots == 0));
+        assert!(report.rounds.iter().all(|round| round.defender_shots == 5));
     }
 
     #[test]
