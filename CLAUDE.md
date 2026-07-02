@@ -45,6 +45,8 @@ in `lib.rs`, which parses and dispatches. Commands:
 - `move <x1> <y1> <x2> <y2> <unit_index>` — teleport-style move (no distance/cost checks yet)
 - `attack <x1> <y1> <x2> <y2>` — units at hex 1 attack units at hex 2; prints a battle
   report and persists losses; beaten defenders retreat (with attrition) or surrender
+- `simulate <x1> <y1> <x2> <y2> <n>` — fight that attack n times state-untouched,
+  print hold/retreat rates + average losses (the balance-tuning tool)
 - `view` — open the Bevy map window in a detached subprocess (terminal stays usable;
   Esc closes the window; can be called repeatedly)
 - `help` — print the command list (HELP_TEXT in lib.rs)
@@ -134,9 +136,10 @@ Conventions used throughout:
 
 1. **Combat resolution** — v1 implemented (fires-based, closing range bands,
    disrupt/damage/destroy hits, CV odds outcome, retreat execution with
-   attrition/surrender; docs/combat_design.md is the spec). Next combat steps,
-   in rough order: a `simulate` command for tuning, rate of fire + dual AP/HE
-   fire values, morale/experience.
+   attrition/surrender, `simulate` tuning tool; docs/combat_design.md is the
+   spec). Next combat steps, in rough order: rate of fire + dual AP/HE fire
+   values (tanks currently can't hurt infantry — see the doc's "Observed
+   balance"), morale/experience.
 2. Turn/phase system — `end_turn`, alternating players, date advancement
    (`turn_length` exists in scenarios but is unused).
 3. Movement rules — adjacency/cost/MP budget on the hex grid.

@@ -6,7 +6,9 @@ use crate::core::State;
 use crate::Error;
 use crate::core::unit::*;
 use crate::core::location::{Location, Terrain};
-use crate::procedures::combat::{self, BattleOutcome, BattleReport, CombatElement, CombatElementState};
+use crate::procedures::combat::{
+    self, BattleOutcome, BattleReport, CombatElement, CombatElementState, SimulationReport,
+};
 
 /// Retreat attrition: chance (percent) for each ready element of a retreating
 /// unit to end up damaged, and for each damaged element to be lost (captured).
@@ -120,28 +122,8 @@ impl Game {
         to: (u32, u32),
         rng: &mut impl Rng,
     ) -> Result<AttackReport, Error> {
-        let from_location = self.state.map.get_location(from.0, from.1)
-            .ok_or_else(|| Error::new("Invalid attacking location."))?;
-        let to_location = self.state.map.get_location(to.0, to.1)
-            .ok_or_else(|| Error::new("Invalid target location."))?;
-        let defender_terrain = to_location.terrain;
-
-        // Sorted by name (units_at_location), so the snapshot order — and with
-        // it a seeded battle — is deterministic despite HashMap storage.
-        let attacker_units = self.units_at_location(from_location);
-        let defender_units = self.units_at_location(to_location);
-
-        let attacker_faction = single_faction(&attacker_units, "attacking")?;
-        let defender_faction = single_faction(&defender_units, "defending")?;
-        if attacker_faction == defender_faction {
-            return Err(Error::new("Cannot attack units of the same faction."));
-        }
-
-        let defender_names: Vec<String> =
-            defender_units.iter().map(|unit| unit.name.clone()).collect();
-
-        let mut attackers = combat::combat_elements(&attacker_units, &self.state.elements)?;
-        let mut defenders = combat::combat_elements(&defender_units, &self.state.elements)?;
+        let BattlePlan { mut attackers, mut defenders, defender_terrain, defender_names, defender_faction } =
+            self.prepare_battle(from, to)?;
 
         let battle = combat::resolve_battle(&mut attackers, &mut defenders, defender_terrain, rng);
 
@@ -155,6 +137,51 @@ impl Game {
         };
 
         Ok(AttackReport { battle, retreat })
+    }
+
+    /// Fight the same attack `runs` times without touching the game state and
+    /// report the aggregated outcome/loss distributions — the tuning tool.
+    pub fn simulate(
+        &self,
+        from: (u32, u32),
+        to: (u32, u32),
+        runs: u32,
+        rng: &mut impl Rng,
+    ) -> Result<SimulationReport, Error> {
+        if runs == 0 {
+            return Err(Error::new("Number of battles to simulate must be at least 1."));
+        }
+        let plan = self.prepare_battle(from, to)?;
+        Ok(combat::simulate_battles(&plan.attackers, &plan.defenders, plan.defender_terrain, runs, rng))
+    }
+
+    /// Validate an attack order and build the battle snapshots for it.
+    /// Shared by `attack` (which then persists results) and `simulate`
+    /// (which never does).
+    fn prepare_battle(&self, from: (u32, u32), to: (u32, u32)) -> Result<BattlePlan, Error> {
+        let from_location = self.state.map.get_location(from.0, from.1)
+            .ok_or_else(|| Error::new("Invalid attacking location."))?;
+        let to_location = self.state.map.get_location(to.0, to.1)
+            .ok_or_else(|| Error::new("Invalid target location."))?;
+
+        // Sorted by name (units_at_location), so the snapshot order — and with
+        // it a seeded battle — is deterministic despite HashMap storage.
+        let attacker_units = self.units_at_location(from_location);
+        let defender_units = self.units_at_location(to_location);
+
+        let attacker_faction = single_faction(&attacker_units, "attacking")?;
+        let defender_faction = single_faction(&defender_units, "defending")?;
+        if attacker_faction == defender_faction {
+            return Err(Error::new("Cannot attack units of the same faction."));
+        }
+
+        Ok(BattlePlan {
+            attackers: combat::combat_elements(&attacker_units, &self.state.elements)?,
+            defenders: combat::combat_elements(&defender_units, &self.state.elements)?,
+            defender_terrain: to_location.terrain,
+            defender_names: defender_units.iter().map(|unit| unit.name.clone()).collect(),
+            defender_faction,
+        })
     }
 
     /// Move the beaten defenders out of their hex, with attrition on the way.
@@ -265,6 +292,16 @@ fn retreat_attrition(unit: &mut Unit, rng: &mut impl Rng) -> (u32, u32) {
         newly_damaged += hurt;
     }
     (newly_damaged, lost)
+}
+
+/// A validated attack order, ready to fight: the two battle snapshots plus
+/// what the game layer needs to persist the aftermath.
+struct BattlePlan {
+    attackers: Vec<CombatElement>,
+    defenders: Vec<CombatElement>,
+    defender_terrain: Terrain,
+    defender_names: Vec<String>,
+    defender_faction: String,
 }
 
 /// Everything one attack command did: the battle itself, plus what the losing
@@ -676,6 +713,35 @@ location = { x = 2, y = 1 }
             game.state.units["Soviet Division"].location,
             UnitLocation::OnMap(LocationCoords { x: to.0, y: to.1 }),
         );
+    }
+
+    #[test]
+    fn simulate_reports_statistics_without_changing_the_game() {
+        let mut game = Game::build(minimal_scenario(TWO_PLAYERS, OPPOSING_UNITS)).unwrap();
+        let mut rng = StdRng::seed_from_u64(42);
+
+        let report = game.simulate((1, 1), (2, 1), 25, &mut rng).unwrap();
+
+        assert_eq!(report.runs, 25);
+        assert!(report.retreats <= 25);
+        // Nothing happened to the real units.
+        for name in ["Axis Division", "Soviet Division"] {
+            let element = &game.state.units[name].elements[0];
+            assert_eq!((element.ready, element.damaged), (10, 0));
+        }
+
+        // And the mutable path still works afterwards.
+        game.attack((1, 1), (2, 1), &mut rng).unwrap();
+    }
+
+    #[test]
+    fn simulate_rejects_zero_runs() {
+        let game = Game::build(minimal_scenario(TWO_PLAYERS, OPPOSING_UNITS)).unwrap();
+        let mut rng = StdRng::seed_from_u64(42);
+
+        let error = game.simulate((1, 1), (2, 1), 0, &mut rng).unwrap_err();
+
+        assert!(error.error_message.contains("at least 1"));
     }
 
     #[test]

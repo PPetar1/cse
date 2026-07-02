@@ -34,6 +34,7 @@ The prompt supports tab completion (command names, and file paths for `new`/`loa
 | `units` | list all units (`units detail` for more detail) |
 | `move <x1> <y1> <x2> <y2> <unit_index>` | move the unit with the given index from the start hex to the destination hex; stacked units are indexed in alphabetical order, matching the order `inspect` lists them |
 | `attack <x1> <y1> <x2> <y2>` | all units at the first hex attack all units at the second hex; prints a battle report (rounds at closing range, losses, final CV odds, outcome). Losses persist; beaten defenders retreat to an adjacent free hex with extra attrition, or surrender if surrounded. See `docs/combat_design.md` |
+| `simulate <x1> <y1> <x2> <y2> <n>` | fight that attack n times without changing the game and print statistics: hold/retreat rates, average losses, mean final CVs. For balance tuning |
 | `view` | open a window visualising the map and unit positions; the terminal stays usable while the window is open, and `view` can be called again after closing it (Esc or close the window to dismiss) |
 | `help` | list all commands |
 | `save <path>` | save the game state to a file |

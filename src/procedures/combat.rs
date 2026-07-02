@@ -30,7 +30,7 @@ const RETREAT_ODDS: f32 = 2.0;
 
 /// One individual squad/gun/vehicle in a battle: a snapshot of everything
 /// resolution needs, decoupled from game state.
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct CombatElement {
     pub unit_name: String,
     pub element_name: String,
@@ -158,6 +158,69 @@ pub fn resolve_battle(
         attacker_cv,
         defender_cv,
         outcome,
+    }
+}
+
+/// Fight the same battle `runs` times against copies of the snapshots and
+/// aggregate the results — the tuning tool: change a knob, compare
+/// distributions. The passed snapshots are never mutated.
+pub fn simulate_battles(
+    attackers: &[CombatElement],
+    defenders: &[CombatElement],
+    defender_terrain: Terrain,
+    runs: u32,
+    rng: &mut impl Rng,
+) -> SimulationReport {
+    let mut retreats = 0;
+    let mut attacker_losses = LossTotals::default();
+    let mut defender_losses = LossTotals::default();
+    let mut attacker_cv = 0.0;
+    let mut defender_cv = 0.0;
+
+    for _ in 0..runs {
+        let mut attackers_run = attackers.to_vec();
+        let mut defenders_run = defenders.to_vec();
+        let report = resolve_battle(&mut attackers_run, &mut defenders_run, defender_terrain, rng);
+
+        if report.outcome == BattleOutcome::DefenderRetreats {
+            retreats += 1;
+        }
+        attacker_losses.add(&report.attacker_losses);
+        defender_losses.add(&report.defender_losses);
+        attacker_cv += report.attacker_cv as f64;
+        defender_cv += report.defender_cv as f64;
+    }
+
+    SimulationReport {
+        runs,
+        retreats,
+        attacker_losses: attacker_losses.average(runs),
+        defender_losses: defender_losses.average(runs),
+        attacker_cv: (attacker_cv / runs as f64) as f32,
+        defender_cv: (defender_cv / runs as f64) as f32,
+    }
+}
+
+#[derive(Default)]
+struct LossTotals {
+    disrupted: u64,
+    damaged: u64,
+    destroyed: u64,
+}
+
+impl LossTotals {
+    fn add(&mut self, losses: &Losses) {
+        self.disrupted += losses.disrupted as u64;
+        self.damaged += losses.damaged as u64;
+        self.destroyed += losses.destroyed as u64;
+    }
+
+    fn average(&self, runs: u32) -> AverageLosses {
+        AverageLosses {
+            disrupted: self.disrupted as f32 / runs as f32,
+            damaged: self.damaged as f32 / runs as f32,
+            destroyed: self.destroyed as f32 / runs as f32,
+        }
     }
 }
 
@@ -365,6 +428,60 @@ impl Display for Losses {
     }
 }
 
+#[derive(Debug)]
+pub struct SimulationReport {
+    pub runs: u32,
+    /// Battles that ended with the defender forced to retreat.
+    pub retreats: u32,
+    pub attacker_losses: AverageLosses,
+    pub defender_losses: AverageLosses,
+    /// Mean final CVs across all runs (defender terrain-modified).
+    pub attacker_cv: f32,
+    pub defender_cv: f32,
+}
+
+#[derive(Debug)]
+pub struct AverageLosses {
+    pub disrupted: f32,
+    pub damaged: f32,
+    pub destroyed: f32,
+}
+
+impl Display for SimulationReport {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let retreat_percent = 100.0 * self.retreats as f32 / self.runs as f32;
+        writeln!(
+            f,
+            "Simulated {} battles: defender holds {:.0}%, retreats {:.0}%",
+            self.runs,
+            100.0 - retreat_percent,
+            retreat_percent,
+        )?;
+        writeln!(f, "Average attacker losses: {}", self.attacker_losses)?;
+        writeln!(f, "Average defender losses: {}", self.defender_losses)?;
+        let odds = if self.defender_cv > 0.0 {
+            format!("{:.1}:1", self.attacker_cv / self.defender_cv)
+        } else {
+            "overrun".to_string()
+        };
+        write!(
+            f,
+            "Average final CV: attacker {:.1} vs defender {:.1} (terrain-modified) — odds {}",
+            self.attacker_cv, self.defender_cv, odds,
+        )
+    }
+}
+
+impl Display for AverageLosses {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "{:.1} disrupted, {:.1} damaged, {:.1} destroyed",
+            self.disrupted, self.damaged, self.destroyed,
+        )
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -524,6 +641,42 @@ mod tests {
 
         assert_eq!(report.attacker_cv, 40.0);
         assert_eq!(report.defender_cv, 120.0);
+    }
+
+    #[test]
+    fn simulation_aggregates_without_touching_the_snapshots() {
+        // Perfect accuracy vs helpless defenders: every run is a retreat.
+        let attackers = side(20, 100, 3000, 10.0);
+        let defenders = side(2, 0, 3000, 1.0);
+        let mut rng = StdRng::seed_from_u64(42);
+
+        let report = simulate_battles(&attackers, &defenders, Terrain::Plains, 50, &mut rng);
+
+        assert_eq!(report.runs, 50);
+        assert_eq!(report.retreats, 50);
+        // Both defenders go down every run.
+        let average_defender_losses = report.defender_losses.disrupted
+            + report.defender_losses.damaged
+            + report.defender_losses.destroyed;
+        assert_eq!(average_defender_losses, 2.0);
+        assert_eq!(report.defender_cv, 0.0);
+        // The input snapshots stay pristine.
+        assert!(attackers.iter().all(|e| e.state == CombatElementState::Ready));
+        assert!(defenders.iter().all(|e| e.state == CombatElementState::Ready));
+    }
+
+    #[test]
+    fn simulation_of_a_bloodless_standoff_reports_all_holds() {
+        let attackers = side(10, 0, 3000, 4.0);
+        let defenders = side(10, 0, 3000, 4.0);
+        let mut rng = StdRng::seed_from_u64(42);
+
+        let report = simulate_battles(&attackers, &defenders, Terrain::Plains, 20, &mut rng);
+
+        assert_eq!(report.retreats, 0);
+        assert_eq!(report.attacker_losses.damaged, 0.0);
+        assert_eq!(report.attacker_cv, 40.0);
+        assert_eq!(report.defender_cv, 40.0);
     }
 
     #[test]

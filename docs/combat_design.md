@@ -113,9 +113,14 @@ Attackers stay put; advancing into the vacated hex is an open question.
 
 All rolls go through a `rand::Rng` passed in by the caller — the command loop
 passes a fresh thread RNG, tests pass `StdRng::seed_from_u64(...)` for exact
-reproducibility. This is also what will power the planned `simulate` command
-(run a matchup N times, print outcome/loss distributions) and the
-low-randomness battle setting idea (see docs/ideas.md).
+reproducibility.
+
+The `simulate <x1> <y1> <x2> <y2> <n>` command fights the same attack n times
+against snapshot copies (game state untouched) and prints hold/retreat rates,
+average losses per side, and mean final CVs. This is the tuning loop: change a
+knob, re-run, compare distributions. 1000 runs resolve in well under a second
+even in debug builds. It also underpins the low-randomness battle setting idea
+(see docs/ideas.md).
 
 ## Deliberate deviations from WitE2 (for now)
 
@@ -138,18 +143,21 @@ attacks) while the defender barely dents. Causes: tanks fire only AP (squads
 have v_arm 3, near-immune), forest cover 0.6 protects the defender while the
 attacker is hit at full accuracy, and the defender's howitzers fire in every
 round. Plausible flavor (frontal attacks into forests *should* be bad), but
-confirms dual AP/HE fire values and the `simulate` tuning loop are the next
-combat priorities.
+confirms dual AP/HE fire values are the next combat priority.
+
+`simulate` quantifies it (1000 runs each, basic scenario): panzers attacking
+the infantry division in forest — 0% retreats, attacker loses ~1.7 elements
+per defender element. Soviets counter-attacking the panzers on plains — also
+0% retreats, roughly even losses. Baseline to beat when tuning.
 
 ## Open questions / next steps (rough order)
 
-1. `simulate <battle> <n>` dev command for tuning; then revisit the numeric
+1. Rate of fire + dual AP/HE fire values per element; retune the numeric
    knobs (severity split, cover table, CV multipliers, retreat attrition)
-   with evidence.
-2. Rate of fire + dual AP/HE fire values per element.
-3. Morale & experience (enables rout/shatter outcomes and eligibility checks).
-4. Attacker advance into the vacated hex after a retreat?
-5. Adjacency requirement for `attack` (arrives with movement rules).
-6. Longer term: swap-in experiment — 2D tactical battlefield with generated
+   with `simulate` evidence.
+2. Morale & experience (enables rout/shatter outcomes and eligibility checks).
+3. Attacker advance into the vacated hex after a retreat?
+4. Adjacency requirement for `attack` (arrives with movement rules).
+5. Longer term: swap-in experiment — 2D tactical battlefield with generated
    terrain and LOS (see docs/ideas.md) behind the same snapshot/report
    interface.

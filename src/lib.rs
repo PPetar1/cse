@@ -42,6 +42,11 @@ pub fn run(input: &str, current_game: Option<&mut Game>) -> Result<Option<Game>,
             println!("{report}");
             Ok(None)
         }
+        Command::Simulate { from, to, runs } => {
+            let report = require_game(current_game)?.simulate(from, to, runs, &mut rand::rng())?;
+            println!("{report}");
+            Ok(None)
+        }
         Command::View => {
             view(require_game(current_game)?)?;
             Ok(None)
@@ -56,7 +61,7 @@ pub fn run(input: &str, current_game: Option<&mut Game>) -> Result<Option<Game>,
 /// Command keywords, used for terminal tab completion. Keep in sync with
 /// `Command::parse` and HELP_TEXT.
 pub const COMMAND_KEYWORDS: &[&str] = &[
-    "new", "load", "save", "inspect", "units", "move", "attack", "view", "help", "exit",
+    "new", "load", "save", "inspect", "units", "move", "attack", "simulate", "view", "help", "exit",
 ];
 
 const HELP_TEXT: &str = "\
@@ -68,6 +73,7 @@ Commands:
   units [detail]                      list all units
   move <x1> <y1> <x2> <y2> <index>    move the unit with that index (per inspect) between hexes
   attack <x1> <y1> <x2> <y2>          units at hex 1 attack units at hex 2
+  simulate <x1> <y1> <x2> <y2> <n>    fight that attack n times without applying it, show statistics
   view                                open the map window
   help                                show this help
   exit                                quit";
@@ -83,6 +89,7 @@ enum Command<'a> {
     Units { detail: bool },
     Move { from: (u32, u32), to: (u32, u32), unit_index: usize },
     Attack { from: (u32, u32), to: (u32, u32) },
+    Simulate { from: (u32, u32), to: (u32, u32), runs: u32 },
     View,
     Help,
 }
@@ -145,6 +152,18 @@ impl<'a> Command<'a> {
                     Ok(Command::Attack { from: (x_start, y_start), to: (x_end, y_end) })
                 } else {
                     Err(Error::new("Unable to parse arguments for attack order."))
+                }
+            }
+            "simulate" => {
+                if args.len() < 5 {
+                    return Err(Error::new("Need attacking hex, target hex and number of battles for simulate."));
+                }
+                if let (Ok(x_start), Ok(y_start), Ok(x_end), Ok(y_end), Ok(runs))
+                    = (args[0].parse(), args[1].parse(), args[2].parse(), args[3].parse(), args[4].parse())
+                {
+                    Ok(Command::Simulate { from: (x_start, y_start), to: (x_end, y_end), runs })
+                } else {
+                    Err(Error::new("Unable to parse arguments for simulate."))
                 }
             }
             "view" => Ok(Command::View),
@@ -347,6 +366,13 @@ mod tests {
         let error = Command::parse("attack 3 4").unwrap_err();
 
         assert!(error.error_message.contains("attacking hex and target hex"));
+    }
+
+    #[test]
+    fn parses_a_simulate_command() {
+        let command = Command::parse("simulate 3 4 3 3 100").unwrap();
+
+        assert_eq!(command, Command::Simulate { from: (3, 4), to: (3, 3), runs: 100 });
     }
 
     #[test]
