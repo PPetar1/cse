@@ -37,6 +37,11 @@ pub fn run(input: &str, current_game: Option<&mut Game>) -> Result<Option<Game>,
             require_game(current_game)?.move_unit(from.0, from.1, to.0, to.1, unit_index)?;
             Ok(None)
         }
+        Command::Attack { from, to } => {
+            let report = require_game(current_game)?.attack(from, to, &mut rand::rng())?;
+            println!("{report}");
+            Ok(None)
+        }
         Command::View => {
             view(require_game(current_game)?)?;
             Ok(None)
@@ -54,6 +59,7 @@ enum Command<'a> {
     Inspect(InspectTarget),
     Units { detail: bool },
     Move { from: (u32, u32), to: (u32, u32), unit_index: usize },
+    Attack { from: (u32, u32), to: (u32, u32) },
     View,
 }
 
@@ -103,6 +109,18 @@ impl<'a> Command<'a> {
                     Ok(Command::Move { from: (x_start, y_start), to: (x_end, y_end), unit_index })
                 } else {
                     Err(Error::new("Unable to parse arguments for move order."))
+                }
+            }
+            "attack" => {
+                if args.len() < 4 {
+                    return Err(Error::new("Need attacking hex and target hex coordinates for attack."));
+                }
+                if let (Ok(x_start), Ok(y_start), Ok(x_end), Ok(y_end))
+                    = (args[0].parse(), args[1].parse(), args[2].parse(), args[3].parse())
+                {
+                    Ok(Command::Attack { from: (x_start, y_start), to: (x_end, y_end) })
+                } else {
+                    Err(Error::new("Unable to parse arguments for attack order."))
                 }
             }
             "view" => Ok(Command::View),
@@ -286,6 +304,20 @@ mod tests {
         let error = Command::parse("move 3 4 a b 0").unwrap_err();
 
         assert!(error.error_message.contains("Unable to parse"));
+    }
+
+    #[test]
+    fn parses_an_attack_command() {
+        let command = Command::parse("attack 3 4 3 3").unwrap();
+
+        assert_eq!(command, Command::Attack { from: (3, 4), to: (3, 3) });
+    }
+
+    #[test]
+    fn rejects_attack_with_missing_arguments() {
+        let error = Command::parse("attack 3 4").unwrap_err();
+
+        assert!(error.error_message.contains("attacking hex and target hex"));
     }
 
     #[test]

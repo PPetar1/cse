@@ -1,1 +1,3 @@
-//! Game procedures (combat resolution, supply, …) will live here.
+//! Game procedures: combat resolution now, supply etc. later.
+
+pub mod combat;

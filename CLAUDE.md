@@ -42,6 +42,8 @@ in `lib.rs`, which parses and dispatches. Commands:
 - `inspect <x> <y>` or `inspect <offmap name>` — show location + units there
 - `units` / `units detail` — list all units
 - `move <x1> <y1> <x2> <y2> <unit_index>` — teleport-style move (no distance/cost checks yet)
+- `attack <x1> <y1> <x2> <y2>` — units at hex 1 attack units at hex 2; prints a battle
+  report and persists losses (retreat outcomes reported but not executed yet)
 - `view` — open the Bevy map window in a detached subprocess (terminal stays usable;
   Esc closes the window; can be called repeatedly)
 - `exit`
@@ -61,14 +63,16 @@ src/
   main.rs        — stdin loop + `--view <snapshot>` subprocess entry
   lib.rs         — command parsing/dispatch, save/load, view subprocess
                    spawning (spawn_view_subprocess/run_view_subprocess), Error type
-  game/mod.rs    — Game (state + players + turn/phase), Scenario TOML schema, move_unit
+  game/mod.rs    — Game (state + players + turn/phase), Scenario TOML schema, move_unit,
+                   attack (builds combat snapshots, applies losses back)
   core/mod.rs    — State::build: resolves a Scenario into runtime State (units get
                    their element rosters instantiated from their TOE here)
   core/map.rs    — Map: HashMap<(u32,u32), Location> + offmap locations; TOML map parsing
   core/location.rs — Location wraps Option<hexx::Hex> (None = offmap), Terrain enum
   core/unit.rs   — Unit, Toe, Element, ElementClass, Size + config structs
   visualiser.rs  — self-contained Bevy 0.15 debug map view (see below)
-  procedures/    — empty; intended home for combat resolution etc.
+  procedures/combat.rs — pure fires-based battle engine: CombatElement snapshots in,
+                   BattleReport out; never touches Game/State (see docs/combat_design.md)
   utils/         — empty
 ```
 
@@ -88,6 +92,10 @@ Conventions used throughout:
 - Lookups by name: `State` keeps `HashMap<String, _>` registries for units/toe/elements
 - Errors: crate-local `Error { error_message }` with `From` impls for io/toml/postcard;
   command handlers return `Result<Option<Game>, Error>` (Some = a new game was created)
+- Randomness: anything that rolls dice takes `&mut impl rand::Rng` from the caller —
+  the command loop passes `rand::rng()`, tests pass `StdRng::seed_from_u64(...)`.
+  For seed-reproducibility, never iterate a HashMap where order reaches the RNG
+  (unit lists feeding battles are sorted by name first).
 
 ## Gotchas
 
@@ -117,10 +125,10 @@ Conventions used throughout:
 
 ## Roadmap (agreed with the author)
 
-1. **Combat resolution** (next up — design first, then implement in `procedures/`):
-   fires-based model is the leaning (elements shoot by class matchup using
-   accuracy/range/v_inf/v_arm), but resolution model, round structure, range handling,
-   loss flow (ready→damaged?), and terrain modifiers are still open design questions.
+1. **Combat resolution** — v1 implemented (fires-based, closing range bands,
+   disrupt/damage/destroy hits, CV odds outcome; docs/combat_design.md is the
+   spec). Next combat steps, in rough order: retreat execution, a `simulate`
+   command for tuning, rate of fire + dual AP/HE fire values, morale/experience.
 2. Turn/phase system — `end_turn`, alternating players, date advancement
    (`turn_length` exists in scenarios but is unused).
 3. Movement rules — adjacency/cost/MP budget on the hex grid.

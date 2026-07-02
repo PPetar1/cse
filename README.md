@@ -10,7 +10,7 @@ This project doubles as a learning exercise in AI-driven development: the large 
 
 The engine runs in the terminal and simulates battles between units on a hex map. Unit attributes (elements, TOEs) and maps are read from easy-to-edit TOML config files (`scenarios/*.scen`, `maps/*.map`), so scenarios are data, not code. A simple Bevy-based map visualiser is included for debugging.
 
-Currently implemented: scenario/map loading, unit inspection, simple movement, save/load, map visualiser. Next up: battle resolution and combat simulation.
+Currently implemented: scenario/map loading, unit inspection, simple movement, save/load, map visualiser, and a first fires-based combat resolution (`attack`). Next up: retreat execution and battle tuning tooling.
 
 Design notes live in `docs/` (`combat_design.md` for the battle model, `ideas.md` for the idea backlog).
 
@@ -31,6 +31,7 @@ cargo test    # run the test suite
 | `inspect <name>` | inspect the offmap location with the given name |
 | `units` | list all units (`units detail` for more detail) |
 | `move <x1> <y1> <x2> <y2> <unit_index>` | move the unit with the given index from the start hex to the destination hex; stacked units are indexed in alphabetical order, matching the order `inspect` lists them |
+| `attack <x1> <y1> <x2> <y2>` | all units at the first hex attack all units at the second hex; prints a battle report (rounds at closing range, losses, final CV odds, outcome). Losses persist on the units; a "defender retreats" result is reported but units don't move yet. See `docs/combat_design.md` |
 | `view` | open a window visualising the map and unit positions; the terminal stays usable while the window is open, and `view` can be called again after closing it (Esc or close the window to dismiss) |
 | `save <path>` | save the game state to a file |
 | `load <path>` | load a game state from a file |

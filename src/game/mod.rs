@@ -1,7 +1,10 @@
+use rand::Rng;
+
 use crate::core::State;
 use crate::Error;
 use crate::core::unit::*;
 use crate::core::location::Location;
+use crate::procedures::combat::{self, BattleReport, CombatElement, CombatElementState};
 
 #[derive(Debug, serde::Deserialize, serde::Serialize)]
 pub struct Game {
@@ -100,6 +103,78 @@ impl Game {
 
         Ok(())
     }
+
+    /// Resolve an attack by all units in the `from` hex against all units in
+    /// the `to` hex. Losses are applied to the units; the returned report says
+    /// what happened. No unit movement yet — a "defender retreats" outcome is
+    /// reported but not executed (needs adjacency/stacking rules first).
+    pub fn attack(
+        &mut self,
+        from: (u32, u32),
+        to: (u32, u32),
+        rng: &mut impl Rng,
+    ) -> Result<BattleReport, Error> {
+        let from_location = self.state.map.get_location(from.0, from.1)
+            .ok_or_else(|| Error::new("Invalid attacking location."))?;
+        let to_location = self.state.map.get_location(to.0, to.1)
+            .ok_or_else(|| Error::new("Invalid target location."))?;
+        let defender_terrain = to_location.terrain;
+
+        // Sorted by name (units_at_location), so the snapshot order — and with
+        // it a seeded battle — is deterministic despite HashMap storage.
+        let attacker_units = self.units_at_location(from_location);
+        let defender_units = self.units_at_location(to_location);
+
+        let attacker_faction = single_faction(&attacker_units, "attacking")?;
+        let defender_faction = single_faction(&defender_units, "defending")?;
+        if attacker_faction == defender_faction {
+            return Err(Error::new("Cannot attack units of the same faction."));
+        }
+
+        let mut attackers = combat::combat_elements(&attacker_units, &self.state.elements)?;
+        let mut defenders = combat::combat_elements(&defender_units, &self.state.elements)?;
+
+        let report = combat::resolve_battle(&mut attackers, &mut defenders, defender_terrain, rng);
+
+        self.apply_battle_losses(&attackers);
+        self.apply_battle_losses(&defenders);
+
+        Ok(report)
+    }
+
+    /// Persist battle results: damaged elements move ready → damaged,
+    /// destroyed ones are removed for good. Disrupted elements recover and
+    /// leave no trace. Each snapshot instance came from one point of `ready`,
+    /// so decrementing once per instance cannot underflow.
+    fn apply_battle_losses(&mut self, elements: &[CombatElement]) {
+        for element in elements {
+            let damaged = match element.state {
+                CombatElementState::Damaged => true,
+                CombatElementState::Destroyed => false,
+                CombatElementState::Ready | CombatElementState::Disrupted => continue,
+            };
+            if let Some(unit) = self.state.units.get_mut(&element.unit_name)
+                && let Some(entry) = unit.elements.iter_mut().find(|e| e.name == element.element_name) {
+                    entry.ready -= 1;
+                    if damaged {
+                        entry.damaged += 1;
+                    }
+                }
+        }
+    }
+}
+
+/// The one faction the units on a battle side belong to; errors on an empty
+/// side or a mixed stack (multi-faction hexes are unsupported for now).
+fn single_faction(units: &[&Unit], side: &str) -> Result<String, Error> {
+    let first = units.first()
+        .ok_or_else(|| Error::new(&format!("No units at the {side} hex.")))?;
+    if units.iter().any(|unit| unit.faction != first.faction) {
+        return Err(Error::new(&format!(
+            "Units of multiple factions at the {side} hex are not supported.",
+        )));
+    }
+    Ok(first.faction.clone())
 }
 
 #[derive(Debug, Clone, serde::Deserialize, serde::Serialize)]
@@ -164,11 +239,36 @@ impl From<UnitLocationConfig> for UnitLocation {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use rand::SeedableRng;
+    use rand::rngs::StdRng;
 
     const ONE_PLAYER: &str = r#"
 [[players]]
 faction_name = "Axis"
 faction_tag = "AX"
+"#;
+
+    const TWO_PLAYERS: &str = r#"
+[[players]]
+faction_name = "Axis"
+faction_tag = "AX"
+[[players]]
+faction_name = "Soviet Union"
+faction_tag = "SU"
+"#;
+
+    const OPPOSING_UNITS: &str = r#"
+[[units]]
+name = "Axis Division"
+toe = "test_toe"
+faction = "AX"
+location = { x = 1, y = 1 }
+
+[[units]]
+name = "Soviet Division"
+toe = "test_toe"
+faction = "SU"
+location = { x = 2, y = 1 }
 "#;
 
     const ONMAP_UNIT: &str = r#"
@@ -337,6 +437,57 @@ location = { x = 1, y = 1 }
 
         let hex = game.state.map.get_location(0, 0).unwrap();
         assert!(game.units_at_location(hex).is_empty());
+    }
+
+    #[test]
+    fn attack_applies_losses_that_match_the_report() {
+        let mut game = Game::build(minimal_scenario(TWO_PLAYERS, OPPOSING_UNITS)).unwrap();
+        let mut rng = StdRng::seed_from_u64(42);
+
+        let report = game.attack((1, 1), (2, 1), &mut rng).unwrap();
+
+        assert!(!report.rounds.is_empty());
+        // Each side started with 10 ready elements; whatever the dice did,
+        // the persisted counts must match the report exactly.
+        let defender = &game.state.units["Soviet Division"].elements[0];
+        assert_eq!(defender.damaged, report.defender_losses.damaged);
+        assert_eq!(10 - defender.ready - defender.damaged, report.defender_losses.destroyed);
+        let attacker = &game.state.units["Axis Division"].elements[0];
+        assert_eq!(attacker.damaged, report.attacker_losses.damaged);
+        assert_eq!(10 - attacker.ready - attacker.damaged, report.attacker_losses.destroyed);
+    }
+
+    #[test]
+    fn attack_rejects_an_empty_source_hex() {
+        let mut game = Game::build(minimal_scenario(TWO_PLAYERS, OPPOSING_UNITS)).unwrap();
+        let mut rng = StdRng::seed_from_u64(42);
+
+        let error = game.attack((0, 0), (2, 1), &mut rng).unwrap_err();
+
+        assert!(error.error_message.contains("No units at the attacking hex"));
+    }
+
+    #[test]
+    fn attack_rejects_attacking_the_same_faction() {
+        let units = r#"
+[[units]]
+name = "First Division"
+toe = "test_toe"
+faction = "AX"
+location = { x = 1, y = 1 }
+
+[[units]]
+name = "Second Division"
+toe = "test_toe"
+faction = "AX"
+location = { x = 2, y = 1 }
+"#;
+        let mut game = Game::build(minimal_scenario(TWO_PLAYERS, units)).unwrap();
+        let mut rng = StdRng::seed_from_u64(42);
+
+        let error = game.attack((1, 1), (2, 1), &mut rng).unwrap_err();
+
+        assert!(error.error_message.contains("same faction"));
     }
 
     #[test]
