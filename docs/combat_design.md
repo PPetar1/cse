@@ -90,7 +90,24 @@ Each Ready, in-range element fires one shot per round (rate of fire: later):
 Final CV per side = Σ `cv` of elements still Ready. Defender CV is multiplied
 by a flat terrain defense factor (Plains/Desert/Water 1.0, Hills 1.5,
 Forest/Swamp 2.0, Mountain/Urban 3.0). **Odds ≥ 2:1 → defender retreats**,
-else defender holds. No rout/shatter/surrender yet (need morale).
+else defender holds. No rout/shatter yet (need morale).
+
+### Retreat execution
+
+Implemented in the game layer (`Game::execute_retreat`), not the engine — it
+needs the map and unit occupancy. On a retreat outcome:
+
+- **Destination**: an adjacent on-map, non-Water hex with no enemy units,
+  preferring the hex farthest from the attacker (ties break on lowest (x, y)
+  so retreats are deterministic). The whole defending stack goes to the same
+  hex.
+- **Retreat attrition**: each ready element of a retreating unit has a 10%
+  chance to end up damaged; each damaged element (hard to drag along, per
+  WitE's capture rule) has a 25% chance to be lost for good.
+- **Surrender**: if no valid destination exists, the defenders are cut off and
+  surrender — the units are removed from the game.
+
+Attackers stay put; advancing into the vacated hex is an open question.
 
 ### Randomness & testing
 
@@ -113,14 +130,25 @@ low-randomness battle setting idea (see docs/ideas.md).
 - No morale/experience/fatigue/ammo/leader checks, no fort levels, no support
   or reserve commitment, no retreat execution or attrition.
 
+## Observed balance (pre-tuning)
+
+Repeated frontal attacks by the panzer division into the forest-defending
+Soviet infantry division grind the *attacker* down (CV 984 → 148 over twelve
+attacks) while the defender barely dents. Causes: tanks fire only AP (squads
+have v_arm 3, near-immune), forest cover 0.6 protects the defender while the
+attacker is hit at full accuracy, and the defender's howitzers fire in every
+round. Plausible flavor (frontal attacks into forests *should* be bad), but
+confirms dual AP/HE fire values and the `simulate` tuning loop are the next
+combat priorities.
+
 ## Open questions / next steps (rough order)
 
-1. Retreat execution: move retreating defenders to an adjacent hex (needs
-   neighbor logic + stacking decisions). Attacker occupies on empty hex?
-2. `simulate <battle> <n>` dev command for tuning; then revisit the numeric
-   knobs (severity split, cover table, CV multipliers) with evidence.
-3. Rate of fire + dual AP/HE fire values per element.
-4. Morale & experience (enables rout/shatter outcomes and eligibility checks).
+1. `simulate <battle> <n>` dev command for tuning; then revisit the numeric
+   knobs (severity split, cover table, CV multipliers, retreat attrition)
+   with evidence.
+2. Rate of fire + dual AP/HE fire values per element.
+3. Morale & experience (enables rout/shatter outcomes and eligibility checks).
+4. Attacker advance into the vacated hex after a retreat?
 5. Adjacency requirement for `attack` (arrives with movement rules).
 6. Longer term: swap-in experiment — 2D tactical battlefield with generated
    terrain and LOS (see docs/ideas.md) behind the same snapshot/report

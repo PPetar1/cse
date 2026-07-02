@@ -44,7 +44,7 @@ in `lib.rs`, which parses and dispatches. Commands:
 - `units` / `units detail` — list all units
 - `move <x1> <y1> <x2> <y2> <unit_index>` — teleport-style move (no distance/cost checks yet)
 - `attack <x1> <y1> <x2> <y2>` — units at hex 1 attack units at hex 2; prints a battle
-  report and persists losses (retreat outcomes reported but not executed yet)
+  report and persists losses; beaten defenders retreat (with attrition) or surrender
 - `view` — open the Bevy map window in a detached subprocess (terminal stays usable;
   Esc closes the window; can be called repeatedly)
 - `help` — print the command list (HELP_TEXT in lib.rs)
@@ -70,7 +70,8 @@ src/
   lib.rs         — command parsing/dispatch, save/load, view subprocess
                    spawning (spawn_view_subprocess/run_view_subprocess), Error type
   game/mod.rs    — Game (state + players + turn/phase), Scenario TOML schema, move_unit,
-                   attack (builds combat snapshots, applies losses back)
+                   attack (builds combat snapshots, applies losses back, executes
+                   retreats/surrenders — destination + attrition rules live here)
   core/mod.rs    — State::build: resolves a Scenario into runtime State (units get
                    their element rosters instantiated from their TOE here)
   core/map.rs    — Map: HashMap<(u32,u32), Location> + offmap locations; TOML map parsing
@@ -132,9 +133,10 @@ Conventions used throughout:
 ## Roadmap (agreed with the author)
 
 1. **Combat resolution** — v1 implemented (fires-based, closing range bands,
-   disrupt/damage/destroy hits, CV odds outcome; docs/combat_design.md is the
-   spec). Next combat steps, in rough order: retreat execution, a `simulate`
-   command for tuning, rate of fire + dual AP/HE fire values, morale/experience.
+   disrupt/damage/destroy hits, CV odds outcome, retreat execution with
+   attrition/surrender; docs/combat_design.md is the spec). Next combat steps,
+   in rough order: a `simulate` command for tuning, rate of fire + dual AP/HE
+   fire values, morale/experience.
 2. Turn/phase system — `end_turn`, alternating players, date advancement
    (`turn_length` exists in scenarios but is unused).
 3. Movement rules — adjacency/cost/MP budget on the hex grid.

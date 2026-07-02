@@ -1,10 +1,17 @@
+use std::fmt::Display;
+
 use rand::Rng;
 
 use crate::core::State;
 use crate::Error;
 use crate::core::unit::*;
-use crate::core::location::Location;
-use crate::procedures::combat::{self, BattleReport, CombatElement, CombatElementState};
+use crate::core::location::{Location, Terrain};
+use crate::procedures::combat::{self, BattleOutcome, BattleReport, CombatElement, CombatElementState};
+
+/// Retreat attrition: chance (percent) for each ready element of a retreating
+/// unit to end up damaged, and for each damaged element to be lost (captured).
+const RETREAT_DAMAGE_CHANCE: f32 = 10.0;
+const RETREAT_LOSS_CHANCE: f32 = 25.0;
 
 #[derive(Debug, serde::Deserialize, serde::Serialize)]
 pub struct Game {
@@ -105,15 +112,14 @@ impl Game {
     }
 
     /// Resolve an attack by all units in the `from` hex against all units in
-    /// the `to` hex. Losses are applied to the units; the returned report says
-    /// what happened. No unit movement yet — a "defender retreats" outcome is
-    /// reported but not executed (needs adjacency/stacking rules first).
+    /// the `to` hex. Losses are applied to the units, and a lost defender
+    /// retreats to an adjacent hex (or surrenders when there is none).
     pub fn attack(
         &mut self,
         from: (u32, u32),
         to: (u32, u32),
         rng: &mut impl Rng,
-    ) -> Result<BattleReport, Error> {
+    ) -> Result<AttackReport, Error> {
         let from_location = self.state.map.get_location(from.0, from.1)
             .ok_or_else(|| Error::new("Invalid attacking location."))?;
         let to_location = self.state.map.get_location(to.0, to.1)
@@ -131,15 +137,83 @@ impl Game {
             return Err(Error::new("Cannot attack units of the same faction."));
         }
 
+        let defender_names: Vec<String> =
+            defender_units.iter().map(|unit| unit.name.clone()).collect();
+
         let mut attackers = combat::combat_elements(&attacker_units, &self.state.elements)?;
         let mut defenders = combat::combat_elements(&defender_units, &self.state.elements)?;
 
-        let report = combat::resolve_battle(&mut attackers, &mut defenders, defender_terrain, rng);
+        let battle = combat::resolve_battle(&mut attackers, &mut defenders, defender_terrain, rng);
 
         self.apply_battle_losses(&attackers);
         self.apply_battle_losses(&defenders);
 
-        Ok(report)
+        let retreat = if battle.outcome == BattleOutcome::DefenderRetreats {
+            self.execute_retreat(from, to, &defender_names, &defender_faction, rng)
+        } else {
+            Vec::new()
+        };
+
+        Ok(AttackReport { battle, retreat })
+    }
+
+    /// Move the beaten defenders out of their hex, with attrition on the way.
+    /// All of them go to the same destination; when no valid hex exists the
+    /// stack is cut off and surrenders (units removed from the game).
+    fn execute_retreat(
+        &mut self,
+        attacker_hex: (u32, u32),
+        defender_hex: (u32, u32),
+        defender_names: &[String],
+        defender_faction: &str,
+        rng: &mut impl Rng,
+    ) -> Vec<UnitRetreat> {
+        let destination = self.retreat_destination(attacker_hex, defender_hex, defender_faction);
+
+        let mut results = Vec::new();
+        for name in defender_names {
+            match destination {
+                Some((x, y)) => {
+                    let unit = self.state.units.get_mut(name)
+                        .expect("retreating unit vanished mid-attack");
+                    let (damaged, lost) = retreat_attrition(unit, rng);
+                    unit.location = UnitLocation::OnMap(LocationCoords { x, y });
+                    results.push(UnitRetreat::Retreated { unit: name.clone(), to: (x, y), damaged, lost });
+                }
+                None => {
+                    self.state.units.remove(name);
+                    results.push(UnitRetreat::Surrendered { unit: name.clone() });
+                }
+            }
+        }
+        results
+    }
+
+    /// Where a beaten defender goes: an adjacent on-map, non-Water hex free of
+    /// enemy units, preferring the one farthest from the attacker. Ties break
+    /// on the lowest (x, y) so retreats are deterministic. None = cut off.
+    fn retreat_destination(
+        &self,
+        attacker_hex: (u32, u32),
+        defender_hex: (u32, u32),
+        defender_faction: &str,
+    ) -> Option<(u32, u32)> {
+        let attacker_location = self.state.map.get_location(attacker_hex.0, attacker_hex.1)?;
+        let defender_location = self.state.map.get_location(defender_hex.0, defender_hex.1)?;
+
+        defender_location.neighbour_coords()
+            .into_iter()
+            .filter_map(|(x, y)| self.state.map.get_location(x, y).map(|location| ((x, y), location)))
+            .filter(|(_, location)| location.terrain != Terrain::Water)
+            .filter(|(_, location)| {
+                self.units_at_location(location)
+                    .iter()
+                    .all(|unit| unit.faction == defender_faction)
+            })
+            .max_by_key(|(coords, location)| {
+                (attacker_location.distance_to(location), std::cmp::Reverse(*coords))
+            })
+            .map(|(coords, _)| coords)
     }
 
     /// Persist battle results: damaged elements move ready → damaged,
@@ -160,6 +234,74 @@ impl Game {
                         entry.damaged += 1;
                     }
                 }
+        }
+    }
+}
+
+/// Retreat attrition rolls for one unit: ready elements may end up damaged
+/// (RETREAT_DAMAGE_CHANCE), and damaged elements — hard to drag along — may be
+/// lost for good (RETREAT_LOSS_CHANCE). Returns (newly damaged, lost).
+fn retreat_attrition(unit: &mut Unit, rng: &mut impl Rng) -> (u32, u32) {
+    let mut newly_damaged = 0;
+    let mut lost = 0;
+    for element in &mut unit.elements {
+        let mut captured = 0;
+        for _ in 0..element.damaged {
+            if rng.random_range(0.0..100.0) < RETREAT_LOSS_CHANCE {
+                captured += 1;
+            }
+        }
+        element.damaged -= captured;
+        lost += captured;
+
+        let mut hurt = 0;
+        for _ in 0..element.ready {
+            if rng.random_range(0.0..100.0) < RETREAT_DAMAGE_CHANCE {
+                hurt += 1;
+            }
+        }
+        element.ready -= hurt;
+        element.damaged += hurt;
+        newly_damaged += hurt;
+    }
+    (newly_damaged, lost)
+}
+
+/// Everything one attack command did: the battle itself, plus what the losing
+/// defenders had to do afterwards (empty when the defender held).
+#[derive(Debug)]
+pub struct AttackReport {
+    pub battle: BattleReport,
+    pub retreat: Vec<UnitRetreat>,
+}
+
+#[derive(Debug, PartialEq)]
+pub enum UnitRetreat {
+    Retreated { unit: String, to: (u32, u32), damaged: u32, lost: u32 },
+    Surrendered { unit: String },
+}
+
+impl Display for AttackReport {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.battle)?;
+        for retreat in &self.retreat {
+            write!(f, "\n{}", retreat)?;
+        }
+        Ok(())
+    }
+}
+
+impl Display for UnitRetreat {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            UnitRetreat::Retreated { unit, to, damaged, lost } => write!(
+                f,
+                "{} retreats to ({}, {}) — retreat losses: {} damaged, {} lost",
+                unit, to.0, to.1, damaged, lost,
+            ),
+            UnitRetreat::Surrendered { unit } => {
+                write!(f, "{} has nowhere to retreat and surrenders!", unit)
+            }
         }
     }
 }
@@ -441,20 +583,149 @@ location = { x = 1, y = 1 }
 
     #[test]
     fn attack_applies_losses_that_match_the_report() {
-        let mut game = Game::build(minimal_scenario(TWO_PLAYERS, OPPOSING_UNITS)).unwrap();
+        // Two defending units vs one attacker: the defender holds, so no
+        // retreat attrition muddies the loss bookkeeping.
+        let units = r#"
+[[units]]
+name = "Axis Division"
+toe = "test_toe"
+faction = "AX"
+location = { x = 1, y = 1 }
+
+[[units]]
+name = "Soviet First"
+toe = "test_toe"
+faction = "SU"
+location = { x = 2, y = 1 }
+
+[[units]]
+name = "Soviet Second"
+toe = "test_toe"
+faction = "SU"
+location = { x = 2, y = 1 }
+"#;
+        let mut game = Game::build(minimal_scenario(TWO_PLAYERS, units)).unwrap();
         let mut rng = StdRng::seed_from_u64(42);
 
         let report = game.attack((1, 1), (2, 1), &mut rng).unwrap();
 
-        assert!(!report.rounds.is_empty());
-        // Each side started with 10 ready elements; whatever the dice did,
-        // the persisted counts must match the report exactly.
-        let defender = &game.state.units["Soviet Division"].elements[0];
-        assert_eq!(defender.damaged, report.defender_losses.damaged);
-        assert_eq!(10 - defender.ready - defender.damaged, report.defender_losses.destroyed);
+        assert!(!report.battle.rounds.is_empty());
+        assert_eq!(report.battle.outcome, BattleOutcome::DefenderHolds);
+        assert!(report.retreat.is_empty());
+        // The defenders started with 20 ready elements between them; whatever
+        // the dice did, the persisted counts must match the report exactly.
+        let defenders = [
+            &game.state.units["Soviet First"].elements[0],
+            &game.state.units["Soviet Second"].elements[0],
+        ];
+        let damaged: u32 = defenders.iter().map(|e| e.damaged).sum();
+        let remaining: u32 = defenders.iter().map(|e| e.ready + e.damaged).sum();
+        assert_eq!(damaged, report.battle.defender_losses.damaged);
+        assert_eq!(20 - remaining, report.battle.defender_losses.destroyed);
         let attacker = &game.state.units["Axis Division"].elements[0];
-        assert_eq!(attacker.damaged, report.attacker_losses.damaged);
-        assert_eq!(10 - attacker.ready - attacker.damaged, report.attacker_losses.destroyed);
+        assert_eq!(attacker.damaged, report.battle.attacker_losses.damaged);
+        assert_eq!(10 - attacker.ready - attacker.damaged, report.battle.attacker_losses.destroyed);
+    }
+
+    #[test]
+    fn a_lost_battle_forces_a_retreat_to_an_adjacent_hex() {
+        // Three divisions against one: the defender loses and must retreat.
+        let units = r#"
+[[units]]
+name = "Axis First"
+toe = "test_toe"
+faction = "AX"
+location = { x = 1, y = 1 }
+
+[[units]]
+name = "Axis Second"
+toe = "test_toe"
+faction = "AX"
+location = { x = 1, y = 1 }
+
+[[units]]
+name = "Axis Third"
+toe = "test_toe"
+faction = "AX"
+location = { x = 1, y = 1 }
+
+[[units]]
+name = "Soviet Division"
+toe = "test_toe"
+faction = "SU"
+location = { x = 2, y = 1 }
+"#;
+        let mut game = Game::build(minimal_scenario(TWO_PLAYERS, units)).unwrap();
+        let mut rng = StdRng::seed_from_u64(42);
+
+        let report = game.attack((1, 1), (2, 1), &mut rng).unwrap();
+
+        assert_eq!(report.battle.outcome, BattleOutcome::DefenderRetreats);
+        let [UnitRetreat::Retreated { unit, to, .. }] = &report.retreat[..] else {
+            panic!("expected exactly one retreated unit, got {:?}", report.retreat);
+        };
+        assert_eq!(unit, "Soviet Division");
+        assert_ne!(*to, (1, 1));
+
+        let battle_hex = game.state.map.get_location(2, 1).unwrap();
+        let destination = game.state.map.get_location(to.0, to.1)
+            .expect("retreat destination must be on the map");
+        assert_eq!(battle_hex.distance_to(destination), Some(1));
+        assert_ne!(destination.terrain, Terrain::Water);
+        assert_eq!(
+            game.state.units["Soviet Division"].location,
+            UnitLocation::OnMap(LocationCoords { x: to.0, y: to.1 }),
+        );
+    }
+
+    #[test]
+    fn a_surrounded_defender_surrenders() {
+        // Every neighbour of the defender's hex is occupied by the enemy
+        // (except Water, which is no escape route anyway): nowhere to go.
+        let mut units = String::from(r#"
+[[units]]
+name = "Soviet Division"
+toe = "test_toe"
+faction = "SU"
+location = { x = 2, y = 2 }
+"#);
+        for i in 0..8 {
+            units.push_str(&format!(r#"
+[[units]]
+name = "Axis Division {i}"
+toe = "test_toe"
+faction = "AX"
+location = "GE Reserve"
+"#));
+        }
+        let mut game = Game::build(minimal_scenario(TWO_PLAYERS, &units)).unwrap();
+
+        let escape_hexes: Vec<(u32, u32)> = game.state.map.get_location(2, 2).unwrap()
+            .neighbour_coords()
+            .into_iter()
+            .filter(|(x, y)| {
+                game.state.map.get_location(*x, *y)
+                    .is_some_and(|location| location.terrain != Terrain::Water)
+            })
+            .collect();
+        // Three attackers stacked on the first neighbour (to guarantee the
+        // battle is lost), one blocker on each remaining one.
+        let mut placements = vec![escape_hexes[0]; 3];
+        placements.extend(&escape_hexes[1..]);
+        for (i, (x, y)) in placements.iter().enumerate() {
+            game.state.units.get_mut(&format!("Axis Division {i}")).unwrap().location =
+                UnitLocation::OnMap(LocationCoords { x: *x, y: *y });
+        }
+
+        let mut rng = StdRng::seed_from_u64(42);
+        let report = game.attack(escape_hexes[0], (2, 2), &mut rng).unwrap();
+
+        assert_eq!(report.battle.outcome, BattleOutcome::DefenderRetreats);
+        assert_eq!(
+            report.retreat,
+            vec![UnitRetreat::Surrendered { unit: "Soviet Division".to_string() }],
+        );
+        assert!(!game.state.units.contains_key("Soviet Division"));
     }
 
     #[test]

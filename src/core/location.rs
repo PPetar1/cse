@@ -29,6 +29,26 @@ impl Location {
         }
     }
 
+    /// Offset coordinates of the six adjacent hexes, negative ones filtered
+    /// out. Offmap locations have no neighbours. The caller still has to
+    /// check the map actually contains each coordinate.
+    pub fn neighbour_coords(&self) -> Vec<(u32, u32)> {
+        let Some(hex) = self.hex else {
+            return Vec::new();
+        };
+        hex.all_neighbors()
+            .iter()
+            .map(|neighbour| neighbour.to_offset_coordinates(OffsetHexMode::Even, HexOrientation::Pointy))
+            .filter(|[x, y]| *x >= 0 && *y >= 0)
+            .map(|[x, y]| (x as u32, y as u32))
+            .collect()
+    }
+
+    /// Hex-grid distance to another location; None if either is offmap.
+    pub fn distance_to(&self, other: &Location) -> Option<u32> {
+        Some(self.hex?.unsigned_distance_to(other.hex?))
+    }
+
     pub fn get_coords(&self) -> UnitLocation {
         if let Some(hex) = self.hex {
             let coords = hex.to_offset_coordinates(OffsetHexMode::Even, HexOrientation::Pointy);
@@ -117,6 +137,42 @@ mod tests {
 
         let coords = location.get_coords();
         assert_eq!(coords, UnitLocation::Offmap("Reserve".to_string()));
+    }
+
+    #[test]
+    fn interior_hex_has_six_neighbours_at_distance_one() {
+        let location = Location::new(Some((2, 2)), Terrain::Plains, None);
+
+        let neighbours = location.neighbour_coords();
+
+        assert_eq!(neighbours.len(), 6);
+        for (x, y) in neighbours {
+            let neighbour = Location::new(Some((x, y)), Terrain::Plains, None);
+            assert_eq!(location.distance_to(&neighbour), Some(1));
+        }
+    }
+
+    #[test]
+    fn corner_hex_neighbours_stay_in_positive_coordinates() {
+        let location = Location::new(Some((0, 0)), Terrain::Plains, None);
+
+        for (x, y) in location.neighbour_coords() {
+            // u32 coords can't go negative; just prove the filter kept only
+            // real neighbours and dropped the rest.
+            let neighbour = Location::new(Some((x, y)), Terrain::Plains, None);
+            assert_eq!(location.distance_to(&neighbour), Some(1));
+        }
+        assert!(location.neighbour_coords().len() < 6);
+    }
+
+    #[test]
+    fn offmap_locations_have_no_neighbours_or_distance() {
+        let offmap = Location::new(None, Terrain::Urban, Some("Reserve".to_string()));
+        let onmap = Location::new(Some((1, 1)), Terrain::Plains, None);
+
+        assert!(offmap.neighbour_coords().is_empty());
+        assert_eq!(offmap.distance_to(&onmap), None);
+        assert_eq!(onmap.distance_to(&offmap), None);
     }
 
     #[test]
