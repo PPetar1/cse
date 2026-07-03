@@ -46,6 +46,32 @@ impl Map {
             .map(|(&coords, loc)| (coords, loc.terrain))
             .collect()
     }
+
+    /// Total cost of the cheapest path between two on-map hexes, where
+    /// `enter_cost` prices entering a hex (None = impassable/blocked).
+    /// Returns None when no route exists. The start hex is never "entered",
+    /// so it is always free — a unit can path out of terrain it could not
+    /// path into.
+    pub fn cheapest_path_cost(
+        &self,
+        from: (u32, u32),
+        to: (u32, u32),
+        enter_cost: impl Fn((u32, u32), &Location) -> Option<u32>,
+    ) -> Option<u32> {
+        let start = self.get_location(from.0, from.1)?.hex()?;
+        let goal = self.get_location(to.0, to.1)?.hex()?;
+        let cost_to_enter = |hex| {
+            if hex == start {
+                return Some(0);
+            }
+            let coords = hex_to_coords(hex)?;
+            let location = self.get_location(coords.0, coords.1)?;
+            enter_cost(coords, location)
+        };
+        let path = hexx::algorithms::a_star(start, goal, |_, entered| cost_to_enter(entered))?;
+        // The path includes the start hex, which is not entered.
+        path.iter().skip(1).map(|&hex| cost_to_enter(hex)).sum()
+    }
 }
 
 #[derive(serde::Deserialize)]

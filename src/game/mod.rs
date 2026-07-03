@@ -177,45 +177,53 @@ impl Game {
         let destination = self.state.map.get_location(x_end, y_end).ok_or(Error {
                 error_message: "Invalid destination.".to_string(),
         })?;
-        if start.distance_to(destination) != Some(1) {
-            return Err(Error::new("Units move one hex at a time, to an adjacent hex."));
+        if (x_start, y_start) == (x_end, y_end) {
+            return Err(Error::new("The unit is already at the destination."));
         }
         let terrain = destination.terrain;
-        let cost = self.state.terrain_costs.cost(terrain)
-            .ok_or_else(|| Error::new(format!("{terrain:?} is impassable.")))?;
+        if self.state.terrain_costs.cost(terrain).is_none() {
+            return Err(Error::new(format!("{terrain:?} is impassable.")));
+        }
+
+        // Resolve the order to a unit: units_at_location sorts by name, so
+        // the index matches what inspect showed the player.
+        let unit = self.units_at_location(start).into_iter().nth(unit_i).ok_or_else(|| Error {
+            error_message: format!("No unit with index {} at ({}, {}).", unit_i, x_start, y_start),
+        })?;
+        let unit_name = unit.name.clone();
 
         let on_turn = self.player_on_turn().faction_tag.clone();
-
-        // Taking ground held by the enemy is what `attack` is for.
-        if self.units_at_location(destination).iter().any(|unit| unit.faction != on_turn) {
-            return Err(Error::new("Cannot move into a hex occupied by the enemy."));
-        }
-
-        let location_start = UnitLocation::OnMap(LocationCoords { x: x_start, y: y_start });
-        let mut units = Vec::new();
-        for unit in self.state.units.values_mut() {
-            if unit.location == location_start {
-                units.push(unit)
-            }
-        }
-        // Same ordering as units_at_location, so the index the player saw
-        // via inspect addresses the same unit here.
-        units.sort_by(|a, b| a.name.cmp(&b.name));
-
-        if units.len() < unit_i + 1 {
-            return Err(Error {
-                error_message: format!("No unit with index {} at ({}, {}).", unit_i, x_start, y_start),
-            })
-        }
-
-        let unit = &mut *units[unit_i];
         if unit.faction != on_turn {
             return Err(Error::new(format!("It is not {}'s turn.", unit.faction)));
         }
+
+        // Taking ground held by the enemy is what `attack` is for — enemy
+        // hexes can be neither the destination nor passed through.
+        let enemy_hexes: std::collections::HashSet<(u32, u32)> = self.state.units.values()
+            .filter(|other| other.faction != on_turn)
+            .filter_map(|other| match &other.location {
+                UnitLocation::OnMap(coords) => Some((coords.x, coords.y)),
+                UnitLocation::Offmap(_) => None,
+            })
+            .collect();
+        if enemy_hexes.contains(&(x_end, y_end)) {
+            return Err(Error::new("Cannot move into a hex occupied by the enemy."));
+        }
+
+        let cost = self.state.map
+            .cheapest_path_cost((x_start, y_start), (x_end, y_end), |coords, location| {
+                if enemy_hexes.contains(&coords) {
+                    return None;
+                }
+                self.state.terrain_costs.cost(location.terrain)
+            })
+            .ok_or_else(|| Error::new("No passable route to the destination."))?;
+
+        let unit = self.state.units.get_mut(&unit_name).expect("moving unit vanished");
         if unit.mp_left < cost {
             return Err(Error::new(format!(
-                "Not enough movement points: entering {terrain:?} costs {cost}, {} has {} left.",
-                unit.name, unit.mp_left,
+                "Not enough movement points: the way there costs {cost}, {unit_name} has {} left.",
+                unit.mp_left,
             )));
         }
 
@@ -913,12 +921,90 @@ morale = {defender_morale}
     }
 
     #[test]
-    fn move_unit_rejects_a_non_adjacent_destination() {
+    fn move_unit_crosses_multiple_hexes_charging_the_path_cost() {
         let mut game = one_unit_game();
 
-        // (2, 2) is two hexes from (1, 1) on this grid.
-        let error = game.move_unit(1, 1, 2, 2, 0).unwrap_err();
-        assert!(error.error_message.contains("adjacent"));
+        // (1, 1) to (2, 2) is two hexes: cheapest route is two Plains steps
+        // via (2, 1), total 2 (the direct Forest neighbour would cost 3).
+        game.move_unit(1, 1, 2, 2, 0).unwrap();
+
+        let unit = &game.state.units["1st Test Division"];
+        assert_eq!(unit.location, UnitLocation::OnMap(LocationCoords { x: 2, y: 2 }));
+        assert_eq!(unit.mp_left, 14);
+    }
+
+    #[test]
+    fn pathfinding_routes_around_impassable_terrain() {
+        let units = r#"
+[[units]]
+name = "1st Test Division"
+toe = "test_toe"
+faction = "AX"
+location = { x = 0, y = 3 }
+"#;
+        let mut game = Game::build(minimal_scenario(ONE_PLAYER, units)).unwrap();
+
+        // The Water hex (1, 3) sits between (0, 3) and (2, 3): the cheapest
+        // way around is three Plains steps via (0, 4) and (1, 4).
+        game.move_unit(0, 3, 2, 3, 0).unwrap();
+
+        let unit = &game.state.units["1st Test Division"];
+        assert_eq!(unit.location, UnitLocation::OnMap(LocationCoords { x: 2, y: 3 }));
+        assert_eq!(unit.mp_left, 13);
+    }
+
+    #[test]
+    fn pathfinding_detours_around_enemy_held_hexes() {
+        let units = r#"
+[[units]]
+name = "1st Test Division"
+toe = "test_toe"
+faction = "AX"
+location = { x = 0, y = 3 }
+
+[[units]]
+name = "Soviet Division"
+toe = "test_toe"
+faction = "SU"
+location = { x = 1, y = 4 }
+"#;
+        let mut game = Game::build(minimal_scenario(TWO_PLAYERS, units)).unwrap();
+
+        // With (1, 4) enemy-held on top of the Water at (1, 3), the 3-point
+        // route from the previous test is blocked; the cheapest is now 4.
+        game.move_unit(0, 3, 2, 3, 0).unwrap();
+
+        let unit = &game.state.units["1st Test Division"];
+        assert_eq!(unit.location, UnitLocation::OnMap(LocationCoords { x: 2, y: 3 }));
+        assert_eq!(unit.mp_left, 12);
+    }
+
+    #[test]
+    fn move_unit_rejects_an_unreachable_destination() {
+        // Plains = 0 leaves only scattered Forest passable: (3, 3) exists
+        // and is enterable, but no route reaches it from (1, 2).
+        let units = r#"
+[[units]]
+name = "1st Test Division"
+toe = "test_toe"
+faction = "AX"
+location = { x = 1, y = 2 }
+
+[terrain_costs]
+Plains = 0
+"#;
+        let mut game = Game::build(minimal_scenario(ONE_PLAYER, units)).unwrap();
+
+        let error = game.move_unit(1, 2, 3, 3, 0).unwrap_err();
+        assert!(error.error_message.contains("No passable route"));
+    }
+
+    #[test]
+    fn move_unit_rejects_moving_in_place() {
+        let mut game = one_unit_game();
+
+        let error = game.move_unit(1, 1, 1, 1, 0).unwrap_err();
+        assert!(error.error_message.contains("already at the destination"));
     }
 
     #[test]

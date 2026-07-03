@@ -47,6 +47,23 @@ impl Location {
         Some(self.hex?.unsigned_distance_to(other.hex?))
     }
 
+    /// The wrapped axial hex; None for offmap locations. Crate-internal so
+    /// hexx types stay contained to the core.
+    pub(crate) fn hex(&self) -> Option<Hex> {
+        self.hex
+    }
+
+}
+
+/// Offset coordinates of an axial hex; None when either coordinate is
+/// negative (off the u32 grid). The inverse of the conversion in
+/// `Location::new`, kept here so both directions share the offset mode.
+pub(crate) fn hex_to_coords(hex: Hex) -> Option<(u32, u32)> {
+    let [x, y] = hex.to_offset_coordinates(OffsetHexMode::Even, HexOrientation::Pointy);
+    if x < 0 || y < 0 {
+        return None;
+    }
+    Some((x as u32, y as u32))
 }
 
 impl Display for Location {

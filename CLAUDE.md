@@ -61,10 +61,11 @@ in `lib.rs`, which parses and dispatches. Commands:
 - `inspect <x> <y>` or `inspect <offmap name>` — show location + units there with
   their element rosters (ready/damaged/morale/experience per element)
 - `units` / `units detail` — list all units
-- `move <x1> <y1> <x2> <y2> <unit_index>` — single-hex move to an adjacent hex;
-  costs MP per destination terrain (scenario `[terrain_costs]`, Water impassable
-  by default); enemy-occupied destinations are rejected (that's `attack`); only
-  the on-turn faction's units
+- `move <x1> <y1> <x2> <y2> <unit_index>` — move to any reachable hex: charges
+  the cheapest-path cost (`Map::cheapest_path_cost`, hexx a_star; terrain entry
+  costs from scenario `[terrain_costs]`, impassable and enemy hexes block);
+  enemy-occupied destinations are rejected (that's `attack`); only the on-turn
+  faction's units
 - `attack <x1> <y1> <x2> <y2>` — units at hex 1 attack units at the adjacent hex 2
   (on-turn faction only; `simulate` shares this validation via `prepare_battle`);
   prints a battle report and persists losses + experience gain; beaten defenders
@@ -111,7 +112,8 @@ src/
                    attrition rules live here)
   core/mod.rs    — State::build: resolves a Scenario into runtime State (units get
                    their element rosters instantiated from their TOE here)
-  core/map.rs    — Map: HashMap<(u32,u32), Location> + offmap locations; TOML map parsing
+  core/map.rs    — Map: HashMap<(u32,u32), Location> + offmap locations; TOML map
+                   parsing; cheapest_path_cost (hexx a_star; start hex is free)
   core/location.rs — Location wraps Option<hexx::Hex> (None = offmap), Terrain enum
   core/unit.rs   — Unit, Toe, Element, ElementClass, Size + config structs
   visualiser.rs  — self-contained Bevy 0.15 debug map view (see below)
