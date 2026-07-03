@@ -114,7 +114,8 @@ Key data model (all TOML-configurable, see `scenarios/basic_scenario.scen`):
   → faction default on `[[players]]` (stored on the runtime `Player` so events can
   shift it later) → 50. In combat, experience gates element commitment, both scale
   element CV ×(1 + mor/100 + exp/100) (`morexp_modifier` in combat.rs), and the
-  unit's strength-weighted `average_morale()` gates routs
+  unit's strength-weighted `average_morale()` gates routs. Battles shift both:
+  everyone gains experience, winners rally / losers sag morale (routs doubly)
 - **Map files** (`maps/*.map`) — TOML: per-hex terrain + named offmap boxes ("GE Reserve")
 
 Conventions used throughout:
@@ -160,10 +161,10 @@ Conventions used throughout:
    disrupt/damage/destroy hits, CV odds outcome, retreat execution with
    attrition/surrender, `simulate` tuning tool; docs/combat_design.md is the
    spec; morale/experience are in — commit gate, CV modifier, routs, shatter,
-   experience gain from battles — and so is device-level fire:
-   accuracy/rate-of-fire/soft+hard attack per weapon). Next combat steps, in
-   rough order: morale shifts from battle outcomes, knob retuning via
-   `simulate`; later piercing + AoE fire (ideas.md).
+   post-battle experience gain and morale shifts — and so is device-level
+   fire: accuracy/rate-of-fire/soft+hard attack per weapon). Next combat
+   steps: knob retuning via `simulate`; later piercing + AoE fire (ideas.md);
+   morale recovery over time belongs to the turn system.
 2. Turn/phase system — `end_turn`, alternating players, date advancement
    (`turn_length` exists in scenarios but is unused).
 3. Movement rules — adjacency/cost/MP budget on the hex grid.

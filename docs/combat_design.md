@@ -119,6 +119,13 @@ commit" (one roll for the whole element). Then every in-range device fires
   alike — green troops learn fast (+7 at 35), veterans barely (+1 at 90),
   100 caps itself. Side effect worth knowing: repeatedly battering a
   defender also trains them.
+- **Morale shift**: settles last, once routs are known. The winning side's
+  buckets (a hold counts as a defender win) gain `ceil((100 − morale) / 20)`,
+  the losing side's lose `ceil(morale / 20)`, and a routed unit takes the
+  loss a second time — tapering toward the 0/100 bounds like experience.
+  This is a deliberate feedback loop: repulsed attacks rally the defender
+  (higher CV, steadier under rout checks) and discourage the attacker, so
+  grinding a position has a real psychological price.
 
 ### Outcome
 
@@ -148,7 +155,7 @@ needs the map and unit occupancy. On a retreat outcome:
   WitE's capture rule) has a 25% chance to be lost for good.
 - **Rout**: a retreating unit routs when a d100 roll beats its
   strength-weighted average element morale — the attrition rolls then run
-  twice.
+  twice, and the unit takes the post-battle morale loss twice.
 - **Shatter**: a routing unit whose ready strength has fallen below half of
   its TOE (SHATTER_STRENGTH_FRACTION) disintegrates outright when a second
   roll also beats its morale — the unit is removed from the game. Fresh
@@ -227,9 +234,10 @@ feels too high once turns exist, `rate_of_fire`/`accuracy` are the knobs.
 
 1. Retune the numeric knobs (severity split, cover table, CV multipliers,
    retreat attrition) with `simulate` evidence.
-2. Morale shifts: drops from lost battles/routs, gains from victories (the
-   event hook for shifting faction defaults over time exists on the runtime
-   player).
+2. Morale recovery over time — battle shifts are permanent until something
+   restores them; rest/refit drift back toward the faction default belongs
+   to the turn system (the event hook for shifting faction defaults exists
+   on the runtime player).
 3. Attacker advance into the vacated hex after a retreat?
 4. Adjacency requirement for `attack` (arrives with movement rules).
 5. Longer term: swap-in experiment — 2D tactical battlefield with generated

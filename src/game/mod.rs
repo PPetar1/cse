@@ -24,6 +24,12 @@ const SHATTER_STRENGTH_FRACTION: f32 = 0.5;
 /// learn fast, veterans have little left to learn, 100 caps itself.
 const EXPERIENCE_GAIN_STEP: u32 = 10;
 
+/// Morale settles after a battle: the winning side's buckets gain
+/// `ceil((100 - morale) / MORALE_SHIFT_STEP)`, the losing side's lose
+/// `ceil(morale / MORALE_SHIFT_STEP)` (routed units lose that twice) —
+/// tapering toward the 0/100 bounds just like experience gain.
+const MORALE_SHIFT_STEP: u32 = 20;
+
 #[derive(Debug, serde::Deserialize, serde::Serialize)]
 pub struct Game {
     pub state: State,
@@ -149,6 +155,24 @@ impl Game {
         } else {
             Vec::new()
         };
+
+        // Morale settles last, once routs are known: winners rally, losers
+        // sag, routed units sag a second time. (Shattered/surrendered units
+        // are already gone and are skipped.)
+        let (winners, losers) = match battle.outcome {
+            BattleOutcome::DefenderRetreats => (&attackers, &defenders),
+            BattleOutcome::DefenderHolds => (&defenders, &attackers),
+        };
+        self.apply_morale_shift(winners, true);
+        self.apply_morale_shift(losers, false);
+        for result in &retreat {
+            if let UnitRetreat::Retreated { unit, routed: true, .. } = result
+                && let Some(unit) = self.state.units.get_mut(unit) {
+                    for entry in &mut unit.elements {
+                        entry.morale -= morale_loss(entry.morale);
+                    }
+                }
+        }
 
         Ok(AttackReport { battle, retreat })
     }
@@ -293,6 +317,26 @@ impl Game {
         }
     }
 
+    /// Post-battle morale for one side's participating buckets (once per
+    /// bucket): winners rally toward 100, losers sag toward 0.
+    fn apply_morale_shift(&mut self, elements: &[CombatElement], won: bool) {
+        let mut seen = std::collections::HashSet::new();
+        for element in elements {
+            if !seen.insert((&element.unit_name, &element.element_name)) {
+                continue;
+            }
+            if let Some(unit) = self.state.units.get_mut(&element.unit_name)
+                && let Some(entry) = unit.elements.iter_mut().find(|e| e.name == element.element_name) {
+                    if won {
+                        entry.morale +=
+                            100u32.saturating_sub(entry.morale).div_ceil(MORALE_SHIFT_STEP);
+                    } else {
+                        entry.morale -= morale_loss(entry.morale);
+                    }
+                }
+        }
+    }
+
     /// Persist battle results: damaged elements move ready → damaged,
     /// destroyed ones are removed for good. Disrupted elements recover and
     /// leave no trace. Each snapshot instance came from one point of `ready`,
@@ -313,6 +357,12 @@ impl Game {
                 }
         }
     }
+}
+
+/// Morale lost from a defeat (or a rout, applied on top): tapers toward 0,
+/// and never exceeds the current value, so no clamping is needed.
+fn morale_loss(morale: u32) -> u32 {
+    morale.div_ceil(MORALE_SHIFT_STEP)
 }
 
 /// The unit's ready elements as a fraction of what its TOE prescribes —
@@ -939,6 +989,89 @@ morale = 0
         // Both start at the default 50: gain is ceil(50 / 10) = 5.
         assert_eq!(game.state.units["Axis Division"].elements[0].experience, 55);
         assert_eq!(game.state.units["Soviet Division"].elements[0].experience, 55);
+    }
+
+    #[test]
+    fn battles_shift_morale_toward_the_victor() {
+        let mut game = Game::build(minimal_scenario(TWO_PLAYERS, OPPOSING_UNITS)).unwrap();
+        let mut rng = StdRng::seed_from_u64(42);
+
+        let report = game.attack((1, 1), (2, 1), &mut rng).unwrap();
+
+        // 1v1 with this seed the defender holds and wins the battle.
+        assert_eq!(report.battle.outcome, BattleOutcome::DefenderHolds);
+        // Both start at the default 50; shift is ceil(50 / 20) = 3 each way.
+        assert_eq!(game.state.units["Soviet Division"].elements[0].morale, 53);
+        assert_eq!(game.state.units["Axis Division"].elements[0].morale, 47);
+    }
+
+    #[test]
+    fn morale_shifts_stop_at_the_bounds() {
+        let units = r#"
+[[units]]
+name = "Axis Division"
+toe = "test_toe"
+faction = "AX"
+location = { x = 1, y = 1 }
+morale = 0
+
+[[units]]
+name = "Soviet Division"
+toe = "test_toe"
+faction = "SU"
+location = { x = 2, y = 1 }
+morale = 100
+"#;
+        let mut game = Game::build(minimal_scenario(TWO_PLAYERS, units)).unwrap();
+        let mut rng = StdRng::seed_from_u64(42);
+
+        let report = game.attack((1, 1), (2, 1), &mut rng).unwrap();
+
+        assert_eq!(report.battle.outcome, BattleOutcome::DefenderHolds);
+        assert_eq!(game.state.units["Axis Division"].elements[0].morale, 0);
+        assert_eq!(game.state.units["Soviet Division"].elements[0].morale, 100);
+    }
+
+    #[test]
+    fn a_routed_unit_loses_morale_twice() {
+        let units = r#"
+[[units]]
+name = "Axis First"
+toe = "test_toe"
+faction = "AX"
+location = { x = 1, y = 1 }
+
+[[units]]
+name = "Axis Second"
+toe = "test_toe"
+faction = "AX"
+location = { x = 1, y = 1 }
+
+[[units]]
+name = "Axis Third"
+toe = "test_toe"
+faction = "AX"
+location = { x = 1, y = 1 }
+
+[[units]]
+name = "Soviet Division"
+toe = "test_toe"
+faction = "SU"
+location = { x = 2, y = 1 }
+morale = 40
+"#;
+        let mut game = Game::build(minimal_scenario(TWO_PLAYERS, units)).unwrap();
+        let mut rng = StdRng::seed_from_u64(42);
+
+        let report = game.attack((1, 1), (2, 1), &mut rng).unwrap();
+
+        // With this seed the outnumbered defender is forced back and routs.
+        assert!(matches!(
+            report.retreat[..],
+            [UnitRetreat::Retreated { routed: true, .. }],
+        ));
+        // Defeat: 40 - ceil(40/20) = 38, then the rout: 38 - ceil(38/20) = 36.
+        assert_eq!(game.state.units["Soviet Division"].elements[0].morale, 36);
     }
 
     #[test]
