@@ -64,7 +64,9 @@ in `lib.rs`, which parses and dispatches. Commands:
 - `simulate <x1> <y1> <x2> <y2> <n>` — fight that attack n times state-untouched,
   print hold/retreat rates + average losses (the balance-tuning tool)
 - `end_turn` — pass control to the next player (IGO-UGO); when every player has
-  moved, the turn counter and in-game date advance (`turn_length` days)
+  moved, the turn counter and in-game date advance (`turn_length` days). The
+  faction coming on turn gets turn-start effects (`Game::begin_turn`): MP
+  refill + morale drift toward the faction default
 - `status` — scenario name, turn, date, faction to move
 - `view` — open the Bevy map window in a detached subprocess (terminal stays usable;
   Esc closes the window; can be called repeatedly)
@@ -131,7 +133,9 @@ Key data model (all TOML-configurable, see `scenarios/basic_scenario.scen`):
   shift it later) → 50. In combat, experience gates element commitment, both scale
   element CV ×(1 + mor/100 + exp/100) (`morexp_modifier` in combat.rs), and the
   unit's strength-weighted `average_morale()` gates routs. Battles shift both:
-  everyone gains experience, winners rally / losers sag morale (routs doubly)
+  everyone gains experience, winners rally / losers sag morale (routs doubly).
+  At its faction's turn start, morale also drifts toward the faction default
+  (`MORALE_RECOVERY_STEP`, gentler than battle shifts); experience is permanent
 - **Map files** (`maps/*.map`) — TOML: per-hex terrain + named offmap boxes ("GE Reserve")
 - **Turn system** — scenario-selectable via `turn_system = "IgoUgo"` (optional,
   the default). Only IGO-UGO exists; the matches on `TurnSystem` are the seam
@@ -176,15 +180,15 @@ Conventions used throughout:
 
 ## Current focus
 
-The full phased plan lives in `docs/roadmap.md`. Phase 0 (combat core) is done:
-fires-based battles with device-level weapons, morale/experience with battle
-feedback, routs/shatters/surrenders, and the `simulate` tuning tool
-(`docs/combat_design.md` is the spec).
+The full phased plan lives in `docs/roadmap.md`. Phase 0 (combat core) is done
+(`docs/combat_design.md` is the spec). Phase 1 (the game loop) is done: turn
+clock (`end_turn`/`status`, IGO-UGO, real dates, scenario-selectable
+`TurnSystem`), move/attack gated to the on-turn faction, adjacency-checked
+attacks, MP budgets with terrain costs, attacker advance after retreat, and
+turn-start morale recovery.
 
-**Now: Phase 1 — the game loop.** The turn clock is in (`end_turn`, alternating
-players IGO-UGO, real dates advancing by `turn_length`, scenario-selectable
-`TurnSystem`), move/attack are gated to the on-turn faction with attacks
-adjacency-checked, and movement is real: single-hex moves, terrain entry costs,
-TOE MP budgets refilled at turn start, and attackers advance after a won
-battle. Remaining: morale recovery over time. Combat knob retuning via
-`simulate` continues alongside.
+**Now: Phase 2 — the first winnable scenario.** Victory conditions (hold these
+hexes by turn N), scheduled reinforcements/withdrawals from offmap boxes, first
+scenario events, and a small historical scenario at division scale. Landmark:
+win — or lose — a game of CSE. Combat knob retuning via `simulate` continues
+alongside.

@@ -128,6 +128,13 @@ commit" (one roll for the whole element). Then every in-range device fires
   This is a deliberate feedback loop: repulsed attacks rally the defender
   (higher CV, steadier under rout checks) and discourage the attacker, so
   grinding a position has a real psychological price.
+- **Morale recovery** (turn system, not the battle engine): at its faction's
+  turn start every element bucket drifts toward the faction default morale by
+  `ceil(|gap| / 10)`, from both sides — rest heals battered units, battle
+  euphoria fades. Gentler than the battle shifts, so combat outcomes dominate;
+  battle-earned experience, by contrast, is permanent. Mirrors WitE's
+  national-morale anchor, and events can move the anchor itself (the faction
+  default lives on the runtime player).
 
 ### Outcome
 
@@ -239,14 +246,11 @@ feels too high once turns exist, `rate_of_fire`/`accuracy` are the knobs.
 
 1. Retune the numeric knobs (severity split, cover table, CV multipliers,
    retreat attrition) with `simulate` evidence.
-2. Morale recovery over time — battle shifts are permanent until something
-   restores them; rest/refit drift back toward the faction default belongs
-   to the turn system (the event hook for shifting faction defaults exists
-   on the runtime player).
-3. Longer term: swap-in experiment — 2D tactical battlefield with generated
+2. Longer term: swap-in experiment — 2D tactical battlefield with generated
    terrain and LOS (see docs/ideas.md) behind the same snapshot/report
    interface.
 
 Resolved in Phase 1: adjacency requirement for `attack` (attacks must target
 an adjacent hex, `simulate` stays unrestricted); attacker advance after
-retreat (automatic, free — see Retreat execution above).
+retreat (automatic, free — see Retreat execution); morale recovery over time
+(turn-start drift toward the faction default — see Morale recovery above).

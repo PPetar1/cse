@@ -32,6 +32,14 @@ section of CLAUDE.md.
   data-driven element types) so new domains slot in as more element classes,
   devices and mission procedures rather than parallel engines.
 
+- **WEGO turn system** — a simultaneous mode next to IGO-UGO: every player
+  queues orders, `end_turn` resolves them together. The seam already exists
+  (Phase 1): scenarios select a `TurnSystem`, and the matches on that enum in
+  the game layer are where a `Wego` variant plus an order queue plug in.
+  Eventual customer is roadmap pillar 5 (modern multiplayer) — simultaneous
+  turns are what makes server-mediated play with multiple players per faction
+  feel modern.
+
 ## Command & doctrine
 
 - **Split doctrine out of morale** — WitE "morale" conflates two things: a

@@ -31,6 +31,12 @@ const EXPERIENCE_GAIN_STEP: u32 = 10;
 /// tapering toward the 0/100 bounds just like experience gain.
 const MORALE_SHIFT_STEP: u32 = 20;
 
+/// At its faction's turn start every element bucket drifts toward the faction
+/// default morale by `ceil(|gap| / MORALE_RECOVERY_STEP)`: battered units
+/// recover with rest, battle-euphoric ones settle back down. Gentler than the
+/// battle shifts above, so combat outcomes dominate the drift.
+const MORALE_RECOVERY_STEP: u32 = 10;
+
 #[derive(Debug, serde::Deserialize, serde::Serialize)]
 pub struct Game {
     pub state: State,
@@ -98,12 +104,18 @@ impl Game {
     }
 
     /// Turn-start effects for the faction coming on turn: a fresh movement
-    /// budget from the TOE. (Morale recovery joins here.)
+    /// budget from the TOE, and morale drifting back toward the faction
+    /// default (rest heals battered units, euphoria fades).
     fn begin_turn(&mut self) {
-        let faction = self.player_on_turn().faction_tag.clone();
+        let player = self.player_on_turn();
+        let faction = player.faction_tag.clone();
+        let default_morale = player.morale;
         for unit in self.state.units.values_mut() {
             if unit.faction == faction {
                 unit.mp_left = self.state.toe.get(&unit.toe).expect("unit's toe vanished").mp;
+                for entry in &mut unit.elements {
+                    entry.morale = morale_drift(entry.morale, default_morale);
+                }
             }
         }
     }
@@ -480,6 +492,16 @@ impl Game {
 /// and never exceeds the current value, so no clamping is needed.
 fn morale_loss(morale: u32) -> u32 {
     morale.div_ceil(MORALE_SHIFT_STEP)
+}
+
+/// One turn-start step of morale recovery: toward the faction default from
+/// either side, tapering as the gap closes (zero exactly at the default).
+fn morale_drift(morale: u32, default: u32) -> u32 {
+    if morale < default {
+        morale + (default - morale).div_ceil(MORALE_RECOVERY_STEP)
+    } else {
+        morale - (morale - default).div_ceil(MORALE_RECOVERY_STEP)
+    }
 }
 
 /// The unit's ready elements as a fraction of what its TOE prescribes —
@@ -1338,6 +1360,48 @@ morale = 100
         ));
         // Defeat: 40 - ceil(40/20) = 38, then the rout: 38 - ceil(38/20) = 36.
         assert_eq!(game.state.units["Soviet Division"].elements[0].morale, 36);
+    }
+
+    #[test]
+    fn morale_drifts_toward_the_faction_default_at_turn_start() {
+        // Faction defaults are the unspecified 50; the units start far off it.
+        let units = r#"
+[[units]]
+name = "Axis Division"
+toe = "test_toe"
+faction = "AX"
+location = { x = 1, y = 1 }
+morale = 20
+
+[[units]]
+name = "Soviet Division"
+toe = "test_toe"
+faction = "SU"
+location = { x = 2, y = 1 }
+morale = 90
+"#;
+        let mut game = Game::build(minimal_scenario(TWO_PLAYERS, units)).unwrap();
+
+        // Soviet turn starts: only Soviet morale drifts — down toward 50,
+        // 90 - ceil(40 / 10) = 86.
+        game.end_turn();
+        assert_eq!(game.state.units["Axis Division"].elements[0].morale, 20);
+        assert_eq!(game.state.units["Soviet Division"].elements[0].morale, 86);
+
+        // Axis turn starts: 20 + ceil(30 / 10) = 23; the Soviets keep 86.
+        game.end_turn();
+        assert_eq!(game.state.units["Axis Division"].elements[0].morale, 23);
+        assert_eq!(game.state.units["Soviet Division"].elements[0].morale, 86);
+    }
+
+    #[test]
+    fn morale_at_the_faction_default_stays_put() {
+        // Single player: every end_turn is an Axis turn start. The unit sits
+        // at the faction default (50) already.
+        let mut game = one_unit_game();
+
+        game.end_turn();
+        assert_eq!(game.state.units["1st Test Division"].elements[0].morale, 50);
     }
 
     #[test]
