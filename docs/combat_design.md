@@ -39,9 +39,9 @@ outcome by odds ratio → retreat consequences.
 Scope: an `attack <x1> <y1> <x2> <y2>` command. All units in the source hex
 attack all units in the target hex. Pure resolution engine in
 `src/procedures/combat.rs`; the `Game` layer builds battle snapshots, calls the
-engine, applies losses back, and prints the report. No unit movement yet — a
-"defender retreats" result is reported but not executed (needs
-adjacency/stacking rules first).
+engine, applies losses back, executes retreats, and prints the report. An
+attack order must come from the faction on turn and target an adjacent hex;
+`simulate` is exempt from both gates so tuning can probe any matchup.
 
 ### Snapshot seam (the load-bearing design decision)
 
@@ -241,7 +241,9 @@ feels too high once turns exist, `rate_of_fire`/`accuracy` are the knobs.
    to the turn system (the event hook for shifting faction defaults exists
    on the runtime player).
 3. Attacker advance into the vacated hex after a retreat?
-4. Adjacency requirement for `attack` (arrives with movement rules).
-5. Longer term: swap-in experiment — 2D tactical battlefield with generated
+4. Longer term: swap-in experiment — 2D tactical battlefield with generated
    terrain and LOS (see docs/ideas.md) behind the same snapshot/report
    interface.
+
+Resolved: adjacency requirement for `attack` landed with the turn system
+(Phase 1) — attacks must target an adjacent hex, `simulate` stays unrestricted.

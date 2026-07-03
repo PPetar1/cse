@@ -53,8 +53,10 @@ in `lib.rs`, which parses and dispatches. Commands:
 - `inspect <x> <y>` or `inspect <offmap name>` — show location + units there with
   their element rosters (ready/damaged/morale/experience per element)
 - `units` / `units detail` — list all units
-- `move <x1> <y1> <x2> <y2> <unit_index>` — teleport-style move (no distance/cost checks yet)
-- `attack <x1> <y1> <x2> <y2>` — units at hex 1 attack units at hex 2; prints a battle
+- `move <x1> <y1> <x2> <y2> <unit_index>` — teleport-style move (no distance/cost
+  checks yet); only the on-turn faction's units
+- `attack <x1> <y1> <x2> <y2>` — units at hex 1 attack units at the adjacent hex 2
+  (on-turn faction only; `simulate` is exempt from both gates); prints a battle
   report and persists losses + experience gain; beaten defenders retreat (with
   attrition), rout, shatter, or surrender
 - `simulate <x1> <y1> <x2> <y2> <n>` — fight that attack n times state-untouched,
@@ -176,6 +178,7 @@ feedback, routs/shatters/surrenders, and the `simulate` tuning tool
 
 **Now: Phase 1 — the game loop.** The turn clock is in (`end_turn`, alternating
 players IGO-UGO, real dates advancing by `turn_length`, scenario-selectable
-`TurnSystem`). Remaining: gating move/attack to the on-turn player, adjacency
-checks, MP budgets + terrain costs, attacker advance after retreat, morale
-recovery over time. Combat knob retuning via `simulate` continues alongside.
+`TurnSystem`), and move/attack are gated to the on-turn faction with attacks
+adjacency-checked. Remaining: MP budgets + terrain costs, attacker advance
+after retreat, morale recovery over time. Combat knob retuning via `simulate`
+continues alongside.

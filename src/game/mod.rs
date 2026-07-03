@@ -153,7 +153,9 @@ impl Game {
         self.state.map.get_location(x_end, y_end).ok_or(Error {
                 error_message: "Invalid destination.".to_string(),
         })?;
-       
+
+        let on_turn = self.player_on_turn().faction_tag.clone();
+
         let location_start = UnitLocation::OnMap(LocationCoords { x: x_start, y: y_start });
         let mut units = Vec::new();
         for unit in self.state.units.values_mut() {
@@ -171,6 +173,10 @@ impl Game {
             })
         }
 
+        if units[unit_i].faction != on_turn {
+            return Err(Error::new(format!("It is not {}'s turn.", units[unit_i].faction)));
+        }
+
         units[unit_i].location = UnitLocation::OnMap(LocationCoords { x: x_end, y: y_end });
 
         Ok(())
@@ -185,14 +191,29 @@ impl Game {
         to: (u32, u32),
         rng: &mut impl Rng,
     ) -> Result<AttackReport, Error> {
+        // Order gates live here, not in prepare_battle: `simulate` must stay
+        // free to probe any matchup from any hex, off-turn included.
+        let from_location = self.state.map.get_location(from.0, from.1)
+            .ok_or_else(|| Error::new("Invalid attacking location."))?;
+        let to_location = self.state.map.get_location(to.0, to.1)
+            .ok_or_else(|| Error::new("Invalid target location."))?;
+        if from_location.distance_to(to_location) != Some(1) {
+            return Err(Error::new("Attacks can only target an adjacent hex."));
+        }
+
         let BattlePlan {
             mut attackers,
             mut defenders,
             defender_terrain,
             attacker_names,
             defender_names,
+            attacker_faction,
             defender_faction,
         } = self.prepare_battle(from, to)?;
+
+        if attacker_faction != self.player_on_turn().faction_tag {
+            return Err(Error::new(format!("It is not {attacker_faction}'s turn.")));
+        }
 
         let battle = combat::resolve_battle(&mut attackers, &mut defenders, defender_terrain, rng);
 
@@ -274,6 +295,7 @@ impl Game {
             defender_terrain: to_location.terrain,
             attacker_names: attacker_units.iter().map(|unit| unit.name.clone()).collect(),
             defender_names: defender_units.iter().map(|unit| unit.name.clone()).collect(),
+            attacker_faction,
             defender_faction,
         })
     }
@@ -468,6 +490,7 @@ struct BattlePlan {
     defender_terrain: Terrain,
     attacker_names: Vec<String>,
     defender_names: Vec<String>,
+    attacker_faction: String,
     defender_faction: String,
 }
 
@@ -889,6 +912,60 @@ location = { x = 1, y = 1 }
     }
 
     #[test]
+    fn move_unit_rejects_a_unit_of_the_off_turn_faction() {
+        let mut game = Game::build(minimal_scenario(TWO_PLAYERS, OPPOSING_UNITS)).unwrap();
+
+        // Axis moves first: the Soviet division has to wait for its turn.
+        let error = game.move_unit(2, 1, 3, 1, 0).unwrap_err();
+        assert!(error.error_message.contains("not SU's turn"));
+
+        game.end_turn();
+        game.move_unit(2, 1, 3, 1, 0).unwrap();
+        assert_eq!(
+            game.state.units["Soviet Division"].location,
+            UnitLocation::OnMap(LocationCoords { x: 3, y: 1 }),
+        );
+    }
+
+    #[test]
+    fn attack_rejects_the_off_turn_faction() {
+        let mut game = Game::build(minimal_scenario(TWO_PLAYERS, OPPOSING_UNITS)).unwrap();
+        let mut rng = StdRng::seed_from_u64(42);
+
+        let error = game.attack((2, 1), (1, 1), &mut rng).unwrap_err();
+        assert!(error.error_message.contains("not SU's turn"));
+
+        game.end_turn();
+        game.attack((2, 1), (1, 1), &mut rng).unwrap();
+    }
+
+    #[test]
+    fn attack_rejects_a_non_adjacent_target() {
+        let units = r#"
+[[units]]
+name = "Axis Division"
+toe = "test_toe"
+faction = "AX"
+location = { x = 1, y = 1 }
+
+[[units]]
+name = "Soviet Division"
+toe = "test_toe"
+faction = "SU"
+location = { x = 3, y = 1 }
+"#;
+        let mut game = Game::build(minimal_scenario(TWO_PLAYERS, units)).unwrap();
+        let mut rng = StdRng::seed_from_u64(42);
+
+        let error = game.attack((1, 1), (3, 1), &mut rng).unwrap_err();
+        assert!(error.error_message.contains("adjacent"));
+
+        // The tuning tool is exempt from both the range and the turn gate:
+        // it can probe the reverse matchup while Axis is on turn.
+        game.simulate((3, 1), (1, 1), 5, &mut rng).unwrap();
+    }
+
+    #[test]
     fn units_at_location_returns_empty_for_an_empty_hex() {
         let game = one_unit_game();
 
@@ -1242,7 +1319,9 @@ location = "GE Reserve"
         let mut game = Game::build(minimal_scenario(TWO_PLAYERS, OPPOSING_UNITS)).unwrap();
         let mut rng = StdRng::seed_from_u64(42);
 
-        let error = game.attack((0, 0), (2, 1), &mut rng).unwrap_err();
+        // (3, 1) is adjacent to the target but empty — past the adjacency
+        // gate, the empty stack is the complaint.
+        let error = game.attack((3, 1), (2, 1), &mut rng).unwrap_err();
 
         assert!(error.error_message.contains("No units at the attacking hex"));
     }

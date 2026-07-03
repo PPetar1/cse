@@ -32,8 +32,8 @@ The prompt supports tab completion (command names, and file paths for `new`/`loa
 | `inspect <x> <y>` | inspect the location at (x, y): terrain plus each unit there with its TOE and per-element ready/damaged counts and morale/experience |
 | `inspect <name>` | inspect the offmap location with the given name |
 | `units` | list all units (`units detail` for more detail) |
-| `move <x1> <y1> <x2> <y2> <unit_index>` | move the unit with the given index from the start hex to the destination hex; stacked units are indexed in alphabetical order, matching the order `inspect` lists them |
-| `attack <x1> <y1> <x2> <y2>` | all units at the first hex attack all units at the second hex; prints a battle report (rounds at closing range, losses, final CV odds, outcome). Losses and experience gain persist; beaten defenders retreat to an adjacent free hex with extra attrition — routing if morale breaks, shattering if also badly depleted — or surrender if surrounded. See `docs/combat_design.md` |
+| `move <x1> <y1> <x2> <y2> <unit_index>` | move the unit with the given index from the start hex to the destination hex; only the player on turn can move their units; stacked units are indexed in alphabetical order, matching the order `inspect` lists them |
+| `attack <x1> <y1> <x2> <y2>` | all units at the first hex attack all units at the second (adjacent) hex; only the faction on turn can attack. Prints a battle report (rounds at closing range, losses, final CV odds, outcome). Losses and experience gain persist; beaten defenders retreat to an adjacent free hex with extra attrition — routing if morale breaks, shattering if also badly depleted — or surrender if surrounded. See `docs/combat_design.md` |
 | `simulate <x1> <y1> <x2> <y2> <n>` | fight that attack n times without changing the game and print statistics: hold/retreat rates, average losses, mean final CVs. For balance tuning |
 | `end_turn` | pass control to the next player; once every player has moved, the turn counter and the in-game date advance |
 | `status` | show the scenario name, turn number, date and whose move it is |
