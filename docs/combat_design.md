@@ -165,7 +165,10 @@ needs the map and unit occupancy. On a retreat outcome:
 - **Surrender**: if no valid destination exists, the defenders are cut off and
   surrender — the units are removed from the game.
 
-Attackers stay put; advancing into the vacated hex is an open question.
+- **Advance after combat**: a beaten defender always clears its hex, and the
+  whole attacking stack advances into it automatically, at no MP cost — the
+  battle already paid for the ground (WitE-style). Reported in the attack
+  output.
 
 ### Randomness & testing
 
@@ -240,10 +243,10 @@ feels too high once turns exist, `rate_of_fire`/`accuracy` are the knobs.
    restores them; rest/refit drift back toward the faction default belongs
    to the turn system (the event hook for shifting faction defaults exists
    on the runtime player).
-3. Attacker advance into the vacated hex after a retreat?
-4. Longer term: swap-in experiment — 2D tactical battlefield with generated
+3. Longer term: swap-in experiment — 2D tactical battlefield with generated
    terrain and LOS (see docs/ideas.md) behind the same snapshot/report
    interface.
 
-Resolved: adjacency requirement for `attack` landed with the turn system
-(Phase 1) — attacks must target an adjacent hex, `simulate` stays unrestricted.
+Resolved in Phase 1: adjacency requirement for `attack` (attacks must target
+an adjacent hex, `simulate` stays unrestricted); attacker advance after
+retreat (automatic, free — see Retreat execution above).

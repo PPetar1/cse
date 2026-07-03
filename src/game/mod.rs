@@ -257,6 +257,20 @@ impl Game {
             Vec::new()
         };
 
+        // A beaten defender always clears its hex (retreated, shattered or
+        // surrendered), so the winners advance into it — at no MP cost, the
+        // battle already paid for the ground (WitE-style advance after combat).
+        let advance = if battle.outcome == BattleOutcome::DefenderRetreats {
+            for name in &attacker_names {
+                let unit = self.state.units.get_mut(name)
+                    .expect("attacking unit vanished mid-attack");
+                unit.location = UnitLocation::OnMap(LocationCoords { x: to.0, y: to.1 });
+            }
+            Some(to)
+        } else {
+            None
+        };
+
         // Morale settles last, once routs are known: winners rally, losers
         // sag, routed units sag a second time. Morale is collective — every
         // bucket of a participating unit shifts, fought or not — so it works
@@ -276,7 +290,7 @@ impl Game {
                 }
         }
 
-        Ok(AttackReport { battle, retreat })
+        Ok(AttackReport { battle, retreat, advance })
     }
 
     /// Fight the same attack `runs` times without touching the game state and
@@ -520,12 +534,14 @@ struct BattlePlan {
     defender_faction: String,
 }
 
-/// Everything one attack command did: the battle itself, plus what the losing
-/// defenders had to do afterwards (empty when the defender held).
+/// Everything one attack command did: the battle itself, what the losing
+/// defenders had to do afterwards (empty when the defender held), and the
+/// hex the attackers advanced into (None when the defender held).
 #[derive(Debug)]
 pub struct AttackReport {
     pub battle: BattleReport,
     pub retreat: Vec<UnitRetreat>,
+    pub advance: Option<(u32, u32)>,
 }
 
 #[derive(Debug, PartialEq)]
@@ -540,6 +556,9 @@ impl Display for AttackReport {
         write!(f, "{}", self.battle)?;
         for retreat in &self.retreat {
             write!(f, "\n{}", retreat)?;
+        }
+        if let Some((x, y)) = self.advance {
+            write!(f, "\nAttackers advance into ({}, {})", x, y)?;
         }
         Ok(())
     }
@@ -1093,6 +1112,12 @@ location = { x = 2, y = 1 }
         assert!(!report.battle.rounds.is_empty());
         assert_eq!(report.battle.outcome, BattleOutcome::DefenderHolds);
         assert!(report.retreat.is_empty());
+        // A held hex is not entered.
+        assert_eq!(report.advance, None);
+        assert_eq!(
+            game.state.units["Axis Division"].location,
+            UnitLocation::OnMap(LocationCoords { x: 1, y: 1 }),
+        );
         // The defenders started with 20 ready elements between them; whatever
         // the dice did, the persisted counts must match the report exactly.
         let defenders = [
@@ -1134,6 +1159,23 @@ location = { x = 2, y = 1 }
             game.state.units["Soviet Division"].location,
             UnitLocation::OnMap(LocationCoords { x: to.0, y: to.1 }),
         );
+    }
+
+    #[test]
+    fn attackers_advance_into_the_vacated_hex_for_free() {
+        let mut game = Game::build(minimal_scenario(TWO_PLAYERS, &three_vs_one(100))).unwrap();
+        let mut rng = StdRng::seed_from_u64(42);
+
+        let report = game.attack((1, 1), (2, 1), &mut rng).unwrap();
+
+        assert_eq!(report.battle.outcome, BattleOutcome::DefenderRetreats);
+        assert_eq!(report.advance, Some((2, 1)));
+        for name in ["Axis First", "Axis Second", "Axis Third"] {
+            let unit = &game.state.units[name];
+            assert_eq!(unit.location, UnitLocation::OnMap(LocationCoords { x: 2, y: 1 }));
+            // Advance after combat costs no movement points.
+            assert_eq!(unit.mp_left, 16);
+        }
     }
 
     #[test]
