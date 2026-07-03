@@ -12,67 +12,82 @@ use std::{fs::File, io::{Read, Write}};
 use crate::core::unit::UnitLocation;
 use game::Game;
 
-pub fn run(input: &str, current_game: Option<&mut Game>) -> Result<Option<Game>, Error> {
-    match Command::parse(input)? {
-        Command::New { scenario_path } => Ok(Some(new_game(scenario_path)?)),
-        Command::Load { save_path } => Ok(Some(load_game(save_path)?)),
+pub fn run(input: &str, mut current_game: Option<&mut Game>) -> Result<Option<Game>, Error> {
+    let new_game = match Command::parse(input)? {
+        Command::New { scenario_path } => Some(new_game(scenario_path)?),
+        Command::Load { save_path } => Some(load_game(save_path)?),
         Command::Save { save_path } => {
-            save_game(save_path, require_game(current_game)?)?;
-            Ok(None)
+            save_game(save_path, require_game(current_game.as_deref_mut())?)?;
+            None
         }
         Command::Inspect(target) => {
-            inspect(require_game(current_game)?, &target)?;
-            Ok(None)
+            inspect(require_game(current_game.as_deref_mut())?, &target)?;
+            None
         }
         Command::Units { detail } => {
-            let game = require_game(current_game)?;
+            let game = require_game(current_game.as_deref_mut())?;
             if detail {
                 game.list_units_detail();
             } else {
                 game.list_units();
             }
-            Ok(None)
+            None
         }
         Command::Move { from, to, unit_index } => {
-            require_game(current_game)?.move_unit(from.0, from.1, to.0, to.1, unit_index)?;
-            Ok(None)
+            require_game(current_game.as_deref_mut())?.move_unit(from.0, from.1, to.0, to.1, unit_index)?;
+            None
         }
         Command::Attack { from, to } => {
-            let report = require_game(current_game)?.attack(from, to, &mut rand::rng())?;
+            let report = require_game(current_game.as_deref_mut())?.attack(from, to, &mut rand::rng())?;
             println!("{report}");
-            Ok(None)
+            None
         }
         Command::Simulate { from, to, runs } => {
-            let report = require_game(current_game)?.simulate(from, to, runs, &mut rand::rng())?;
+            let report = require_game(current_game.as_deref_mut())?.simulate(from, to, runs, &mut rand::rng())?;
             println!("{report}");
-            Ok(None)
+            None
         }
         Command::EndTurn => {
-            let game = require_game(current_game)?;
-            game.end_turn();
+            let game = require_game(current_game.as_deref_mut())?;
+            let victory = game.end_turn();
             println!("{}", game.status());
-            Ok(None)
+            if let Some(report) = victory {
+                println!("{report}");
+            }
+            None
         }
         Command::Status => {
-            println!("{}", require_game(current_game)?.status());
-            Ok(None)
+            println!("{}", require_game(current_game.as_deref_mut())?.status());
+            None
+        }
+        Command::Victory => {
+            println!("{}", require_game(current_game.as_deref_mut())?.victory_conditions_summary());
+            None
         }
         Command::View => {
-            view(require_game(current_game)?)?;
-            Ok(None)
+            view(require_game(current_game.as_deref_mut())?)?;
+            None
         }
         Command::Help => {
             println!("{HELP_TEXT}");
-            Ok(None)
+            None
         }
+    };
+
+    // Any open view window watches the snapshot file, so keep it mirroring the
+    // game after every successful command (no-op until `view` has created it).
+    if let Some(game) = new_game.as_ref().or(current_game.as_deref()) {
+        refresh_view(game);
     }
+
+    Ok(new_game)
 }
 
 /// Command keywords, used for terminal tab completion. Keep in sync with
 /// `Command::parse` and HELP_TEXT.
 pub const COMMAND_KEYWORDS: &[&str] = &[
     "new", "load", "save", "inspect", "units", "move", "attack", "simulate", "end_turn", "status",
-    "view", "help", "exit",
+    "victory", "view", "help", "exit",
 ];
 
 const HELP_TEXT: &str = "\
@@ -87,6 +102,7 @@ Commands:
   simulate <x1> <y1> <x2> <y2> <n>    fight that attack n times without applying it, show statistics
   end_turn                            pass control to the next player, advancing turn and date
   status                              show scenario, turn, date and who is to move
+  victory                             show this scenario's victory conditions and who currently holds each objective hex
   view                                open the map window
   help                                show this help
   exit                                quit";
@@ -105,6 +121,7 @@ enum Command<'a> {
     Simulate { from: (u32, u32), to: (u32, u32), runs: u32 },
     EndTurn,
     Status,
+    Victory,
     View,
     Help,
 }
@@ -183,6 +200,7 @@ impl<'a> Command<'a> {
             }
             "end_turn" => Ok(Command::EndTurn),
             "status" => Ok(Command::Status),
+            "victory" => Ok(Command::Victory),
             "view" => Ok(Command::View),
             "help" => Ok(Command::Help),
             _ => Err(Error::new("Unknown command. Type 'help' for a list of commands.")),
@@ -218,6 +236,12 @@ fn inspect(game: &Game, target: &InspectTarget) -> Result<(), Error> {
 }
 
 fn view(game: &Game) -> Result<(), Error> {
+    let snapshot_path = view_snapshot_path();
+    write_view_snapshot(game, &snapshot_path)?;
+    spawn_view_subprocess(&snapshot_path)
+}
+
+fn build_snapshot(game: &Game) -> visualiser::MapSnapshot {
     let hexes = game.state.map.all_locations()
         .into_iter()
         .map(|((x, y), terrain)| visualiser::HexDisplay { x, y, terrain })
@@ -235,7 +259,45 @@ fn view(game: &Game) -> Result<(), Error> {
         })
         .collect();
 
-    spawn_view_subprocess(visualiser::MapSnapshot { hexes, units })
+    let victory_hexes = game.victory_hexes()
+        .into_iter()
+        .map(|hex| visualiser::VictoryHexDisplay { x: hex.x, y: hex.y, points: hex.points, name: hex.name })
+        .collect();
+
+    visualiser::MapSnapshot { hexes, units, victory_hexes }
+}
+
+/// One snapshot file per game session; view windows poll it for changes.
+fn view_snapshot_path() -> std::path::PathBuf {
+    std::env::temp_dir().join(format!("cse_view_{}.snapshot", std::process::id()))
+}
+
+// Written to a temp file first, then renamed into place (atomic on the same
+// filesystem), so a polling view subprocess never reads a half-written snapshot.
+fn write_view_snapshot(game: &Game, path: &std::path::Path) -> Result<(), Error> {
+    let bin: alloc::vec::Vec<u8> = to_allocvec(&build_snapshot(game))?;
+    let tmp_path = path.with_extension("tmp");
+    std::fs::write(&tmp_path, &bin)?;
+    std::fs::rename(&tmp_path, path)?;
+    Ok(())
+}
+
+/// Rewrite the snapshot file if a view has been opened this session. A refresh
+/// failure only warns: the player's command itself already succeeded.
+fn refresh_view(game: &Game) {
+    let snapshot_path = view_snapshot_path();
+    if !snapshot_path.exists() {
+        return;
+    }
+    if let Err(error) = write_view_snapshot(game, &snapshot_path) {
+        eprintln!("Failed to refresh the map view: {}", error.error_message);
+    }
+}
+
+/// Remove this session's snapshot file. Called by the command loop on exit;
+/// any view window still open just keeps showing its last state.
+pub fn cleanup_view() {
+    let _ = std::fs::remove_file(view_snapshot_path());
 }
 
 fn new_game(scenario_path: &str) -> Result<Game, Error> {
@@ -266,22 +328,13 @@ fn save_game(save_path: &str, game: &Game) -> Result<(), Error> {
 
 // winit event loops can only be created once per process, so each `view` runs
 // the visualiser in a fresh subprocess (this binary re-invoked with --view).
-// The snapshot crosses over via a temp file the subprocess deletes after reading.
-fn spawn_view_subprocess(snapshot: visualiser::MapSnapshot) -> Result<(), Error> {
-    let bin: alloc::vec::Vec<u8> = to_allocvec(&snapshot)?;
-
-    let unique = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map(|d| d.as_nanos())
-        .unwrap_or(0);
-    let snapshot_path = std::env::temp_dir().join(format!("cse_view_{}_{}.snapshot", std::process::id(), unique));
-    let mut file = File::create(&snapshot_path)?;
-    file.write_all(&bin)?;
-
+// The snapshot crosses over via a temp file the subprocess keeps polling, so
+// the window follows the game as further commands change the state.
+fn spawn_view_subprocess(snapshot_path: &std::path::Path) -> Result<(), Error> {
     let current_exe = std::env::current_exe()?;
     let mut child = std::process::Command::new(current_exe)
         .arg("--view")
-        .arg(&snapshot_path)
+        .arg(snapshot_path)
         .stdout(std::process::Stdio::null())
         .stderr(std::process::Stdio::null())
         .spawn()?;
@@ -295,13 +348,9 @@ fn spawn_view_subprocess(snapshot: visualiser::MapSnapshot) -> Result<(), Error>
 }
 
 pub fn run_view_subprocess(snapshot_path: &str) -> Result<(), Error> {
-    let mut file = File::open(snapshot_path)?;
-    let mut contents = Vec::new();
-    file.read_to_end(&mut contents)?;
-    let _ = std::fs::remove_file(snapshot_path);
-
+    let contents = std::fs::read(snapshot_path)?;
     let snapshot: visualiser::MapSnapshot = from_bytes(&contents)?;
-    visualiser::launch(snapshot);
+    visualiser::launch(snapshot, snapshot_path.into(), contents);
     Ok(())
 }
 
@@ -433,6 +482,32 @@ mod tests {
     #[test]
     fn parses_a_help_command() {
         assert_eq!(Command::parse("help").unwrap(), Command::Help);
+    }
+
+    #[test]
+    fn parses_a_victory_command() {
+        assert_eq!(Command::parse("victory").unwrap(), Command::Victory);
+    }
+
+    #[test]
+    fn view_snapshot_roundtrips_through_its_file() {
+        let scenario = std::fs::read_to_string(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/scenarios/basic_scenario.scen"
+        ))
+        .unwrap();
+        let game = Game::build(scenario).unwrap();
+        let path = std::env::temp_dir()
+            .join(format!("cse_test_snapshot_{}.snapshot", std::process::id()));
+
+        write_view_snapshot(&game, &path).unwrap();
+        let bytes = std::fs::read(&path).unwrap();
+        let _ = std::fs::remove_file(&path);
+
+        let snapshot: visualiser::MapSnapshot = from_bytes(&bytes).unwrap();
+        assert!(!snapshot.hexes.is_empty());
+        // Only on-map units are drawn; the basic scenario has some.
+        assert!(!snapshot.units.is_empty());
     }
 
     #[test]

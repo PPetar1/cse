@@ -54,6 +54,9 @@ fn main() {
             Err(error) => println!("{}", error.error_message),
         }
     }
+
+    // Stop feeding any open view windows; they keep showing their last state.
+    cse::cleanup_view();
 }
 
 /// Tab completion: command keywords for the first word, file paths for the

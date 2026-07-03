@@ -17,6 +17,10 @@ pub struct State {
     pub units: HashMap<String, Unit>,
     pub toe: HashMap<String, Toe>,
     pub elements: HashMap<String, Element>,
+    /// Total element instances (ready + damaged, onmap and offmap) each
+    /// faction fielded at scenario start — the baseline victory scoring
+    /// measures losses against.
+    pub starting_strength: HashMap<String, u32>,
 }
 
 impl State {
@@ -105,12 +109,19 @@ impl State {
             });
         }
 
+        let mut starting_strength = HashMap::new();
+        for unit in units.values() {
+            let strength: u32 = unit.elements.iter().map(|e| e.ready + e.damaged).sum();
+            *starting_strength.entry(unit.faction.clone()).or_insert(0) += strength;
+        }
+
         Ok(State {
             map,
             terrain_costs: TerrainCosts::new(scenario.terrain_costs),
             units,
             toe,
             elements,
+            starting_strength,
         })
     }
 

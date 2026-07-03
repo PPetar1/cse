@@ -1,6 +1,6 @@
 name = "basic_map"
-width = 5
-height = 5
+width = 10
+height = 8
 
 [[locations]]
 x = 0
@@ -146,6 +146,187 @@ terrain = "Plains"
 x = 5
 y = 5
 terrain = "Plains"
+
+# Eastward extension (x = 6-9): a hills ridge and forest patch guard the
+# approach to the Urban objective at (9, 2).
+[[locations]]
+x = 6
+y = 0
+terrain = "Water"
+[[locations]]
+x = 6
+y = 1
+terrain = "Plains"
+[[locations]]
+x = 6
+y = 2
+terrain = "Plains"
+[[locations]]
+x = 6
+y = 3
+terrain = "Plains"
+[[locations]]
+x = 6
+y = 4
+terrain = "Plains"
+[[locations]]
+x = 6
+y = 5
+terrain = "Plains"
+[[locations]]
+x = 6
+y = 6
+terrain = "Plains"
+[[locations]]
+x = 6
+y = 7
+terrain = "Mountain"
+[[locations]]
+x = 7
+y = 0
+terrain = "Plains"
+[[locations]]
+x = 7
+y = 1
+terrain = "Hills"
+[[locations]]
+x = 7
+y = 2
+terrain = "Hills"
+[[locations]]
+x = 7
+y = 3
+terrain = "Hills"
+[[locations]]
+x = 7
+y = 4
+terrain = "Plains"
+[[locations]]
+x = 7
+y = 5
+terrain = "Plains"
+[[locations]]
+x = 7
+y = 6
+terrain = "Plains"
+[[locations]]
+x = 7
+y = 7
+terrain = "Plains"
+[[locations]]
+x = 8
+y = 0
+terrain = "Plains"
+[[locations]]
+x = 8
+y = 1
+terrain = "Hills"
+[[locations]]
+x = 8
+y = 2
+terrain = "Plains"
+[[locations]]
+x = 8
+y = 3
+terrain = "Forest"
+[[locations]]
+x = 8
+y = 4
+terrain = "Forest"
+[[locations]]
+x = 8
+y = 5
+terrain = "Plains"
+[[locations]]
+x = 8
+y = 6
+terrain = "Plains"
+[[locations]]
+x = 8
+y = 7
+terrain = "Plains"
+[[locations]]
+x = 9
+y = 0
+terrain = "Plains"
+[[locations]]
+x = 9
+y = 1
+terrain = "Plains"
+[[locations]]
+x = 9
+y = 2
+terrain = "Urban"
+[[locations]]
+x = 9
+y = 3
+terrain = "Plains"
+[[locations]]
+x = 9
+y = 4
+terrain = "Forest"
+[[locations]]
+x = 9
+y = 5
+terrain = "Plains"
+[[locations]]
+x = 9
+y = 6
+terrain = "Plains"
+[[locations]]
+x = 9
+y = 7
+terrain = "Plains"
+
+# Southward extension (y = 6-7): a swampy river bend and a mountain gap.
+[[locations]]
+x = 0
+y = 6
+terrain = "Plains"
+[[locations]]
+x = 0
+y = 7
+terrain = "Plains"
+[[locations]]
+x = 1
+y = 6
+terrain = "Plains"
+[[locations]]
+x = 1
+y = 7
+terrain = "Plains"
+[[locations]]
+x = 2
+y = 6
+terrain = "Swamp"
+[[locations]]
+x = 2
+y = 7
+terrain = "Swamp"
+[[locations]]
+x = 3
+y = 6
+terrain = "Swamp"
+[[locations]]
+x = 3
+y = 7
+terrain = "Plains"
+[[locations]]
+x = 4
+y = 6
+terrain = "Plains"
+[[locations]]
+x = 4
+y = 7
+terrain = "Plains"
+[[locations]]
+x = 5
+y = 6
+terrain = "Plains"
+[[locations]]
+x = 5
+y = 7
+terrain = "Mountain"
 
 [[offmap_locations]]
 name = "SU Reserve"

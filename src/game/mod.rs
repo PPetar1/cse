@@ -49,6 +49,7 @@ pub struct Game {
     /// whenever a full turn (every player moved) completes.
     date: Date,
     turn_length: u32,
+    victory_conditions: VictoryConditions,
 }
 
 impl Game {
@@ -68,8 +69,17 @@ impl Game {
        let turn_system = scenario.turn_system;
        let date = scenario.start_date;
        let turn_length = scenario.turn_length;
+       let victory_conditions = scenario.victory_conditions.clone();
 
        let state = State::build(scenario)?;
+
+       for hex in &victory_conditions.hexes {
+           if state.map.get_location(hex.x, hex.y).is_none() {
+               return Err(Error::new(format!(
+                   "Victory hex ({}, {}) is not on the map.", hex.x, hex.y,
+               )));
+           }
+       }
 
        let game = Game {
            state,
@@ -80,6 +90,7 @@ impl Game {
            phase: TurnPhase { player_on_turn: 0 },
            date,
            turn_length,
+           victory_conditions,
        };
 
        Ok(game)
@@ -88,8 +99,10 @@ impl Game {
     /// End the current player's turn. Under IGO-UGO control passes to the
     /// next player; once every player has moved, the turn counter and the
     /// game date advance. Turn-start effects for the faction coming on turn
-    /// (MP reset, morale recovery) hook in here as they land.
-    pub fn end_turn(&mut self) {
+    /// (MP reset, morale recovery) hook in here as they land. Returns the
+    /// final score once the scenario's `last_turn` has just been completed.
+    pub fn end_turn(&mut self) -> Option<VictoryReport> {
+        let mut victory = None;
         match self.turn_system {
             TurnSystem::IgoUgo => {
                 self.phase.player_on_turn += 1;
@@ -97,10 +110,71 @@ impl Game {
                     self.phase.player_on_turn = 0;
                     self.turn += 1;
                     self.date += time::Duration::days(self.turn_length.into());
+                    if self.victory_conditions.last_turn.is_some_and(|last| self.turn > last) {
+                        victory = Some(self.score_victory());
+                    }
                 }
                 self.begin_turn();
             }
         }
+        victory
+    }
+
+    /// Tally each faction's score: points for victory hexes it holds, points
+    /// for the enemy strength it destroyed, minus a penalty for its own
+    /// losses — all measured against `State::starting_strength`.
+    fn score_victory(&self) -> VictoryReport {
+        let scores = self.players.iter().map(|player| {
+            let faction = &player.faction_tag;
+
+            let hex_points: f32 = self.victory_conditions.hexes.iter()
+                .filter(|hex| self.controlling_faction(hex.x, hex.y).as_deref() == Some(faction.as_str()))
+                .map(|hex| hex.points)
+                .sum();
+
+            let destruction_points: f32 = self.players.iter()
+                .filter(|other| other.faction_tag != *faction)
+                .map(|other| {
+                    self.percent_destroyed(&other.faction_tag)
+                        * self.victory_conditions.points_per_percent_enemy_destroyed
+                })
+                .sum();
+
+            let loss_penalty = self.percent_destroyed(faction)
+                * self.victory_conditions.points_per_percent_own_lost;
+
+            FactionScore {
+                faction_name: player.faction_name.clone(),
+                hex_points,
+                destruction_points,
+                loss_penalty,
+                total: hex_points + destruction_points - loss_penalty,
+            }
+        }).collect();
+
+        VictoryReport { scores }
+    }
+
+    /// The faction currently holding a hex — the units there, if any (mixed
+    /// stacks don't occur: enemy-occupied hexes can't be moved or attacked
+    /// into without clearing the defenders first).
+    fn controlling_faction(&self, x: u32, y: u32) -> Option<String> {
+        let location = self.state.map.get_location(x, y)?;
+        Some(self.units_at_location(location).first()?.faction.clone())
+    }
+
+    /// Percent of a faction's starting element strength (ready + damaged)
+    /// that is now gone — destroyed, shattered or surrendered.
+    fn percent_destroyed(&self, faction: &str) -> f32 {
+        let starting = *self.state.starting_strength.get(faction).unwrap_or(&0) as f32;
+        if starting == 0.0 {
+            return 0.0;
+        }
+        let current: u32 = self.state.units.values()
+            .filter(|unit| unit.faction == faction)
+            .map(|unit| unit.elements.iter().map(|e| e.ready + e.damaged).sum::<u32>())
+            .sum();
+        ((starting - current as f32) / starting * 100.0).max(0.0)
     }
 
     /// Turn-start effects for the faction coming on turn: a fresh movement
@@ -118,6 +192,48 @@ impl Game {
                 }
             }
         }
+    }
+
+    /// Human-readable rundown of the scenario's victory conditions: the last
+    /// turn, each objective hex with its current controller, and the
+    /// destruction/loss point multipliers. Backs the `victory` command,
+    /// since a scenario's win conditions are otherwise invisible in play.
+    pub fn victory_conditions_summary(&self) -> String {
+        let mut out = String::new();
+        match self.victory_conditions.last_turn {
+            Some(last) => out.push_str(&format!("Scenario ends after turn {last}.\n")),
+            None => out.push_str("This scenario has no automatic end turn.\n"),
+        }
+        if self.victory_conditions.hexes.is_empty() {
+            out.push_str("No objective hexes.\n");
+        } else {
+            out.push_str("Objective hexes:\n");
+            for hex in &self.victory_conditions.hexes {
+                let label = hex.name.as_deref().unwrap_or("(unnamed)");
+                let holder = self.controlling_faction(hex.x, hex.y)
+                    .unwrap_or_else(|| "nobody".to_string());
+                out.push_str(&format!(
+                    "  ({}, {}) {}: {:.0} points — held by {}\n",
+                    hex.x, hex.y, label, hex.points, holder,
+                ));
+            }
+        }
+        out.push_str(&format!(
+            "Enemy destruction: {:.1} pts per % of enemy strength destroyed.\n",
+            self.victory_conditions.points_per_percent_enemy_destroyed,
+        ));
+        out.push_str(&format!(
+            "Own losses: -{:.1} pts per % of own strength lost.",
+            self.victory_conditions.points_per_percent_own_lost,
+        ));
+        out
+    }
+
+    /// Objective hexes for map-view display: coordinates, points and name.
+    pub fn victory_hexes(&self) -> Vec<VictoryHexInfo> {
+        self.victory_conditions.hexes.iter()
+            .map(|hex| VictoryHexInfo { x: hex.x, y: hex.y, points: hex.points, name: hex.name.clone() })
+            .collect()
     }
 
     /// One-line summary of where the game clock stands.
@@ -672,10 +788,104 @@ pub struct Scenario {
     pub players: Vec<Player>,
 
     pub toe: Vec<Toe>,
-    
+
     pub elements: Vec<Element>,
 
     pub units: Vec<UnitConfig>,
+
+    /// `[victory_conditions]` — optional; a scenario with none never scores
+    /// or ends on its own.
+    #[serde(default)]
+    victory_conditions: VictoryConditions,
+}
+
+/// How a scenario is won: flat points for holding named hexes at the end,
+/// plus points for enemy strength destroyed and a penalty for strength lost
+/// (both measured against `State::starting_strength`). `last_turn` is the
+/// last turn played; the score is tallied and the scenario ends right after.
+#[derive(Debug, Clone, Default, serde::Deserialize, serde::Serialize)]
+struct VictoryConditions {
+    #[serde(default)]
+    last_turn: Option<u32>,
+    #[serde(default)]
+    hexes: Vec<VictoryHex>,
+    #[serde(default)]
+    points_per_percent_enemy_destroyed: f32,
+    #[serde(default)]
+    points_per_percent_own_lost: f32,
+}
+
+#[derive(Debug, Clone, serde::Deserialize, serde::Serialize)]
+struct VictoryHex {
+    x: u32,
+    y: u32,
+    points: f32,
+    #[serde(default)]
+    #[allow(dead_code)]
+    name: Option<String>,
+}
+
+/// One objective hex, for display outside the game module (the `victory`
+/// command's text and the map view's flag markers) — decoupled from the
+/// scenario-parsed `VictoryHex` the same way `MapSnapshot` is decoupled from
+/// `State`.
+#[derive(Debug, Clone)]
+pub struct VictoryHexInfo {
+    pub x: u32,
+    pub y: u32,
+    pub points: f32,
+    pub name: Option<String>,
+}
+
+/// One faction's tally at scenario end.
+#[derive(Debug)]
+pub struct FactionScore {
+    pub faction_name: String,
+    pub hex_points: f32,
+    pub destruction_points: f32,
+    pub loss_penalty: f32,
+    pub total: f32,
+}
+
+/// The final scores for every faction once a scenario's `last_turn` completes.
+#[derive(Debug)]
+pub struct VictoryReport {
+    pub scores: Vec<FactionScore>,
+}
+
+impl VictoryReport {
+    /// The sole highest-scoring faction, or None on a tie (a draw).
+    pub fn winner(&self) -> Option<&str> {
+        let best = self.scores.iter()
+            .map(|score| score.total)
+            .fold(f32::NEG_INFINITY, f32::max);
+        let mut leaders = self.scores.iter().filter(|score| score.total == best);
+        let winner = leaders.next()?;
+        match leaders.next() {
+            None => Some(winner.faction_name.as_str()),
+            Some(_) => None,
+        }
+    }
+}
+
+impl Display for VictoryReport {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        writeln!(f, "=== Scenario over: final scores ===")?;
+        for score in &self.scores {
+            // Empty-iterator sums can land on -0.0 (IEEE 754, harmless but
+            // ugly to print); +0.0 normalizes the sign for display.
+            writeln!(
+                f,
+                "{}: {:.1} pts (hexes {:.1}, enemy destroyed {:.1}, own losses {:.1})",
+                score.faction_name, score.total + 0.0, score.hex_points + 0.0,
+                score.destruction_points + 0.0, -score.loss_penalty + 0.0,
+            )?;
+        }
+        match self.winner() {
+            Some(name) => write!(f, "{name} wins!"),
+            None => write!(f, "The scenario ends in a draw."),
+        }
+    }
 }
 
 #[derive(serde::Deserialize)]
@@ -1703,6 +1913,113 @@ location = { x = 2, y = 1 }
     }
 
     #[test]
+    fn end_turn_never_scores_without_a_last_turn() {
+        let mut game = Game::build(minimal_scenario(TWO_PLAYERS, OPPOSING_UNITS)).unwrap();
+
+        assert!(game.end_turn().is_none());
+        assert!(game.end_turn().is_none());
+        assert!(game.end_turn().is_none());
+        assert!(game.end_turn().is_none());
+    }
+
+    #[test]
+    fn victory_score_awards_points_for_controlled_hexes() {
+        let victory_conditions = r#"
+[victory_conditions]
+last_turn = 1
+
+[[victory_conditions.hexes]]
+x = 1
+y = 1
+points = 10
+
+[[victory_conditions.hexes]]
+x = 2
+y = 1
+points = 20
+"#;
+        let units = format!("{OPPOSING_UNITS}\n{victory_conditions}");
+        let mut game = Game::build(minimal_scenario(TWO_PLAYERS, &units)).unwrap();
+
+        // Turn 1 is not over yet: no score.
+        assert!(game.end_turn().is_none());
+        // Every player has now moved in turn 1: last_turn is complete.
+        let report = game.end_turn().unwrap();
+
+        let axis = report.scores.iter().find(|s| s.faction_name == "Axis").unwrap();
+        assert_eq!(axis.hex_points, 10.0);
+        let soviet = report.scores.iter().find(|s| s.faction_name == "Soviet Union").unwrap();
+        assert_eq!(soviet.hex_points, 20.0);
+        assert_eq!(report.winner(), Some("Soviet Union"));
+    }
+
+    #[test]
+    fn victory_score_rewards_enemy_destruction_and_penalizes_own_losses() {
+        let victory_conditions = r#"
+[victory_conditions]
+last_turn = 1
+points_per_percent_enemy_destroyed = 2.0
+points_per_percent_own_lost = 1.0
+"#;
+        let units = format!("{OPPOSING_UNITS}\n{victory_conditions}");
+        let mut game = Game::build(minimal_scenario(TWO_PLAYERS, &units)).unwrap();
+        // The Soviet division starts with 10 ready test_element instances;
+        // half of them are gone.
+        game.state.units.get_mut("Soviet Division").unwrap().elements[0].ready = 5;
+
+        game.end_turn();
+        let report = game.end_turn().unwrap();
+
+        let axis = report.scores.iter().find(|s| s.faction_name == "Axis").unwrap();
+        // 50% of the Soviets destroyed, times the 2.0 multiplier.
+        assert_eq!(axis.destruction_points, 100.0);
+        assert_eq!(axis.loss_penalty, 0.0);
+        assert_eq!(axis.total, 100.0);
+
+        let soviet = report.scores.iter().find(|s| s.faction_name == "Soviet Union").unwrap();
+        assert_eq!(soviet.destruction_points, 0.0);
+        // 50% of their own strength lost, times the 1.0 penalty multiplier.
+        assert_eq!(soviet.loss_penalty, 50.0);
+        assert_eq!(soviet.total, -50.0);
+
+        assert_eq!(report.winner(), Some("Axis"));
+    }
+
+    #[test]
+    fn a_tied_score_is_a_draw() {
+        let victory_conditions = "\n[victory_conditions]\nlast_turn = 1\n";
+        let units = format!("{OPPOSING_UNITS}\n{victory_conditions}");
+        let mut game = Game::build(minimal_scenario(TWO_PLAYERS, &units)).unwrap();
+
+        game.end_turn();
+        let report = game.end_turn().unwrap();
+
+        assert_eq!(report.winner(), None);
+    }
+
+    #[test]
+    fn rejects_a_victory_hex_outside_the_map() {
+        let units = r#"
+[[units]]
+name = "1st Test Division"
+toe = "test_toe"
+faction = "AX"
+location = { x = 1, y = 1 }
+
+[victory_conditions]
+last_turn = 5
+
+[[victory_conditions.hexes]]
+x = 999
+y = 999
+points = 10
+"#;
+        let error = Game::build(minimal_scenario(ONE_PLAYER, units)).unwrap_err();
+
+        assert!(error.error_message.contains("not on the map"));
+    }
+
+    #[test]
     fn builds_the_real_basic_scenario() {
         let contents = std::fs::read_to_string(
             concat!(env!("CARGO_MANIFEST_DIR"), "/scenarios/basic_scenario.scen"),
@@ -1710,7 +2027,7 @@ location = { x = 2, y = 1 }
         let game = Game::build(contents).unwrap();
 
         assert_eq!(game.players.len(), 2);
-        assert_eq!(game.state.units.len(), 3);
+        assert_eq!(game.state.units.len(), 8);
         // Guards the TOE/element referential integrity of the shipped scenario.
         assert!(game.state.elements.contains_key("SU_45mm_at_gun"));
         // Morale/experience inheritance: the 101st takes the Soviet faction

@@ -79,7 +79,9 @@ in `lib.rs`, which parses and dispatches. Commands:
   refill + morale drift toward the faction default
 - `status` — scenario name, turn, date, faction to move
 - `view` — open the Bevy map window in a detached subprocess (terminal stays usable;
-  Esc closes the window; can be called repeatedly)
+  Esc closes the window; can be called repeatedly); the window auto-updates as
+  commands change the game (it polls the session's snapshot file, which `run`
+  rewrites after every successful command)
 - `help` — print the command list (HELP_TEXT in lib.rs)
 - `exit`
 
@@ -105,7 +107,8 @@ src/
   main.rs        — rustyline prompt loop (tab completion via COMMAND_KEYWORDS +
                    FilenameCompleter, history) + `--view <snapshot>` subprocess entry
   lib.rs         — command parsing/dispatch, save/load, view subprocess
-                   spawning (spawn_view_subprocess/run_view_subprocess), Error type
+                   spawning (spawn_view_subprocess/run_view_subprocess) + live
+                   snapshot refresh (refresh_view/write_view_snapshot), Error type
   game/mod.rs    — Game (state + players + turn/phase/date + TurnSystem), Scenario TOML
                    schema, end_turn/status, move_unit, attack (builds combat snapshots,
                    applies losses back, executes retreats/surrenders — destination +
@@ -155,6 +158,22 @@ Key data model (all TOML-configurable, see `scenarios/basic_scenario.scen`):
 - **Turn system** — scenario-selectable via `turn_system = "IgoUgo"` (optional,
   the default). Only IGO-UGO exists; the matches on `TurnSystem` are the seam
   where a future WEGO mode (order queue, simultaneous resolution) plugs in
+- **Victory conditions** — the scenario's optional `[victory_conditions]` table:
+  `last_turn` (the last turn played; absent = the scenario never scores itself),
+  `[[victory_conditions.hexes]]` (x, y, points, optional name — flat points to
+  whoever holds the hex when scoring happens), `points_per_percent_enemy_destroyed`
+  / `points_per_percent_own_lost` (multipliers on % of starting element strength
+  gone, per faction). `State::build` computes `starting_strength` (ready +
+  damaged elements per faction, onmap and offmap, at scenario load) as the
+  baseline destruction/loss percentages are measured against; hex coordinates
+  are validated against the map at load time. `Game::end_turn` returns
+  `Some(VictoryReport)` the moment `last_turn` is completed, and `run` prints
+  it (scores per faction, then the winner or a draw on a tie) — nothing yet
+  stops further commands afterward, so this is scoring/reporting only, not a
+  hard game-over gate. The `victory` command (`Game::victory_conditions_summary`)
+  shows the same conditions and each objective hex's current holder at any
+  time; `Game::victory_hexes` feeds the hexes to the map view as flag markers
+  (see visualiser gotcha below)
 
 Conventions used throughout:
 - Hex coords: offset coordinates, `OffsetHexMode::Even`, `HexOrientation::Pointy`
@@ -174,10 +193,17 @@ Conventions used throughout:
   as `HexVec2` for `HexLayout`; positions cross into Bevy as plain f32 x/y. Keep any
   new hexx↔bevy math on this pattern (or unify versions when upgrading).
 - **winit event loops can only be created once per process**, so `view` re-invokes
-  the binary as `cse --view <snapshot-file>` (postcard temp file, deleted by the
-  child after reading; child stdout/stderr nulled; a reaper thread `wait()`s the
-  child to avoid zombies). Never call `visualiser::launch` directly from the
-  command loop — a second call would crash the process.
+  the binary as `cse --view <snapshot-file>` (child stdout/stderr nulled; a reaper
+  thread `wait()`s the child to avoid zombies). Never call `visualiser::launch`
+  directly from the command loop — a second call would crash the process.
+- **The view snapshot file is a live channel**, not a one-shot handoff: one postcard
+  file per game session (`cse_view_<pid>.snapshot` in the temp dir), created by
+  `view`, rewritten by `run` after every successful command (write-to-.tmp +
+  rename so the child never sees a partial file), polled twice a second by the
+  view window (byte-compare, then despawn/respawn all `MapEntity` entities),
+  deleted by `main` on exit — the child must never delete it itself, but a
+  missing/unreadable file is its cue to close (`reload_on_change` sends
+  `AppExit`), so the view window doesn't outlive the process that opened it.
 - `.map`/`.scen`/`.sav` are all project file formats: TOML, TOML, postcard binary.
 - **`#[serde(untagged)]` breaks postcard** (it needs self-describing formats), so
   TOML-facing config types (`UnitLocationConfig`) are separate from runtime types
@@ -202,8 +228,14 @@ clock (`end_turn`/`status`, IGO-UGO, real dates, scenario-selectable
 attacks, MP budgets with terrain costs, attacker advance after retreat, and
 turn-start morale recovery.
 
-**Now: Phase 2 — the first winnable scenario.** Victory conditions (hold these
-hexes by turn N), scheduled reinforcements/withdrawals from offmap boxes, first
-scenario events, and a small historical scenario at division scale. Landmark:
-win — or lose — a game of CSE. Combat knob retuning via `simulate` continues
-alongside.
+**Now: Phase 2 — the first winnable scenario.** Victory conditions are done:
+objective hexes with flat points, plus points for enemy strength destroyed and
+a penalty for strength lost, scored at a scenario's `last_turn` (`end_turn`
+prints the result); the `victory` command shows the conditions and current
+hex holders at any time, and the map view flags objective hexes with their
+point value. `basic_scenario.scen` carries a `[victory_conditions]` table and
+8 units (up from 3) spread across a larger map (10x8, up from 6x6) — untuned,
+for exercising the new mechanics. Still open: scheduled reinforcements/
+withdrawals from offmap boxes and first scenario events.
+Landmark: win — or lose — a game of CSE. Combat knob retuning via `simulate`
+continues alongside.

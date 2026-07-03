@@ -186,10 +186,44 @@ name = "SU_122mm_howitzer_M1938"
 experience = 55
 
 [[units]]
+name = "102nd Infantry division"
+toe = "SU_inf_div_41a"
+faction = "SU"
+location = { x = 6, y = 3 }
+
+[[units]]
+name = "103rd Infantry division"
+toe = "SU_inf_div_41a"
+faction = "SU"
+location = { x = 8, y = 5 }
+
+[[units]]
+name = "104th Infantry division"
+toe = "SU_inf_div_41a"
+faction = "SU"
+location = "SU Reserve"
+
+[[units]]
 name = "4th Panzer Division"
 toe = "GE_pz_div_41"
 faction = "AX"
 location = { x = 3, y = 4 }
+morale = 80
+experience = 70
+
+[[units]]
+name = "5th Panzer Division"
+toe = "GE_pz_div_41"
+faction = "AX"
+location = { x = 2, y = 4 }
+morale = 80
+experience = 70
+
+[[units]]
+name = "6th Panzer Division"
+toe = "GE_pz_div_41"
+faction = "AX"
+location = { x = 4, y = 6 }
 morale = 80
 experience = 70
 
@@ -202,5 +236,30 @@ morale = 80
 experience = 70
 
 #[events]
-#[victory_conditions]
+
+# Win by holding the objective hexes at turn's end, by grinding down the
+# enemy, or both; losing your own force costs points too. Testing values,
+# not balanced.
+[victory_conditions]
+last_turn = 10
+points_per_percent_enemy_destroyed = 1.0
+points_per_percent_own_lost = 0.5
+
+[[victory_conditions.hexes]]
+x = 3
+y = 3
+name = "Central crossroads"
+points = 30
+
+[[victory_conditions.hexes]]
+x = 9
+y = 2
+name = "City of Ostrov"
+points = 50
+
+[[victory_conditions.hexes]]
+x = 0
+y = 0
+name = "Northern depot"
+points = 20
 
