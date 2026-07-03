@@ -96,6 +96,9 @@ impl State {
                 toe: unit.toe,
                 faction: unit.faction,
                 location: unit.location.into(),
+                // Everyone starts turn 1 with a full budget; end_turn refills
+                // it whenever the owning faction comes on turn.
+                mp_left: unit_toe.mp,
                 elements,
             });
         }
@@ -128,6 +131,7 @@ turn_length = 7
 [[toe]]
 name = "test_toe"
 size = "Division"
+mp = 16
 start_date = "1941-01-01"
 end_date = "1941-08-01"
 {toe_elements}

@@ -8,6 +8,9 @@ pub struct Unit {
     pub toe: String,
     pub faction: String,
     pub location: UnitLocation,
+    /// Movement points left this turn; refilled to the TOE's `mp` when the
+    /// unit's faction comes on turn.
+    pub mp_left: u32,
     pub elements: Vec<ElementInUnit>,
 }
 
@@ -38,7 +41,8 @@ impl Display for Unit {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match &self.location {
             UnitLocation::OnMap(coords) => {
-                write!(f, "{}\nFaction: {}\nLocation: ({}, {})", self.name, self.faction, coords.x, coords.y)
+                write!(f, "{}\nFaction: {}\nLocation: ({}, {})\nMovement points: {}",
+                    self.name, self.faction, coords.x, coords.y, self.mp_left)
             }
             UnitLocation::Offmap(name) => {
                 write!(f, "{}\nFaction: {}\nLocation: {}(offmap)", self.name, self.faction, name)
@@ -76,6 +80,9 @@ pub struct ElementInUnit {
 pub struct Toe {
     pub name: String,
     pub size: Size,
+    /// Movement points per turn for units on this TOE — leg formations low,
+    /// motorized/armored high (era data, not code).
+    pub mp: u32,
     pub start_date: Date,
     pub end_date: Date,
     pub elements: Vec<ElementInToe>,// Tuple holds the name of the element in question,
@@ -163,6 +170,7 @@ mod tests {
             toe: "test_toe".to_string(),
             faction: "AX".to_string(),
             location: UnitLocation::Offmap("irrelevant".to_string()),
+            mp_left: 0,
             elements,
         }
     }

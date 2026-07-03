@@ -18,9 +18,11 @@ faction_tag = "SU"
 morale = 45
 experience = 35
 
+# mp: movement points per turn — leg formations low, motorized/armored high.
 [[toe]]
 name = "SU_inf_div_41a"
 size = "Division"
+mp = 16
 start_date = "1941-01-01"
 end_date = "1941-08-01"
 [[toe.elements]]
@@ -36,6 +38,7 @@ amount = 20
 [[toe]]
 name = "GE_pz_div_41"
 size = "Division"
+mp = 30
 start_date = "1941-01-01"
 end_date = "1941-10-01"
 [[toe.elements]]

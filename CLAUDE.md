@@ -53,8 +53,9 @@ in `lib.rs`, which parses and dispatches. Commands:
 - `inspect <x> <y>` or `inspect <offmap name>` — show location + units there with
   their element rosters (ready/damaged/morale/experience per element)
 - `units` / `units detail` — list all units
-- `move <x1> <y1> <x2> <y2> <unit_index>` — teleport-style move (no distance/cost
-  checks yet); only the on-turn faction's units
+- `move <x1> <y1> <x2> <y2> <unit_index>` — single-hex move to an adjacent hex;
+  costs MP per destination terrain (`Terrain::movement_cost`, Water impassable);
+  only the on-turn faction's units
 - `attack <x1> <y1> <x2> <y2>` — units at hex 1 attack units at the adjacent hex 2
   (on-turn faction only; `simulate` is exempt from both gates); prints a battle
   report and persists losses + experience gain; beaten defenders retreat (with
@@ -116,6 +117,9 @@ Key data model (all TOML-configurable, see `scenarios/basic_scenario.scen`):
   `soft_attack`/`hard_attack` (hit effect vs unarmored/armored — targets are engaged
   with the value matching their hardness, per `ElementClass::is_armored`)
 - **TOE** — table of equipment: named list of (element, amount), with validity dates
+  and `mp` — the per-turn movement budget of units on this TOE. The runtime
+  `Unit.mp_left` counts it down; `Game::begin_turn` refills it (and hosts all
+  future turn-start effects) when the owning faction comes on turn
 - **Unit** — a division etc.: points at a TOE by name; holds live `ElementInUnit`
   buckets (`ready`/`damaged` counts plus per-element `morale`/`experience`);
   location is the `UnitLocation` enum (`OnMap(coords)` / `Offmap(name)`);
@@ -178,7 +182,8 @@ feedback, routs/shatters/surrenders, and the `simulate` tuning tool
 
 **Now: Phase 1 — the game loop.** The turn clock is in (`end_turn`, alternating
 players IGO-UGO, real dates advancing by `turn_length`, scenario-selectable
-`TurnSystem`), and move/attack are gated to the on-turn faction with attacks
-adjacency-checked. Remaining: MP budgets + terrain costs, attacker advance
-after retreat, morale recovery over time. Combat knob retuning via `simulate`
+`TurnSystem`), move/attack are gated to the on-turn faction with attacks
+adjacency-checked, and movement is real: single-hex moves, terrain entry costs,
+TOE MP budgets refilled at turn start. Remaining: attacker advance after
+retreat, morale recovery over time. Combat knob retuning via `simulate`
 continues alongside.

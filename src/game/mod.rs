@@ -92,6 +92,18 @@ impl Game {
                     self.turn += 1;
                     self.date += time::Duration::days(self.turn_length.into());
                 }
+                self.begin_turn();
+            }
+        }
+    }
+
+    /// Turn-start effects for the faction coming on turn: a fresh movement
+    /// budget from the TOE. (Morale recovery joins here.)
+    fn begin_turn(&mut self) {
+        let faction = self.player_on_turn().faction_tag.clone();
+        for unit in self.state.units.values_mut() {
+            if unit.faction == faction {
+                unit.mp_left = self.state.toe.get(&unit.toe).expect("unit's toe vanished").mp;
             }
         }
     }
@@ -147,12 +159,18 @@ impl Game {
     }
 
     pub fn move_unit(&mut self, x_start: u32, y_start: u32, x_end: u32, y_end: u32, unit_i: usize) -> Result<(), Error> {
-        self.state.map.get_location(x_start, y_start).ok_or(Error {
+        let start = self.state.map.get_location(x_start, y_start).ok_or(Error {
             error_message: "Invalid starting location.".to_string(),
         })?;
-        self.state.map.get_location(x_end, y_end).ok_or(Error {
+        let destination = self.state.map.get_location(x_end, y_end).ok_or(Error {
                 error_message: "Invalid destination.".to_string(),
         })?;
+        if start.distance_to(destination) != Some(1) {
+            return Err(Error::new("Units move one hex at a time, to an adjacent hex."));
+        }
+        let terrain = destination.terrain;
+        let cost = terrain.movement_cost()
+            .ok_or_else(|| Error::new(format!("{terrain:?} is impassable.")))?;
 
         let on_turn = self.player_on_turn().faction_tag.clone();
 
@@ -173,11 +191,19 @@ impl Game {
             })
         }
 
-        if units[unit_i].faction != on_turn {
-            return Err(Error::new(format!("It is not {}'s turn.", units[unit_i].faction)));
+        let unit = &mut *units[unit_i];
+        if unit.faction != on_turn {
+            return Err(Error::new(format!("It is not {}'s turn.", unit.faction)));
+        }
+        if unit.mp_left < cost {
+            return Err(Error::new(format!(
+                "Not enough movement points: entering {terrain:?} costs {cost}, {} has {} left.",
+                unit.name, unit.mp_left,
+            )));
         }
 
-        units[unit_i].location = UnitLocation::OnMap(LocationCoords { x: x_end, y: y_end });
+        unit.mp_left -= cost;
+        unit.location = UnitLocation::OnMap(LocationCoords { x: x_end, y: y_end });
 
         Ok(())
     }
@@ -711,6 +737,7 @@ turn_length = 7
 [[toe]]
 name = "test_toe"
 size = "Division"
+mp = 16
 start_date = "1941-01-01"
 end_date = "1941-08-01"
 [[toe.elements]]
@@ -821,13 +848,75 @@ morale = {defender_morale}
     }
 
     #[test]
-    fn move_unit_updates_the_units_location() {
+    fn move_unit_updates_location_and_spends_movement_points() {
         let mut game = one_unit_game();
 
-        game.move_unit(1, 1, 2, 2, 0).unwrap();
+        // (2, 1) is adjacent Plains: cost 1 from the budget of 16.
+        game.move_unit(1, 1, 2, 1, 0).unwrap();
 
         let unit = &game.state.units["1st Test Division"];
-        assert_eq!(unit.location, UnitLocation::OnMap(LocationCoords { x: 2, y: 2 }));
+        assert_eq!(unit.location, UnitLocation::OnMap(LocationCoords { x: 2, y: 1 }));
+        assert_eq!(unit.mp_left, 15);
+    }
+
+    #[test]
+    fn rough_terrain_costs_more_movement_points() {
+        let mut game = one_unit_game();
+
+        // (1, 2) is adjacent Forest: cost 2.
+        game.move_unit(1, 1, 1, 2, 0).unwrap();
+
+        assert_eq!(game.state.units["1st Test Division"].mp_left, 14);
+    }
+
+    #[test]
+    fn move_unit_rejects_a_non_adjacent_destination() {
+        let mut game = one_unit_game();
+
+        // (2, 2) is two hexes from (1, 1) on this grid.
+        let error = game.move_unit(1, 1, 2, 2, 0).unwrap_err();
+        assert!(error.error_message.contains("adjacent"));
+    }
+
+    #[test]
+    fn move_unit_rejects_impassable_terrain() {
+        let units = r#"
+[[units]]
+name = "1st Test Division"
+toe = "test_toe"
+faction = "AX"
+location = { x = 1, y = 2 }
+"#;
+        let mut game = Game::build(minimal_scenario(ONE_PLAYER, units)).unwrap();
+
+        // (1, 3) is adjacent Water.
+        let error = game.move_unit(1, 2, 1, 3, 0).unwrap_err();
+        assert!(error.error_message.contains("impassable"));
+    }
+
+    #[test]
+    fn move_unit_rejects_an_exhausted_unit() {
+        let mut game = one_unit_game();
+        game.state.units.get_mut("1st Test Division").unwrap().mp_left = 0;
+
+        let error = game.move_unit(1, 1, 2, 1, 0).unwrap_err();
+        assert!(error.error_message.contains("Not enough movement points"));
+    }
+
+    #[test]
+    fn a_factions_movement_points_refill_when_it_comes_on_turn() {
+        let mut game = Game::build(minimal_scenario(TWO_PLAYERS, OPPOSING_UNITS)).unwrap();
+
+        game.move_unit(1, 1, 1, 2, 0).unwrap();
+        assert_eq!(game.state.units["Axis Division"].mp_left, 14);
+
+        // Soviet turn: the spent Axis budget stays spent.
+        game.end_turn();
+        assert_eq!(game.state.units["Axis Division"].mp_left, 14);
+
+        // Axis on turn again: fresh budget from the TOE.
+        game.end_turn();
+        assert_eq!(game.state.units["Axis Division"].mp_left, 16);
     }
 
     #[test]
@@ -850,7 +939,7 @@ morale = {defender_morale}
     fn move_unit_rejects_index_with_no_unit() {
         let mut game = one_unit_game();
 
-        let error = game.move_unit(1, 1, 2, 2, 5).unwrap_err();
+        let error = game.move_unit(1, 1, 2, 1, 5).unwrap_err();
         assert!(error.error_message.contains("index 5"));
         assert!(error.error_message.contains("(1, 1)"));
     }
@@ -900,10 +989,10 @@ location = { x = 1, y = 1 }
         assert_eq!(names, ["Alpha Division", "Bravo Division", "Charlie Division"]);
 
         // Index 1 must address the same unit move_unit sees: Bravo.
-        game.move_unit(1, 1, 2, 2, 1).unwrap();
+        game.move_unit(1, 1, 2, 1, 1).unwrap();
         assert_eq!(
             game.state.units["Bravo Division"].location,
-            UnitLocation::OnMap(LocationCoords { x: 2, y: 2 })
+            UnitLocation::OnMap(LocationCoords { x: 2, y: 1 })
         );
         assert_eq!(
             game.state.units["Alpha Division"].location,
@@ -1363,6 +1452,7 @@ location = { x = 2, y = 1 }
         // Morale/experience inheritance: the 101st takes the Soviet faction
         // defaults, except its howitzer crews' experience override.
         let infantry = &game.state.units["101st Infantry division"];
+        assert_eq!(infantry.mp_left, 16);
         let squads = infantry.elements.iter().find(|e| e.name == "SU_inf_squad").unwrap();
         assert_eq!((squads.morale, squads.experience), (45, 35));
         let howitzers = infantry.elements.iter()

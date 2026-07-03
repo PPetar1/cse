@@ -530,6 +530,7 @@ mod tests {
             toe: "test_toe".to_string(),
             faction: "AX".to_string(),
             location: UnitLocation::Offmap("irrelevant".to_string()),
+            mp_left: 0,
             elements,
         }
     }

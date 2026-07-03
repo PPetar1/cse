@@ -78,6 +78,20 @@ pub enum Terrain {
     Urban,
 }
 
+impl Terrain {
+    /// Movement points to enter a hex of this terrain; None = impassable.
+    /// A code-side constant for now — becomes data if costs ever need to
+    /// vary per movement type or era.
+    pub fn movement_cost(&self) -> Option<u32> {
+        match self {
+            Terrain::Plains | Terrain::Desert | Terrain::Urban => Some(1),
+            Terrain::Forest | Terrain::Hills => Some(2),
+            Terrain::Swamp | Terrain::Mountain => Some(3),
+            Terrain::Water => None,
+        }
+    }
+}
+
 #[derive(Debug, serde::Deserialize, serde::Serialize)]
 pub struct OffmapLocations {
     locations: Vec<Location>,
