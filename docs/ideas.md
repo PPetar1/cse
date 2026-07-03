@@ -2,7 +2,8 @@
 
 A parking lot for game design ideas we want to keep but aren't building yet.
 Add freely; nothing here is a commitment. When an idea graduates into real work,
-move it to the roadmap in CLAUDE.md.
+fold it into the relevant phase in docs/roadmap.md and the "Current focus"
+section of CLAUDE.md.
 
 ## UI / platform direction (discussed 2026-07, decision deferred)
 

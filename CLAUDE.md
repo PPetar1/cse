@@ -1,19 +1,20 @@
 # CSE — Combat Simulation Engine
 
-A WW2 operational wargame engine in Rust, inspired by Gary Grigsby's *War in the East*.
-Design goal: scalable engine-first architecture — terminal-driven simulation core now,
-richer frontends later. Unit/TOE/element attributes come from easy-to-edit TOML config
-files, so scenarios are data, not code.
+An operational wargame engine in Rust, inspired by Gary Grigsby's *War in the East*;
+the end goal is a finished game that improves on it (see `docs/roadmap.md`).
+Engine-first architecture — terminal-driven simulation core now, richer frontends
+later. Unit/TOE/element attributes come from easy-to-edit TOML config files, so
+scenarios are data, not code.
 
-WW2 is the first target, not the boundary: the engine should be able to model any
-fires-based conflict from roughly Napoleonic to modern, with air — and possibly
-naval — warfare eventually. Keep design choices era-agnostic: mechanics generic,
-era flavor in scenario data. (`ElementClass` is the main code-side taxonomy to
-watch as eras multiply.)
+WW2 is the first target, not the boundary: the engine should model any fires-based
+conflict from roughly Napoleonic to modern, with air — and possibly naval — warfare
+eventually. Keep design choices era-agnostic: mechanics generic, era flavor in
+scenario data. (`ElementClass` is the main code-side taxonomy to watch as eras
+multiply.)
 
 **Standing rules from the author:**
 - After every code change, update README.md and this file in the same pass
-  (commands/usage in README; architecture, conventions, gotchas, roadmap here).
+  (commands/usage in README; architecture, conventions, gotchas, current focus here).
 - Prioritize clean, simple, reviewable code — the author reviews everything and may
   pick the project up solo later. Work in small chunks rather than big diffs.
   Modularity/expandability matter (the end goal is a complex game), but get them
@@ -68,6 +69,9 @@ When adding a command, update all three of: `Command::parse`, `HELP_TEXT`, and
 
 ## Design docs
 
+- `docs/roadmap.md` — the long-term compass: phased plan ending at a shipped game
+  that improves on WitE, with the "better than WitE" pillars used as design
+  tiebreakers. Update it when direction changes, not per-feature.
 - `docs/combat_design.md` — living combat design doc: WitE2 findings (rules readable at
   dornshuld.com/rules/wite2), the current resolution model, deliberate deviations,
   open questions. Update it whenever the combat engine changes.
@@ -155,19 +159,16 @@ Conventions used throughout:
   validates this (errors on unknown TOE and on TOE entries referencing undefined
   elements), and `builds_the_real_basic_scenario` guards the shipped scenario.
 
-## Roadmap (agreed with the author)
+## Current focus
 
-1. **Combat resolution** — v1 implemented (fires-based, closing range bands,
-   disrupt/damage/destroy hits, CV odds outcome, retreat execution with
-   attrition/surrender, `simulate` tuning tool; docs/combat_design.md is the
-   spec; morale/experience are in — commit gate, CV modifier, routs, shatter,
-   post-battle experience gain and morale shifts — and so is device-level
-   fire: accuracy/rate-of-fire/soft+hard attack per weapon). Next combat
-   steps: knob retuning via `simulate`; later piercing + AoE fire (ideas.md);
-   morale recovery over time belongs to the turn system.
-2. Turn/phase system — `end_turn`, alternating players, date advancement
-   (`turn_length` exists in scenarios but is unused).
-3. Movement rules — adjacency/cost/MP budget on the hex grid.
-4. Supply system — later, WitE-style depth.
-5. Visualiser growth — the Bevy `MapViewPlugin` is meant to accrete systems
-   (hover-inspect, selection) and maybe become the real frontend eventually.
+The full phased plan lives in `docs/roadmap.md`. Phase 0 (combat core) is done:
+fires-based battles with device-level weapons, morale/experience with battle
+feedback, routs/shatters/surrenders, and the `simulate` tuning tool
+(`docs/combat_design.md` is the spec).
+
+**Now: Phase 1 — the game loop.** Turn/phase system (`end_turn`, alternating
+players, date advancement — `turn_length` exists in scenarios but is unused)
+fused with movement rules (adjacency, terrain cost, MP budgets). This phase also
+mops up the threads waiting on the turn clock: morale recovery over time,
+adjacency-gated attacks, attacker advance after retreat, `start_date` as a real
+date. Combat knob retuning via `simulate` continues alongside.
