@@ -2446,4 +2446,31 @@ points = 10
             .find(|e| e.name == "SU_122mm_howitzer_M1938").unwrap();
         assert_eq!((howitzers.morale, howitzers.experience), (45, 55));
     }
+
+    #[test]
+    fn builds_the_real_frontline_sector_scenario() {
+        let contents = std::fs::read_to_string(
+            concat!(env!("CARGO_MANIFEST_DIR"), "/scenarios/frontline_sector.scen"),
+        ).unwrap();
+        let mut game = Game::build(contents).unwrap();
+
+        assert_eq!(game.players.len(), 2);
+        // 10 Soviet frontline + 2 reserve, 8 German infantry + 2 Panzer on
+        // the line + 1 Panzer in reserve.
+        assert_eq!(game.state.units.len(), 23);
+        // Guards the TOE/element referential integrity of the shipped scenario.
+        assert!(game.state.elements.contains_key("GE_37mm_pak"));
+        // The continuous Soviet line: every hex from (0, 4) to (9, 4) is held.
+        for x in 0..10 {
+            let location = game.state.map.get_location(x, 4).unwrap();
+            assert_eq!(game.units_at_location(location).first().unwrap().faction, "SU");
+        }
+        // Turn-1 event already fired (see Game::build's explicit first pass).
+        assert_eq!(
+            game.take_event_messages(),
+            vec!["The assault opens with total surprise; German morale surges.".to_string()],
+        );
+        assert_eq!(game.event_schedule_summary().matches("pending").count(), 2);
+        assert_eq!(game.reinforcement_schedule_summary().matches("pending").count(), 4);
+    }
 }

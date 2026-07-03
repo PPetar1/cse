@@ -12,6 +12,8 @@ The engine runs in the terminal and simulates battles between units on a hex map
 
 Currently implemented: scenario/map loading, unit inspection, simple movement, save/load, map visualiser, a fires-based combat resolution (`attack`) with retreats/routs/shatters, morale/experience (shifting with battle outcomes: everyone gains experience, winners rally and losers sag), device-level weapons (accuracy, rate of fire, soft/hard attack), a `simulate` tuning tool, the turn system (`end_turn` passes control between players IGO-UGO and advances the turn counter and in-game date, with MP budgets, terrain costs and turn-start morale recovery), and victory conditions: a scenario's optional `[victory_conditions]` table scores every faction at a fixed final turn — flat points for holding named objective hexes, points for enemy strength destroyed, a penalty for strength lost — and `end_turn` prints the result once the last turn completes; scheduled reinforcements and withdrawals move a scenario's units on or off the map (typically to/from an offmap reserve box) the moment their faction's turn reaches the scheduled turn number, even the very first turn; and scenario events fire the same way, printing a message and optionally nudging a faction's default morale/experience. Phase 2 (the first winnable scenario) is now feature-complete; next up is Phase 3 (supply and the living army).
 
+Two scenarios ship: `scenarios/basic_scenario.scen` (a small dev/test sandbox) and `scenarios/frontline_sector.scen` (a division-scale slice of the front — a continuous 10-hex Soviet line under a German push, mixed infantry and Panzer divisions on the Axis side, reinforcements, a withdrawal, scenario events and victory conditions all exercised together).
+
 Design notes live in `docs/` (`roadmap.md` for the long-term plan, `combat_design.md` for the battle model, `ideas.md` for the idea backlog).
 
 ## Building and running
@@ -28,7 +30,7 @@ The prompt supports tab completion (command names, and file paths for `new`/`loa
 
 | Command | Description |
 |---|---|
-| `new <path.scen>` | start a new game from a scenario file, e.g. `new scenarios/basic_scenario.scen` |
+| `new <path.scen>` | start a new game from a scenario file, e.g. `new scenarios/basic_scenario.scen` or `new scenarios/frontline_sector.scen` |
 | `inspect <x> <y>` | inspect the location at (x, y): terrain plus each unit there with its TOE and per-element ready/damaged counts and morale/experience |
 | `inspect <name>` | inspect the offmap location with the given name |
 | `units` | list all units (`units detail` for more detail) |

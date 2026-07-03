@@ -274,11 +274,18 @@ same turn's morale drift target); the `events` command shows the schedule and
 its pending/fired status. All three share one mechanism — apply at
 `Game::begin_turn` for the faction/turn they're keyed to, with an explicit
 first pass at `Game::build` for turn-1 entries, since `begin_turn` otherwise
-only fires from `end_turn`. `basic_scenario.scen` exercises all three —
-`[victory_conditions]`, two reinforcements, a withdrawal, two events, and 8
-units (up from 3) spread across a larger map (10x8, up from 6x6) — untuned,
-for testing the mechanics. Landmark reached: win — or lose — a game of CSE.
-Combat knob retuning via `simulate` continues alongside.
+only fires from `end_turn`. `basic_scenario.scen` exercises all three (two
+reinforcements, a withdrawal, two events, `[victory_conditions]`) as a dev/
+test sandbox — untuned, 8 units on a 10x8 map (up from 3 on 6x6).
+`scenarios/frontline_sector.scen` is the actual landmark deliverable: a
+division-scale scenario with a continuous 10-hex Soviet line (one rifle
+division per hex along y=4, so there's no gap to walk through unopposed), a
+mixed German attack (infantry — the new `GE_inf_squad`/`GE_37mm_pak`/
+`GE_105mm_lefh` elements and `GE_inf_div_41` TOE, plus Panzer divisions
+concentrated at two breakthrough points), reinforcements feeding both sides,
+a withdrawal, three narrative events, and three objective hexes. Landmark
+reached: win — or lose — a game of CSE. Combat knob retuning via `simulate`
+continues alongside.
 
 **Next: Phase 3 — the living army.** Supply traced through the hex grid,
 units degrading when cut off, replacements/repair at turn changeover, refit.

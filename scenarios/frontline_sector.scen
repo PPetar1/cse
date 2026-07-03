@@ -1,0 +1,482 @@
+name = "Frontline Sector, Summer 1941"
+game_version = "0.1.0"
+map = "maps/basic_map.map"
+
+start_date = "1941-06-22"
+turn_length = 7
+
+# A slice of the Barbarossa front at division scale: a continuous Soviet
+# line along y=4 under a German push from y=5, reinforcements feeding both
+# sides, and a couple of objectives worth fighting for beyond just attrition.
+# Testing values, not balanced.
+
+# Movement points to enter a hex, per terrain; 0 = impassable. Terrains left
+# out fall back to engine defaults (these values restate them explicitly).
+[terrain_costs]
+Plains = 1
+Desert = 1
+Urban = 1
+Forest = 2
+Hills = 2
+Swamp = 3
+Mountain = 3
+Water = 0
+
+# morale/experience: faction-wide defaults; units and single elements can
+# override them (the most specific setting wins, absent everywhere = 50).
+[[players]]
+faction_name = "Axis"
+faction_tag = "AX"
+morale = 75
+experience = 65
+[[players]]
+faction_name = "Soviet Union"
+faction_tag = "SU"
+morale = 40
+experience = 30
+
+# mp: movement points per turn — leg formations low, motorized/armored high.
+[[toe]]
+name = "SU_inf_div_41a"
+size = "Division"
+mp = 16
+start_date = "1941-01-01"
+end_date = "1941-08-01"
+[[toe.elements]]
+name = "SU_inf_squad"
+amount = 200
+[[toe.elements]]
+name = "SU_45mm_at_gun"
+amount = 40
+[[toe.elements]]
+name = "SU_122mm_howitzer_M1938"
+amount = 20
+
+[[toe]]
+name = "GE_inf_div_41"
+size = "Division"
+mp = 10
+start_date = "1941-01-01"
+end_date = "1941-10-01"
+[[toe.elements]]
+name = "GE_inf_squad"
+amount = 220
+[[toe.elements]]
+name = "GE_37mm_pak"
+amount = 36
+[[toe.elements]]
+name = "GE_105mm_lefh"
+amount = 24
+
+[[toe]]
+name = "GE_pz_div_41"
+size = "Division"
+mp = 30
+start_date = "1941-01-01"
+end_date = "1941-10-01"
+[[toe.elements]]
+name = "GE_pz_g_squad"
+amount = 200
+[[toe.elements]]
+name = "GE_pz_2"
+amount = 20
+[[toe.elements]]
+name = "GE_pz_4"
+amount = 30
+
+# An element fights with its devices: each in-range device fires
+# rate_of_fire shots per combat round. accuracy: chance a shot hits;
+# soft_attack/hard_attack: how devastating a hit is vs unarmored/armored
+# targets; vulnerability (element-level): how easily fire takes effect on
+# it — armor for vehicles, exposure for the rest.
+[[elements]]
+name = "SU_inf_squad"
+class = "Inf"
+cv = 4
+vulnerability = 100
+[[elements.devices]]
+name = "rifles_and_lmg"
+accuracy = 20
+range = 100
+rate_of_fire = 3
+soft_attack = 40
+hard_attack = 0
+[[elements.devices]]
+name = "at_grenades"
+accuracy = 15
+range = 100
+rate_of_fire = 1
+soft_attack = 0
+hard_attack = 10
+
+[[elements]]
+name = "SU_45mm_at_gun"
+class = "AtGun"
+cv = 0.2
+vulnerability = 60
+[[elements.devices]]
+name = "45mm_m1937"
+accuracy = 60
+range = 300
+rate_of_fire = 2
+soft_attack = 15
+hard_attack = 90
+
+[[elements]]
+name = "SU_122mm_howitzer_M1938"
+class = "LightArt"
+cv = 0.5
+vulnerability = 70
+[[elements.devices]]
+name = "122mm_m1938"
+accuracy = 5
+range = 11000
+rate_of_fire = 2
+soft_attack = 100
+hard_attack = 15
+
+# German infantry, for diversity alongside the Panzer divisions: same
+# fires-based shape as the Soviet rifle squad, slightly better trained
+# devices and a heavier organic anti-tank/artillery component.
+[[elements]]
+name = "GE_inf_squad"
+class = "Inf"
+cv = 4.5
+vulnerability = 100
+[[elements.devices]]
+name = "kar98_and_mg34"
+accuracy = 22
+range = 100
+rate_of_fire = 3
+soft_attack = 42
+hard_attack = 0
+[[elements.devices]]
+name = "at_grenades"
+accuracy = 15
+range = 100
+rate_of_fire = 1
+soft_attack = 0
+hard_attack = 10
+
+[[elements]]
+name = "GE_37mm_pak"
+class = "AtGun"
+cv = 0.3
+vulnerability = 55
+[[elements.devices]]
+name = "37mm_pak36"
+accuracy = 55
+range = 350
+rate_of_fire = 2
+soft_attack = 20
+hard_attack = 70
+
+[[elements]]
+name = "GE_105mm_lefh"
+class = "LightArt"
+cv = 0.6
+vulnerability = 65
+[[elements.devices]]
+name = "105mm_lefh18"
+accuracy = 6
+range = 10500
+rate_of_fire = 2
+soft_attack = 95
+hard_attack = 20
+
+[[elements]]
+name = "GE_pz_g_squad"
+class = "MotInf"
+cv = 4
+vulnerability = 100
+[[elements.devices]]
+name = "rifles_and_mg34"
+accuracy = 20
+range = 100
+rate_of_fire = 3
+soft_attack = 40
+hard_attack = 0
+[[elements.devices]]
+name = "at_grenades"
+accuracy = 15
+range = 100
+rate_of_fire = 1
+soft_attack = 0
+hard_attack = 10
+
+[[elements]]
+name = "GE_pz_2"
+class = "LightTank"
+cv = 8
+vulnerability = 40
+[[elements.devices]]
+name = "20mm_kwk30"
+accuracy = 50
+range = 600
+rate_of_fire = 4
+soft_attack = 30
+hard_attack = 50
+[[elements.devices]]
+name = "mg34_coaxial"
+accuracy = 30
+range = 200
+rate_of_fire = 6
+soft_attack = 40
+hard_attack = 0
+
+[[elements]]
+name = "GE_pz_4"
+class = "MedTank"
+cv = 12
+vulnerability = 25
+[[elements.devices]]
+name = "75mm_kwk37"
+accuracy = 60
+range = 800
+rate_of_fire = 2
+soft_attack = 60
+hard_attack = 70
+[[elements.devices]]
+name = "mg34_coaxial"
+accuracy = 30
+range = 200
+rate_of_fire = 6
+soft_attack = 40
+hard_attack = 0
+
+# ── The Soviet line: one rifle division per hex along y=4, edge to edge —
+# no gap for the Germans to walk through unopposed.
+[[units]]
+name = "1st Rifle Division"
+toe = "SU_inf_div_41a"
+faction = "SU"
+location = { x = 0, y = 4 }
+
+[[units]]
+name = "2nd Rifle Division"
+toe = "SU_inf_div_41a"
+faction = "SU"
+location = { x = 1, y = 4 }
+
+[[units]]
+name = "3rd Rifle Division"
+toe = "SU_inf_div_41a"
+faction = "SU"
+location = { x = 2, y = 4 }
+
+[[units]]
+name = "4th Rifle Division"
+toe = "SU_inf_div_41a"
+faction = "SU"
+location = { x = 3, y = 4 }
+
+[[units]]
+name = "5th Rifle Division"
+toe = "SU_inf_div_41a"
+faction = "SU"
+location = { x = 4, y = 4 }
+
+[[units]]
+name = "6th Rifle Division"
+toe = "SU_inf_div_41a"
+faction = "SU"
+location = { x = 5, y = 4 }
+
+[[units]]
+name = "7th Rifle Division"
+toe = "SU_inf_div_41a"
+faction = "SU"
+location = { x = 6, y = 4 }
+
+[[units]]
+name = "8th Rifle Division"
+toe = "SU_inf_div_41a"
+faction = "SU"
+location = { x = 7, y = 4 }
+
+[[units]]
+name = "9th Rifle Division"
+toe = "SU_inf_div_41a"
+faction = "SU"
+location = { x = 8, y = 4 }
+
+[[units]]
+name = "10th Rifle Division"
+toe = "SU_inf_div_41a"
+faction = "SU"
+location = { x = 9, y = 4 }
+
+# Soviet reserves, scheduled to reinforce the line further down.
+[[units]]
+name = "11th Rifle Division"
+toe = "SU_inf_div_41a"
+faction = "SU"
+location = "SU Reserve"
+
+[[units]]
+name = "12th Rifle Division"
+toe = "SU_inf_div_41a"
+faction = "SU"
+location = "SU Reserve"
+
+# ── The German attack: infantry across most of the line for diversity, with
+# two Panzer divisions concentrated for a breakthrough at x=2 and x=7.
+[[units]]
+name = "1st Infantry Division"
+toe = "GE_inf_div_41"
+faction = "AX"
+location = { x = 0, y = 5 }
+morale = 80
+experience = 70
+
+[[units]]
+name = "2nd Infantry Division"
+toe = "GE_inf_div_41"
+faction = "AX"
+location = { x = 1, y = 5 }
+morale = 80
+experience = 70
+
+[[units]]
+name = "1st Panzer Division"
+toe = "GE_pz_div_41"
+faction = "AX"
+location = { x = 2, y = 5 }
+morale = 85
+experience = 75
+
+[[units]]
+name = "3rd Infantry Division"
+toe = "GE_inf_div_41"
+faction = "AX"
+location = { x = 3, y = 5 }
+morale = 80
+experience = 70
+
+[[units]]
+name = "4th Infantry Division"
+toe = "GE_inf_div_41"
+faction = "AX"
+location = { x = 4, y = 5 }
+morale = 80
+experience = 70
+
+[[units]]
+name = "5th Infantry Division"
+toe = "GE_inf_div_41"
+faction = "AX"
+location = { x = 5, y = 5 }
+morale = 80
+experience = 70
+
+[[units]]
+name = "6th Infantry Division"
+toe = "GE_inf_div_41"
+faction = "AX"
+location = { x = 6, y = 5 }
+morale = 80
+experience = 70
+
+[[units]]
+name = "2nd Panzer Division"
+toe = "GE_pz_div_41"
+faction = "AX"
+location = { x = 7, y = 5 }
+morale = 85
+experience = 75
+
+[[units]]
+name = "7th Infantry Division"
+toe = "GE_inf_div_41"
+faction = "AX"
+location = { x = 8, y = 5 }
+morale = 80
+experience = 70
+
+[[units]]
+name = "8th Infantry Division"
+toe = "GE_inf_div_41"
+faction = "AX"
+location = { x = 9, y = 5 }
+morale = 80
+experience = 70
+
+# German reserve, held back to exploit whichever Panzer division breaks
+# through first.
+[[units]]
+name = "3rd Panzer Division"
+toe = "GE_pz_div_41"
+faction = "AX"
+location = "GE Reserve"
+morale = 85
+experience = 75
+
+# Scenario events: a message plus an optional morale/experience nudge to a
+# faction's default, firing the moment that faction's turn reaches the
+# scheduled turn. Testing values, not balanced.
+[[events]]
+turn = 1
+faction = "AX"
+message = "The assault opens with total surprise; German morale surges."
+morale_delta = 5
+
+[[events]]
+turn = 4
+faction = "SU"
+message = "Stavka orders the line held at all costs; Soviet resolve stiffens."
+morale_delta = 5
+
+[[events]]
+turn = 8
+faction = "AX"
+message = "Supply lines are stretched thin this far east; the advance loses momentum."
+morale_delta = -5
+
+# Scheduled unit movement: reinforcements step onto the map at a given turn
+# (typically out of an offmap reserve box), withdrawals step off it
+# (typically back into one).
+[[reinforcements]]
+unit = "11th Rifle Division"
+turn = 3
+location = { x = 4, y = 4 }
+
+[[reinforcements]]
+unit = "12th Rifle Division"
+turn = 5
+location = { x = 6, y = 4 }
+
+[[reinforcements]]
+unit = "3rd Panzer Division"
+turn = 3
+location = { x = 1, y = 6 }
+
+[[withdrawals]]
+unit = "2nd Infantry Division"
+turn = 8
+location = "GE Reserve"
+
+# Win by holding the objectives at turn's end, by grinding down the enemy,
+# or both; losing your own force costs points too. Testing values, not
+# balanced.
+[victory_conditions]
+last_turn = 12
+points_per_percent_enemy_destroyed = 1.5
+points_per_percent_own_lost = 0.75
+
+[[victory_conditions.hexes]]
+x = 4
+y = 4
+name = "Rifle division crossroads"
+points = 25
+
+[[victory_conditions.hexes]]
+x = 9
+y = 2
+name = "Ostrov road junction"
+points = 50
+
+[[victory_conditions.hexes]]
+x = 4
+y = 7
+name = "Rear supply depot"
+points = 35
