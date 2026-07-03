@@ -186,6 +186,11 @@ impl Game {
 
         let on_turn = self.player_on_turn().faction_tag.clone();
 
+        // Taking ground held by the enemy is what `attack` is for.
+        if self.units_at_location(destination).iter().any(|unit| unit.faction != on_turn) {
+            return Err(Error::new("Cannot move into a hex occupied by the enemy."));
+        }
+
         let location_start = UnitLocation::OnMap(LocationCoords { x: x_start, y: y_start });
         let mut units = Vec::new();
         for unit in self.state.units.values_mut() {
@@ -933,6 +938,40 @@ location = { x = 1, y = 2 }
         // (1, 3) is adjacent Water.
         let error = game.move_unit(1, 2, 1, 3, 0).unwrap_err();
         assert!(error.error_message.contains("impassable"));
+    }
+
+    #[test]
+    fn move_unit_rejects_an_enemy_occupied_destination() {
+        let mut game = Game::build(minimal_scenario(TWO_PLAYERS, OPPOSING_UNITS)).unwrap();
+
+        // The Soviet division sits at (2, 1): entering is an attack, not a move.
+        let error = game.move_unit(1, 1, 2, 1, 0).unwrap_err();
+        assert!(error.error_message.contains("occupied by the enemy"));
+    }
+
+    #[test]
+    fn move_unit_allows_stacking_with_friends() {
+        let units = r#"
+[[units]]
+name = "First Division"
+toe = "test_toe"
+faction = "AX"
+location = { x = 1, y = 1 }
+
+[[units]]
+name = "Second Division"
+toe = "test_toe"
+faction = "AX"
+location = { x = 2, y = 1 }
+"#;
+        let mut game = Game::build(minimal_scenario(TWO_PLAYERS, units)).unwrap();
+
+        game.move_unit(1, 1, 2, 1, 0).unwrap();
+
+        assert_eq!(
+            game.state.units["First Division"].location,
+            UnitLocation::OnMap(LocationCoords { x: 2, y: 1 }),
+        );
     }
 
     #[test]

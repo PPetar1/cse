@@ -55,7 +55,8 @@ in `lib.rs`, which parses and dispatches. Commands:
 - `units` / `units detail` — list all units
 - `move <x1> <y1> <x2> <y2> <unit_index>` — single-hex move to an adjacent hex;
   costs MP per destination terrain (`Terrain::movement_cost`, Water impassable);
-  only the on-turn faction's units
+  enemy-occupied destinations are rejected (that's `attack`); only the on-turn
+  faction's units
 - `attack <x1> <y1> <x2> <y2>` — units at hex 1 attack units at the adjacent hex 2
   (on-turn faction only; `simulate` is exempt from both gates); prints a battle
   report and persists losses + experience gain; beaten defenders retreat (with
