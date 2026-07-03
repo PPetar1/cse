@@ -13,7 +13,7 @@ use crate::core::unit::UnitLocation;
 use game::Game;
 
 pub fn run(input: &str, mut current_game: Option<&mut Game>) -> Result<Option<Game>, Error> {
-    let new_game = match Command::parse(input)? {
+    let mut new_game = match Command::parse(input)? {
         Command::New { scenario_path } => Some(new_game(scenario_path)?),
         Command::Load { save_path } => Some(load_game(save_path)?),
         Command::Save { save_path } => {
@@ -51,6 +51,9 @@ pub fn run(input: &str, mut current_game: Option<&mut Game>) -> Result<Option<Ga
             let game = require_game(current_game.as_deref_mut())?;
             let victory = game.end_turn();
             println!("{}", game.status());
+            for message in game.take_event_messages() {
+                println!("{message}");
+            }
             if let Some(report) = victory {
                 println!("{report}");
             }
@@ -68,6 +71,10 @@ pub fn run(input: &str, mut current_game: Option<&mut Game>) -> Result<Option<Ga
             println!("{}", require_game(current_game.as_deref_mut())?.reinforcement_schedule_summary());
             None
         }
+        Command::Events => {
+            println!("{}", require_game(current_game.as_deref_mut())?.event_schedule_summary());
+            None
+        }
         Command::View => {
             view(require_game(current_game.as_deref_mut())?)?;
             None
@@ -77,6 +84,14 @@ pub fn run(input: &str, mut current_game: Option<&mut Game>) -> Result<Option<Ga
             None
         }
     };
+
+    // A freshly built game may already have fired turn-1 events (see
+    // Game::parse_scen_from_toml); print those now, since nothing else does.
+    if let Some(game) = new_game.as_mut() {
+        for message in game.take_event_messages() {
+            println!("{message}");
+        }
+    }
 
     // Any open view window watches the snapshot file, so keep it mirroring the
     // game after every successful command (no-op until `view` has created it).
@@ -91,7 +106,7 @@ pub fn run(input: &str, mut current_game: Option<&mut Game>) -> Result<Option<Ga
 /// `Command::parse` and HELP_TEXT.
 pub const COMMAND_KEYWORDS: &[&str] = &[
     "new", "load", "save", "inspect", "units", "move", "attack", "simulate", "end_turn", "status",
-    "victory", "reinforcements", "view", "help", "exit",
+    "victory", "reinforcements", "events", "view", "help", "exit",
 ];
 
 const HELP_TEXT: &str = "\
@@ -108,6 +123,7 @@ Commands:
   status                              show scenario, turn, date and who is to move
   victory                             show this scenario's victory conditions and who currently holds each objective hex
   reinforcements                      show scheduled reinforcements/withdrawals and whether each has arrived
+  events                              show scheduled scenario events and whether each has fired
   view                                open the map window
   help                                show this help
   exit                                quit";
@@ -128,6 +144,7 @@ enum Command<'a> {
     Status,
     Victory,
     Reinforcements,
+    Events,
     View,
     Help,
 }
@@ -208,6 +225,7 @@ impl<'a> Command<'a> {
             "status" => Ok(Command::Status),
             "victory" => Ok(Command::Victory),
             "reinforcements" => Ok(Command::Reinforcements),
+            "events" => Ok(Command::Events),
             "view" => Ok(Command::View),
             "help" => Ok(Command::Help),
             _ => Err(Error::new("Unknown command. Type 'help' for a list of commands.")),
@@ -499,6 +517,11 @@ mod tests {
     #[test]
     fn parses_a_reinforcements_command() {
         assert_eq!(Command::parse("reinforcements").unwrap(), Command::Reinforcements);
+    }
+
+    #[test]
+    fn parses_an_events_command() {
+        assert_eq!(Command::parse("events").unwrap(), Command::Events);
     }
 
     #[test]

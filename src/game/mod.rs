@@ -53,6 +53,13 @@ pub struct Game {
     /// Reinforcements and withdrawals due at a specific turn, applied to the
     /// owning faction's units the moment that turn starts for them.
     scheduled_arrivals: Vec<ScheduledArrival>,
+    /// Scenario events: a message plus an optional morale/experience nudge
+    /// to a faction's default, due at a specific turn.
+    events: Vec<ScenarioEvent>,
+    /// Messages from events fired since `run` last drained them via
+    /// `take_event_messages` — transient, so it starts empty on load too.
+    #[serde(skip)]
+    pending_event_messages: Vec<String>,
 }
 
 impl Game {
@@ -81,6 +88,7 @@ impl Game {
            .chain(withdrawals)
            .map(ScheduledArrival::from)
            .collect();
+       let events = scenario.events.clone();
 
        let state = State::build(scenario)?;
 
@@ -88,6 +96,14 @@ impl Game {
            if state.map.get_location(hex.x, hex.y).is_none() {
                return Err(Error::new(format!(
                    "Victory hex ({}, {}) is not on the map.", hex.x, hex.y,
+               )));
+           }
+       }
+
+       for event in &events {
+           if !players.iter().any(|player| player.faction_tag == event.faction) {
+               return Err(Error::new(format!(
+                   "Event at turn {} references unknown faction '{}'.", event.turn, event.faction,
                )));
            }
        }
@@ -129,10 +145,13 @@ impl Game {
            turn_length,
            victory_conditions,
            scheduled_arrivals,
+           events,
+           pending_event_messages: Vec::new(),
        };
        // begin_turn() only fires from end_turn, so the very first player's
-       // turn-1 arrivals need an explicit first pass here.
+       // turn-1 arrivals/events need an explicit first pass here.
        game.apply_scheduled_arrivals();
+       game.apply_scheduled_events();
 
        Ok(game)
     }
@@ -219,11 +238,14 @@ impl Game {
     }
 
     /// Turn-start effects for the faction coming on turn: scheduled
-    /// reinforcements/withdrawals land first, then a fresh movement budget
-    /// from the TOE, and morale drifting back toward the faction default
-    /// (rest heals battered units, euphoria fades).
+    /// reinforcements/withdrawals and scenario events land first (an event's
+    /// morale/experience delta feeds straight into the same turn's drift
+    /// target below), then a fresh movement budget from the TOE, and morale
+    /// drifting back toward the faction default (rest heals battered units,
+    /// euphoria fades).
     fn begin_turn(&mut self) {
         self.apply_scheduled_arrivals();
+        self.apply_scheduled_events();
 
         let player = self.player_on_turn();
         let faction = player.faction_tag.clone();
@@ -253,6 +275,53 @@ impl Game {
                     unit.location = arrival.location.clone();
                 }
         }
+    }
+
+    /// Fire every scenario event whose turn falls on the current turn and
+    /// whose faction is coming on turn: nudge that faction's default
+    /// morale/experience and queue the event's message for `run` to print.
+    fn apply_scheduled_events(&mut self) {
+        let faction = self.player_on_turn().faction_tag.clone();
+        let turn = self.turn;
+        for event in &self.events {
+            if event.turn != turn || event.faction != faction {
+                continue;
+            }
+            if let Some(player) = self.players.iter_mut().find(|p| p.faction_tag == faction) {
+                player.morale = clamp_percent(player.morale as i32 + event.morale_delta);
+                player.experience = clamp_percent(player.experience as i32 + event.experience_delta);
+            }
+            self.pending_event_messages.push(event.message.clone());
+        }
+    }
+
+    /// Every event message queued since the last time this was called —
+    /// `run` drains and prints them after `end_turn`/`new`.
+    pub fn take_event_messages(&mut self) -> Vec<String> {
+        std::mem::take(&mut self.pending_event_messages)
+    }
+
+    /// Human-readable rundown of every scheduled event: the turn, faction,
+    /// message and stat deltas, and whether it has already fired. Backs the
+    /// `events` command.
+    pub fn event_schedule_summary(&self) -> String {
+        if self.events.is_empty() {
+            return "No scheduled events.".to_string();
+        }
+        let mut events: Vec<&ScenarioEvent> = self.events.iter().collect();
+        events.sort_by_key(|event| (event.turn, event.faction.clone()));
+
+        let mut out = String::from("Scheduled events:\n");
+        for event in events {
+            let status = if self.turn >= event.turn { "fired" } else { "pending" };
+            out.push_str(&format!(
+                "  Turn {} ({}): {} (morale {:+}, experience {:+}) [{}]\n",
+                event.turn, event.faction, event.message,
+                event.morale_delta, event.experience_delta, status,
+            ));
+        }
+        out.pop();
+        out
     }
 
     /// Human-readable rundown of every scheduled reinforcement/withdrawal:
@@ -712,6 +781,12 @@ fn morale_drift(morale: u32, default: u32) -> u32 {
     }
 }
 
+/// Applies an event's stat delta and keeps the 0-100 range morale/experience
+/// are defined over.
+fn clamp_percent(value: i32) -> u32 {
+    value.clamp(0, 100) as u32
+}
+
 /// The unit's ready elements as a fraction of what its TOE prescribes —
 /// the strength measure behind the shatter check.
 fn ready_fraction(unit: &Unit, toe: &Toe) -> f32 {
@@ -893,6 +968,26 @@ pub struct Scenario {
     /// offmap box) at a scheduled turn.
     #[serde(default)]
     withdrawals: Vec<ScheduledArrivalConfig>,
+
+    /// `[[events]]` — a message plus an optional morale/experience nudge to
+    /// a faction's default, due at a scheduled turn.
+    #[serde(default)]
+    events: Vec<ScenarioEvent>,
+}
+
+/// One scenario event: at `turn`, `faction`'s default morale/experience
+/// shifts by the given deltas (0 = no change either way) and `message`
+/// prints. No config/runtime split needed here — unlike locations, nothing
+/// about this shape is TOML-only.
+#[derive(Debug, Clone, serde::Deserialize, serde::Serialize)]
+struct ScenarioEvent {
+    turn: u32,
+    faction: String,
+    message: String,
+    #[serde(default)]
+    morale_delta: i32,
+    #[serde(default)]
+    experience_delta: i32,
 }
 
 /// TOML shape of one scheduled reinforcement or withdrawal entry: move
@@ -2242,6 +2337,92 @@ points = 10
         game.end_turn(); // ONE_PLAYER: every end_turn completes a full round.
 
         assert!(game.reinforcement_schedule_summary().contains("arrived"));
+    }
+
+    #[test]
+    fn a_turn_one_event_fires_immediately_and_shifts_faction_morale() {
+        // begin_turn() only fires from end_turn, so turn-1 events for the
+        // first-moving player need the same explicit first pass as
+        // reinforcements.
+        let units = format!(
+            "{ONMAP_UNIT}\n[[events]]\nturn = 1\nfaction = \"AX\"\nmessage = \"Opening barrage\"\nmorale_delta = 10\n"
+        );
+        let mut game = Game::build(minimal_scenario(ONE_PLAYER, &units)).unwrap();
+
+        assert_eq!(game.players[0].morale, 60); // default 50 + 10
+        assert_eq!(game.take_event_messages(), vec!["Opening barrage".to_string()]);
+    }
+
+    #[test]
+    fn an_event_fires_only_for_its_faction_on_its_scheduled_turn() {
+        let units = format!(
+            "{OPPOSING_UNITS}\n[[events]]\nturn = 2\nfaction = \"SU\"\nmessage = \"Reinforcement convoy arrives\"\nmorale_delta = 5\n"
+        );
+        let mut game = Game::build(minimal_scenario(TWO_PLAYERS, &units)).unwrap();
+
+        assert!(game.take_event_messages().is_empty());
+
+        game.end_turn(); // Axis -> Soviet, still turn 1: not yet scheduled.
+        assert!(game.take_event_messages().is_empty());
+
+        game.end_turn(); // Soviet -> Axis, turn becomes 2: Axis's start, wrong faction.
+        assert!(game.take_event_messages().is_empty());
+
+        game.end_turn(); // Axis -> Soviet, turn stays 2: the Soviet event fires.
+        assert_eq!(game.take_event_messages(), vec!["Reinforcement convoy arrives".to_string()]);
+    }
+
+    #[test]
+    fn event_morale_delta_clamps_to_the_valid_range() {
+        let units = format!(
+            "{ONMAP_UNIT}\n[[events]]\nturn = 1\nfaction = \"AX\"\nmessage = \"Catastrophe\"\nmorale_delta = -1000\n"
+        );
+        let game = Game::build(minimal_scenario(ONE_PLAYER, &units)).unwrap();
+
+        assert_eq!(game.players[0].morale, 0);
+    }
+
+    #[test]
+    fn an_events_morale_delta_feeds_the_same_turns_drift_target() {
+        // The unit's element sits at 20, far below the unspecified default
+        // of 50 — it would drift up toward 50 on an ordinary turn start. An
+        // event bumping the default to 90 on the same turn should make the
+        // drift aim at 90 instead, since events apply before the drift.
+        let units = format!(
+            "{ONMAP_UNIT}\n[[events]]\nturn = 2\nfaction = \"AX\"\nmessage = \"Big win\"\nmorale_delta = 40\n"
+        );
+        let mut game = Game::build(minimal_scenario(ONE_PLAYER, &units)).unwrap();
+        game.state.units.get_mut("1st Test Division").unwrap().elements[0].morale = 20;
+
+        game.end_turn(); // turn becomes 2: the event fires (default 50 -> 90), then drift runs.
+
+        // 20 + ceil((90 - 20) / 10) = 27.
+        assert_eq!(game.state.units["1st Test Division"].elements[0].morale, 27);
+    }
+
+    #[test]
+    fn rejects_an_event_for_an_unknown_faction() {
+        let units = format!(
+            "{ONMAP_UNIT}\n[[events]]\nturn = 2\nfaction = \"ZZ\"\nmessage = \"Ghost event\"\n"
+        );
+
+        let error = Game::build(minimal_scenario(ONE_PLAYER, &units)).unwrap_err();
+
+        assert!(error.error_message.contains("ZZ"));
+    }
+
+    #[test]
+    fn event_schedule_summary_tracks_fired_status() {
+        let units = format!(
+            "{ONMAP_UNIT}\n[[events]]\nturn = 2\nfaction = \"AX\"\nmessage = \"Spring thaw\"\n"
+        );
+        let mut game = Game::build(minimal_scenario(ONE_PLAYER, &units)).unwrap();
+
+        assert!(game.event_schedule_summary().contains("pending"));
+
+        game.end_turn(); // ONE_PLAYER: every end_turn completes a full round.
+
+        assert!(game.event_schedule_summary().contains("fired"));
     }
 
     #[test]

@@ -191,6 +191,21 @@ Key data model (all TOML-configurable, see `scenarios/basic_scenario.scen`):
   pending/arrived status inferred from `turn` vs. the current turn (no
   separate "already executed" flag needed, since each (unit, turn) pair's
   owning faction gets exactly one `begin_turn` call for that turn number)
+- **Scenario events** — `[[events]]` (`turn`, `faction`, `message`, optional
+  `morale_delta`/`experience_delta`, both 0 by default). No config/runtime
+  split needed (unlike locations, nothing here is TOML-only), so `Scenario`
+  parses straight into `Vec<ScenarioEvent>`. `event.faction` is validated
+  against `scenario.players` at load. `Game::begin_turn` calls
+  `apply_scheduled_events` before capturing the morale drift target, so an
+  event's `morale_delta` on a faction's default lands in time to steer that
+  same turn's drift; deltas are applied via `clamp_percent` to keep morale/
+  experience in 0-100. Fired messages queue in `Game::pending_event_messages`
+  (`#[serde(skip)]` — transient, so it's fine that a save/load drops anything
+  not yet printed) until `run` drains them with `take_event_messages` — once
+  after `end_turn`, and once right after building a fresh game, since
+  `Game::build` also runs the turn-1 explicit pass described above. The
+  `events` command (`Game::event_schedule_summary`) lists the schedule with a
+  pending/fired status, same heuristic and same caveat as reinforcements'
 
 Conventions used throughout:
 - Hex coords: offset coordinates, `OffsetHexMode::Even`, `HexOrientation::Pointy`
@@ -245,17 +260,25 @@ clock (`end_turn`/`status`, IGO-UGO, real dates, scenario-selectable
 attacks, MP budgets with terrain costs, attacker advance after retreat, and
 turn-start morale recovery.
 
-**Now: Phase 2 — the first winnable scenario.** Victory conditions are done:
-objective hexes with flat points, plus points for enemy strength destroyed and
-a penalty for strength lost, scored at a scenario's `last_turn` (`end_turn`
-prints the result); the `victory` command shows the conditions and current
-hex holders at any time, and the map view flags objective hexes with their
-point value. Scheduled reinforcements/withdrawals are done too:
+**Phase 2 — the first winnable scenario — is now feature-complete.** Victory
+conditions: objective hexes with flat points, plus points for enemy strength
+destroyed and a penalty for strength lost, scored at a scenario's `last_turn`
+(`end_turn` prints the result); the `victory` command shows the conditions
+and current hex holders at any time, and the map view flags objective hexes
+with their point value. Scheduled reinforcements/withdrawals:
 `[[reinforcements]]`/`[[withdrawals]]` move a unit on/off the map at a given
-turn, and the `reinforcements` command shows the schedule and its
-pending/arrived status. `basic_scenario.scen` exercises both — a
-`[victory_conditions]` table, two reinforcements and a withdrawal, and 8 units
-(up from 3) spread across a larger map (10x8, up from 6x6) — untuned, for
-testing the new mechanics. Still open: first scenario events.
-Landmark: win — or lose — a game of CSE. Combat knob retuning via `simulate`
-continues alongside.
+turn; the `reinforcements` command shows the schedule and its pending/arrived
+status. Scenario events: `[[events]]` fire a message plus an optional
+morale/experience nudge to a faction's default at a given turn (feeding the
+same turn's morale drift target); the `events` command shows the schedule and
+its pending/fired status. All three share one mechanism — apply at
+`Game::begin_turn` for the faction/turn they're keyed to, with an explicit
+first pass at `Game::build` for turn-1 entries, since `begin_turn` otherwise
+only fires from `end_turn`. `basic_scenario.scen` exercises all three —
+`[victory_conditions]`, two reinforcements, a withdrawal, two events, and 8
+units (up from 3) spread across a larger map (10x8, up from 6x6) — untuned,
+for testing the mechanics. Landmark reached: win — or lose — a game of CSE.
+Combat knob retuning via `simulate` continues alongside.
+
+**Next: Phase 3 — the living army.** Supply traced through the hex grid,
+units degrading when cut off, replacements/repair at turn changeover, refit.

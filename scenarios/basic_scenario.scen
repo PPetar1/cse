@@ -235,7 +235,21 @@ location = "GE Reserve"
 morale = 80
 experience = 70
 
-#[events]
+# A message plus an optional morale/experience nudge to a faction's default,
+# firing the moment that faction's turn reaches the scheduled turn. Testing
+# values, not balanced.
+[[events]]
+turn = 1
+faction = "AX"
+message = "Opening barrage: German morale is high as the offensive begins."
+morale_delta = 5
+
+[[events]]
+turn = 5
+faction = "SU"
+message = "Stavka orders reserves forward; Soviet resolve stiffens."
+morale_delta = 10
+experience_delta = 5
 
 # Scheduled unit movement: reinforcements step onto the map at a given turn
 # (typically out of an offmap reserve box), withdrawals step off it (typically
