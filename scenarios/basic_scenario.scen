@@ -5,6 +5,18 @@ map = "maps/basic_map.map"
 start_date = "1941-06-22"
 turn_length = 7
 
+# Movement points to enter a hex, per terrain; 0 = impassable. Terrains left
+# out fall back to engine defaults (these values restate them explicitly).
+[terrain_costs]
+Plains = 1
+Desert = 1
+Urban = 1
+Forest = 2
+Hills = 2
+Swamp = 3
+Mountain = 3
+Water = 0
+
 # morale/experience: faction-wide defaults; units and single elements can
 # override them (the most specific setting wins, absent everywhere = 50).
 [[players]]

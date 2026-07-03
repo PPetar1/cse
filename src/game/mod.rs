@@ -181,7 +181,7 @@ impl Game {
             return Err(Error::new("Units move one hex at a time, to an adjacent hex."));
         }
         let terrain = destination.terrain;
-        let cost = terrain.movement_cost()
+        let cost = self.state.terrain_costs.cost(terrain)
             .ok_or_else(|| Error::new(format!("{terrain:?} is impassable.")))?;
 
         let on_turn = self.player_on_turn().faction_tag.clone();
@@ -655,6 +655,11 @@ pub struct Scenario {
     turn_length: u32,
     #[serde(default)]
     turn_system: TurnSystem,
+    /// `[terrain_costs]` — MP to enter a hex per terrain name, 0 = impassable.
+    /// Anything unlisted falls back to the code defaults
+    /// (`Terrain::default_movement_cost`).
+    #[serde(default)]
+    pub terrain_costs: std::collections::HashMap<Terrain, u32>,
 
     pub players: Vec<Player>,
 
@@ -930,6 +935,29 @@ location = { x = 1, y = 2 }
         // (1, 3) is adjacent Water.
         let error = game.move_unit(1, 2, 1, 3, 0).unwrap_err();
         assert!(error.error_message.contains("impassable"));
+    }
+
+    #[test]
+    fn scenario_terrain_costs_override_the_defaults() {
+        // Piggybacks on the units slot to append the scenario-level table.
+        let units = format!("{ONMAP_UNIT}\n[terrain_costs]\nForest = 4\nPlains = 0\n");
+        let mut game = Game::build(minimal_scenario(ONE_PLAYER, &units)).unwrap();
+
+        // Forest (1, 2) costs the override 4 instead of the default 2.
+        game.move_unit(1, 1, 1, 2, 0).unwrap();
+        assert_eq!(game.state.units["1st Test Division"].mp_left, 12);
+
+        // 0 makes a terrain impassable: no going back onto the Plains.
+        let error = game.move_unit(1, 2, 1, 1, 0).unwrap_err();
+        assert!(error.error_message.contains("impassable"));
+    }
+
+    #[test]
+    fn rejects_an_unknown_terrain_in_terrain_costs() {
+        let units = format!("{ONMAP_UNIT}\n[terrain_costs]\nLava = 5\n");
+
+        let error = Game::build(minimal_scenario(ONE_PLAYER, &units)).unwrap_err();
+        assert!(error.error_message.contains("unknown variant"));
     }
 
     #[test]

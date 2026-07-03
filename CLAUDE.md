@@ -1,3 +1,11 @@
+## Approach
+- Read existing files before writing. Don't re-read unless changed.
+- Thorough in reasoning, concise in output.
+- Skip files over 100KB unless required.
+- No sycophantic openers or closing fluff.
+- No emojis or em-dashes.
+- Do not guess APIs, versions, flags, commit SHAs, or package names. Verify by reading code or docs before asserting.
+
 # CSE — Combat Simulation Engine
 
 An operational wargame engine in Rust, inspired by Gary Grigsby's *War in the East*;
@@ -54,9 +62,9 @@ in `lib.rs`, which parses and dispatches. Commands:
   their element rosters (ready/damaged/morale/experience per element)
 - `units` / `units detail` — list all units
 - `move <x1> <y1> <x2> <y2> <unit_index>` — single-hex move to an adjacent hex;
-  costs MP per destination terrain (`Terrain::movement_cost`, Water impassable);
-  enemy-occupied destinations are rejected (that's `attack`); only the on-turn
-  faction's units
+  costs MP per destination terrain (scenario `[terrain_costs]`, Water impassable
+  by default); enemy-occupied destinations are rejected (that's `attack`); only
+  the on-turn faction's units
 - `attack <x1> <y1> <x2> <y2>` — units at hex 1 attack units at the adjacent hex 2
   (on-turn faction only; `simulate` shares this validation via `prepare_battle`);
   prints a battle report and persists losses + experience gain; beaten defenders
@@ -138,6 +146,10 @@ Key data model (all TOML-configurable, see `scenarios/basic_scenario.scen`):
   At its faction's turn start, morale also drifts toward the faction default
   (`MORALE_RECOVERY_STEP`, gentler than battle shifts); experience is permanent
 - **Map files** (`maps/*.map`) — TOML: per-hex terrain + named offmap boxes ("GE Reserve")
+- **Terrain costs** — the scenario's `[terrain_costs]` table (terrain name → MP
+  to enter, 0 = impassable) layered over code defaults
+  (`Terrain::default_movement_cost`); runtime lookup via `State.terrain_costs`
+  (`TerrainCosts::cost`)
 - **Turn system** — scenario-selectable via `turn_system = "IgoUgo"` (optional,
   the default). Only IGO-UGO exists; the matches on `TurnSystem` are the seam
   where a future WEGO mode (order queue, simultaneous resolution) plugs in

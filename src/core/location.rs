@@ -66,7 +66,7 @@ impl Display for Location {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, serde::Deserialize, serde::Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Deserialize, serde::Serialize)]
 pub enum Terrain {
     Mountain,
     Plains,
@@ -79,15 +79,37 @@ pub enum Terrain {
 }
 
 impl Terrain {
-    /// Movement points to enter a hex of this terrain; None = impassable.
-    /// A code-side constant for now — becomes data if costs ever need to
-    /// vary per movement type or era.
-    pub fn movement_cost(&self) -> Option<u32> {
+    /// Fallback movement cost to enter a hex of this terrain; None =
+    /// impassable. Scenarios override these via `[terrain_costs]` — see
+    /// `TerrainCosts`.
+    fn default_movement_cost(&self) -> Option<u32> {
         match self {
             Terrain::Plains | Terrain::Desert | Terrain::Urban => Some(1),
             Terrain::Forest | Terrain::Hills => Some(2),
             Terrain::Swamp | Terrain::Mountain => Some(3),
             Terrain::Water => None,
+        }
+    }
+}
+
+/// Per-terrain movement entry costs: the scenario's `[terrain_costs]` table
+/// layered over the code defaults. An entry of 0 makes the terrain impassable.
+#[derive(Debug, Default, serde::Deserialize, serde::Serialize)]
+pub struct TerrainCosts {
+    overrides: std::collections::HashMap<Terrain, u32>,
+}
+
+impl TerrainCosts {
+    pub fn new(overrides: std::collections::HashMap<Terrain, u32>) -> TerrainCosts {
+        TerrainCosts { overrides }
+    }
+
+    /// Movement points to enter a hex of this terrain; None = impassable.
+    pub fn cost(&self, terrain: Terrain) -> Option<u32> {
+        match self.overrides.get(&terrain) {
+            Some(0) => None,
+            Some(&cost) => Some(cost),
+            None => terrain.default_movement_cost(),
         }
     }
 }

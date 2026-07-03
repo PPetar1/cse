@@ -6,12 +6,14 @@ use std::{collections::HashMap, fs::File, io::Read};
 
 use crate::{Error, game::{Player, Scenario}};
 
+use location::TerrainCosts;
 use map::Map;
 use unit::*;
 
 #[derive(Debug, serde::Deserialize, serde::Serialize)]
 pub struct State {
     pub map: Map,
+    pub terrain_costs: TerrainCosts,
     pub units: HashMap<String, Unit>,
     pub toe: HashMap<String, Toe>,
     pub elements: HashMap<String, Element>,
@@ -105,6 +107,7 @@ impl State {
 
         Ok(State {
             map,
+            terrain_costs: TerrainCosts::new(scenario.terrain_costs),
             units,
             toe,
             elements,
