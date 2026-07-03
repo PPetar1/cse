@@ -1,6 +1,7 @@
 use std::fmt::Display;
 
 use rand::Rng;
+use time::Date;
 
 use crate::core::State;
 use crate::Error;
@@ -33,9 +34,15 @@ const MORALE_SHIFT_STEP: u32 = 20;
 #[derive(Debug, serde::Deserialize, serde::Serialize)]
 pub struct Game {
     pub state: State,
+    scenario_name: String,
     players: Vec<Player>,
+    turn_system: TurnSystem,
     turn: u32,
     phase: TurnPhase,
+    /// The in-game date of the current turn; advances by `turn_length` days
+    /// whenever a full turn (every player moved) completes.
+    date: Date,
+    turn_length: u32,
 }
 
 impl Game {
@@ -51,17 +58,54 @@ impl Game {
        }
        
        let players = scenario.players.clone();
+       let scenario_name = scenario.name.clone();
+       let turn_system = scenario.turn_system;
+       let date = scenario.start_date;
+       let turn_length = scenario.turn_length;
 
        let state = State::build(scenario)?;
-       
+
        let game = Game {
            state,
+           scenario_name,
            players,
+           turn_system,
            turn: 1,
            phase: TurnPhase { player_on_turn: 0 },
+           date,
+           turn_length,
        };
 
        Ok(game)
+    }
+
+    /// End the current player's turn. Under IGO-UGO control passes to the
+    /// next player; once every player has moved, the turn counter and the
+    /// game date advance. Turn-start effects for the faction coming on turn
+    /// (MP reset, morale recovery) hook in here as they land.
+    pub fn end_turn(&mut self) {
+        match self.turn_system {
+            TurnSystem::IgoUgo => {
+                self.phase.player_on_turn += 1;
+                if self.phase.player_on_turn as usize >= self.players.len() {
+                    self.phase.player_on_turn = 0;
+                    self.turn += 1;
+                    self.date += time::Duration::days(self.turn_length.into());
+                }
+            }
+        }
+    }
+
+    /// One-line summary of where the game clock stands.
+    pub fn status(&self) -> String {
+        format!(
+            "{} — turn {}, {}. {} to move.",
+            self.scenario_name, self.turn, self.date, self.player_on_turn().faction_name,
+        )
+    }
+
+    fn player_on_turn(&self) -> &Player {
+        &self.players[self.phase.player_on_turn as usize]
     }
 
     pub fn list_units(&self) {
@@ -503,18 +547,27 @@ struct TurnPhase {
     player_on_turn: u32,
 }
 
+/// How player turns are sequenced. Scenario-selectable; only IGO-UGO exists
+/// today. A future WEGO mode (simultaneous orders, resolved together at turn
+/// end) lands as a second variant plus an order queue — the matches on this
+/// enum are the places it plugs in.
+#[derive(Debug, Clone, Copy, PartialEq, Default, serde::Deserialize, serde::Serialize)]
+pub enum TurnSystem {
+    #[default]
+    IgoUgo,
+}
+
 #[derive(serde::Deserialize)]
 pub struct Scenario {
-    #[allow(dead_code)] // will be read once the turn system lands
     name: String,
     #[allow(dead_code)]
     game_version: String,
     pub map: String,
 
-    #[allow(dead_code)]
-    start_date: String,
-    #[allow(dead_code)]
+    start_date: Date,
     turn_length: u32,
+    #[serde(default)]
+    turn_system: TurnSystem,
 
     pub players: Vec<Player>,
 
@@ -701,6 +754,40 @@ morale = {defender_morale}
         assert_eq!(game.players.len(), 1);
         assert_eq!(game.players[0].faction_tag, "AX");
         assert_eq!(game.state.units.len(), 1);
+    }
+
+    #[test]
+    fn end_turn_cycles_players_and_advances_the_clock() {
+        let mut game = Game::build(minimal_scenario(TWO_PLAYERS, OPPOSING_UNITS)).unwrap();
+        assert_eq!(game.status(), "test scenario — turn 1, 1941-06-22. Axis to move.");
+
+        game.end_turn();
+        // Control passes within the same turn: the clock stands still.
+        assert_eq!(game.status(), "test scenario — turn 1, 1941-06-22. Soviet Union to move.");
+
+        game.end_turn();
+        // Every player has moved: turn and date (turn_length = 7) advance.
+        assert_eq!(game.status(), "test scenario — turn 2, 1941-06-29. Axis to move.");
+    }
+
+    #[test]
+    fn rejects_a_scenario_with_an_invalid_start_date() {
+        let scenario = minimal_scenario(ONE_PLAYER, ONMAP_UNIT)
+            .replace(r#"start_date = "1941-06-22""#, r#"start_date = "someday""#);
+
+        let error = Game::build(scenario).unwrap_err();
+        assert!(error.error_message.contains("start_date"));
+    }
+
+    #[test]
+    fn rejects_an_unknown_turn_system() {
+        let scenario = format!(
+            "turn_system = \"Wego\"\n{}",
+            minimal_scenario(ONE_PLAYER, ONMAP_UNIT),
+        );
+
+        let error = Game::build(scenario).unwrap_err();
+        assert!(error.error_message.contains("unknown variant"));
     }
 
     #[test]

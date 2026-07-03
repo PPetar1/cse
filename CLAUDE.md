@@ -59,6 +59,9 @@ in `lib.rs`, which parses and dispatches. Commands:
   attrition), rout, shatter, or surrender
 - `simulate <x1> <y1> <x2> <y2> <n>` — fight that attack n times state-untouched,
   print hold/retreat rates + average losses (the balance-tuning tool)
+- `end_turn` — pass control to the next player (IGO-UGO); when every player has
+  moved, the turn counter and in-game date advance (`turn_length` days)
+- `status` — scenario name, turn, date, faction to move
 - `view` — open the Bevy map window in a detached subprocess (terminal stays usable;
   Esc closes the window; can be called repeatedly)
 - `help` — print the command list (HELP_TEXT in lib.rs)
@@ -87,9 +90,10 @@ src/
                    FilenameCompleter, history) + `--view <snapshot>` subprocess entry
   lib.rs         — command parsing/dispatch, save/load, view subprocess
                    spawning (spawn_view_subprocess/run_view_subprocess), Error type
-  game/mod.rs    — Game (state + players + turn/phase), Scenario TOML schema, move_unit,
-                   attack (builds combat snapshots, applies losses back, executes
-                   retreats/surrenders — destination + attrition rules live here)
+  game/mod.rs    — Game (state + players + turn/phase/date + TurnSystem), Scenario TOML
+                   schema, end_turn/status, move_unit, attack (builds combat snapshots,
+                   applies losses back, executes retreats/surrenders — destination +
+                   attrition rules live here)
   core/mod.rs    — State::build: resolves a Scenario into runtime State (units get
                    their element rosters instantiated from their TOE here)
   core/map.rs    — Map: HashMap<(u32,u32), Location> + offmap locations; TOML map parsing
@@ -122,6 +126,9 @@ Key data model (all TOML-configurable, see `scenarios/basic_scenario.scen`):
   unit's strength-weighted `average_morale()` gates routs. Battles shift both:
   everyone gains experience, winners rally / losers sag morale (routs doubly)
 - **Map files** (`maps/*.map`) — TOML: per-hex terrain + named offmap boxes ("GE Reserve")
+- **Turn system** — scenario-selectable via `turn_system = "IgoUgo"` (optional,
+  the default). Only IGO-UGO exists; the matches on `TurnSystem` are the seam
+  where a future WEGO mode (order queue, simultaneous resolution) plugs in
 
 Conventions used throughout:
 - Hex coords: offset coordinates, `OffsetHexMode::Even`, `HexOrientation::Pointy`
@@ -167,9 +174,8 @@ fires-based battles with device-level weapons, morale/experience with battle
 feedback, routs/shatters/surrenders, and the `simulate` tuning tool
 (`docs/combat_design.md` is the spec).
 
-**Now: Phase 1 — the game loop.** Turn/phase system (`end_turn`, alternating
-players, date advancement — `turn_length` exists in scenarios but is unused)
-fused with movement rules (adjacency, terrain cost, MP budgets). This phase also
-mops up the threads waiting on the turn clock: morale recovery over time,
-adjacency-gated attacks, attacker advance after retreat, `start_date` as a real
-date. Combat knob retuning via `simulate` continues alongside.
+**Now: Phase 1 — the game loop.** The turn clock is in (`end_turn`, alternating
+players IGO-UGO, real dates advancing by `turn_length`, scenario-selectable
+`TurnSystem`). Remaining: gating move/attack to the on-turn player, adjacency
+checks, MP budgets + terrain costs, attacker advance after retreat, morale
+recovery over time. Combat knob retuning via `simulate` continues alongside.

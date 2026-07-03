@@ -47,6 +47,16 @@ pub fn run(input: &str, current_game: Option<&mut Game>) -> Result<Option<Game>,
             println!("{report}");
             Ok(None)
         }
+        Command::EndTurn => {
+            let game = require_game(current_game)?;
+            game.end_turn();
+            println!("{}", game.status());
+            Ok(None)
+        }
+        Command::Status => {
+            println!("{}", require_game(current_game)?.status());
+            Ok(None)
+        }
         Command::View => {
             view(require_game(current_game)?)?;
             Ok(None)
@@ -61,7 +71,8 @@ pub fn run(input: &str, current_game: Option<&mut Game>) -> Result<Option<Game>,
 /// Command keywords, used for terminal tab completion. Keep in sync with
 /// `Command::parse` and HELP_TEXT.
 pub const COMMAND_KEYWORDS: &[&str] = &[
-    "new", "load", "save", "inspect", "units", "move", "attack", "simulate", "view", "help", "exit",
+    "new", "load", "save", "inspect", "units", "move", "attack", "simulate", "end_turn", "status",
+    "view", "help", "exit",
 ];
 
 const HELP_TEXT: &str = "\
@@ -74,6 +85,8 @@ Commands:
   move <x1> <y1> <x2> <y2> <index>    move the unit with that index (per inspect) between hexes
   attack <x1> <y1> <x2> <y2>          units at hex 1 attack units at hex 2
   simulate <x1> <y1> <x2> <y2> <n>    fight that attack n times without applying it, show statistics
+  end_turn                            pass control to the next player, advancing turn and date
+  status                              show scenario, turn, date and who is to move
   view                                open the map window
   help                                show this help
   exit                                quit";
@@ -90,6 +103,8 @@ enum Command<'a> {
     Move { from: (u32, u32), to: (u32, u32), unit_index: usize },
     Attack { from: (u32, u32), to: (u32, u32) },
     Simulate { from: (u32, u32), to: (u32, u32), runs: u32 },
+    EndTurn,
+    Status,
     View,
     Help,
 }
@@ -166,6 +181,8 @@ impl<'a> Command<'a> {
                     Err(Error::new("Unable to parse arguments for simulate."))
                 }
             }
+            "end_turn" => Ok(Command::EndTurn),
+            "status" => Ok(Command::Status),
             "view" => Ok(Command::View),
             "help" => Ok(Command::Help),
             _ => Err(Error::new("Unknown command. Type 'help' for a list of commands.")),
