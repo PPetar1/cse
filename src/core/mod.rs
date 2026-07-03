@@ -4,7 +4,7 @@ pub mod unit;
 
 use std::{collections::HashMap, fs::File, io::Read};
 
-use crate::{Error, game::Scenario};
+use crate::{Error, game::{Player, Scenario}};
 
 use map::Map;
 use unit::*;
@@ -47,20 +47,49 @@ impl State {
             toe.insert(toe_.name.clone(), toe_);
         }
 
+        let players_by_tag: HashMap<&str, &Player> = scenario.players.iter()
+            .map(|player| (player.faction_tag.as_str(), player))
+            .collect();
+
         for unit in scenario.units {
-            let mut elements = Vec::new();
-            for element_in_toe in &toe.get(&unit.toe).ok_or_else(|| Error {
+            let player = players_by_tag.get(unit.faction.as_str()).ok_or_else(|| Error {
+                error_message: format!(
+                    "Unit '{}' belongs to faction '{}' which has no player.",
+                    unit.name, unit.faction
+                ),
+            })?;
+            let unit_toe = toe.get(&unit.toe).ok_or_else(|| Error {
                 error_message: format!("Unit '{}' has a toe '{}' that cannot be found.", unit.name, unit.toe),
-            })?.elements {
-                elements.push(ElementInUnit { name: element_in_toe.name.clone(), ready: element_in_toe.amount, damaged: 0 });
+            })?;
+            for stats in &unit.elements {
+                if !unit_toe.elements.iter().any(|e| e.name == stats.name) {
+                    return Err(Error {
+                        error_message: format!(
+                            "Unit '{}' overrides stats of element '{}' which is not in its toe '{}'.",
+                            unit.name, stats.name, unit.toe
+                        ),
+                    });
+                }
+            }
+
+            let mut elements = Vec::new();
+            for element_in_toe in &unit_toe.elements {
+                // Morale/experience: the most specific scenario setting wins —
+                // element override, then the unit, then the faction default.
+                let stats = unit.elements.iter().find(|s| s.name == element_in_toe.name);
+                elements.push(ElementInUnit {
+                    name: element_in_toe.name.clone(),
+                    ready: element_in_toe.amount,
+                    damaged: 0,
+                    morale: stats.and_then(|s| s.morale).or(unit.morale).unwrap_or(player.morale),
+                    experience: stats.and_then(|s| s.experience).or(unit.experience).unwrap_or(player.experience),
+                });
             }
 
             units.insert(unit.name.clone(), Unit {
                 name: unit.name,
                 toe: unit.toe,
                 faction: unit.faction,
-                morale: unit.morale,
-                experience: unit.experience,
                 location: unit.location.into(),
                 elements,
             });
@@ -81,7 +110,7 @@ mod tests {
     use super::*;
 
     // Uses the real map file so fixtures only have to vary scenario data.
-    fn scenario_toml(toe_elements: &str, units: &str) -> String {
+    fn scenario_toml(players: &str, toe_elements: &str, units: &str) -> String {
         let map_path = concat!(env!("CARGO_MANIFEST_DIR"), "/maps/basic_map.map");
         format!(r#"
 name = "test scenario"
@@ -89,10 +118,7 @@ game_version = "0.1.0"
 map = "{map_path}"
 start_date = "1941-06-22"
 turn_length = 7
-
-[[players]]
-faction_name = "Axis"
-faction_tag = "AX"
+{players}
 
 [[toe]]
 name = "test_toe"
@@ -110,13 +136,32 @@ range = 100
 v_inf = 100
 v_arm = 3
 
+[[elements]]
+name = "second_element"
+class = "AtGun"
+cv = 0.5
+accuracy = 60
+range = 300
+v_inf = 10
+v_arm = 50
+
 {units}
 "#)
     }
 
-    fn build_state(toe_elements: &str, units: &str) -> Result<State, Error> {
-        let scenario: Scenario = toml::from_str(&scenario_toml(toe_elements, units)).unwrap();
+    const DEFAULT_PLAYERS: &str = r#"
+[[players]]
+faction_name = "Axis"
+faction_tag = "AX"
+"#;
+
+    fn build_state_with_players(players: &str, toe_elements: &str, units: &str) -> Result<State, Error> {
+        let scenario: Scenario = toml::from_str(&scenario_toml(players, toe_elements, units)).unwrap();
         State::build(scenario)
+    }
+
+    fn build_state(toe_elements: &str, units: &str) -> Result<State, Error> {
+        build_state_with_players(DEFAULT_PLAYERS, toe_elements, units)
     }
 
     const VALID_TOE_ELEMENTS: &str = r#"
@@ -190,6 +235,80 @@ location = { x = 1, y = 1 }
         let error = build_state(toe_elements, units).unwrap_err();
 
         assert!(error.error_message.contains("missing_element"));
+        assert!(error.error_message.contains("test_toe"));
+    }
+
+    #[test]
+    fn element_stats_inherit_the_most_specific_setting() {
+        let players = r#"
+[[players]]
+faction_name = "Axis"
+faction_tag = "AX"
+morale = 60
+experience = 40
+"#;
+        let toe_elements = r#"
+[[toe.elements]]
+name = "test_element"
+amount = 10
+[[toe.elements]]
+name = "second_element"
+amount = 5
+"#;
+        let units = r#"
+[[units]]
+name = "1st Test Division"
+toe = "test_toe"
+faction = "AX"
+location = { x = 1, y = 1 }
+morale = 70
+
+[[units.elements]]
+name = "second_element"
+experience = 90
+"#;
+        let state = build_state_with_players(players, toe_elements, units).unwrap();
+
+        let elements = &state.units["1st Test Division"].elements;
+        // Unit morale beats the faction's; experience falls through to the faction.
+        assert_eq!((elements[0].name.as_str(), elements[0].morale, elements[0].experience),
+            ("test_element", 70, 40));
+        // The element override beats both for experience.
+        assert_eq!((elements[1].name.as_str(), elements[1].morale, elements[1].experience),
+            ("second_element", 70, 90));
+    }
+
+    #[test]
+    fn unit_with_unknown_faction_is_rejected() {
+        let units = r#"
+[[units]]
+name = "1st Test Division"
+toe = "test_toe"
+faction = "ZZ"
+location = { x = 1, y = 1 }
+"#;
+        let error = build_state(VALID_TOE_ELEMENTS, units).unwrap_err();
+
+        assert!(error.error_message.contains("ZZ"));
+        assert!(error.error_message.contains("1st Test Division"));
+    }
+
+    #[test]
+    fn stat_override_for_an_element_not_in_the_toe_is_rejected() {
+        let units = r#"
+[[units]]
+name = "1st Test Division"
+toe = "test_toe"
+faction = "AX"
+location = { x = 1, y = 1 }
+
+[[units.elements]]
+name = "ghost_element"
+morale = 90
+"#;
+        let error = build_state(VALID_TOE_ELEMENTS, units).unwrap_err();
+
+        assert!(error.error_message.contains("ghost_element"));
         assert!(error.error_message.contains("test_toe"));
     }
 }

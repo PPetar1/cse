@@ -44,7 +44,7 @@ in `lib.rs`, which parses and dispatches. Commands:
 - `new <path.scen>` — start a game from a scenario file (e.g. `new scenarios/basic_scenario.scen`)
 - `load <path.sav>` / `save <path.sav>` — postcard (binary serde) save/load of the whole `Game`
 - `inspect <x> <y>` or `inspect <offmap name>` — show location + units there with
-  their element rosters (ready/damaged per element)
+  their element rosters (ready/damaged/morale/experience per element)
 - `units` / `units detail` — list all units
 - `move <x1> <y1> <x2> <y2> <unit_index>` — teleport-style move (no distance/cost checks yet)
 - `attack <x1> <y1> <x2> <y2>` — units at hex 1 attack units at hex 2; prints a battle
@@ -94,11 +94,15 @@ Key data model (all TOML-configurable, see `scenarios/basic_scenario.scen`):
   `range` (meters), `v_inf`, `v_arm` (vulnerability vs inf/armor fire)
 - **TOE** — table of equipment: named list of (element, amount), with validity dates
 - **Unit** — a division etc.: points at a TOE by name; holds live `ElementInUnit`
-  counts (`ready`/`damaged`) plus `morale` and `experience` (0–100, optional in
-  scenario TOML, default 50 — experience gates element commitment in combat,
-  morale gates routs); location is the `UnitLocation` enum (`OnMap(coords)` /
-  `Offmap(name)`); scenario TOML writes it as `location = { x = 3, y = 3 }` or
-  `location = "GE Reserve"`
+  buckets (`ready`/`damaged` counts plus per-element `morale`/`experience`);
+  location is the `UnitLocation` enum (`OnMap(coords)` / `Offmap(name)`);
+  scenario TOML writes it as `location = { x = 3, y = 3 }` or `location = "GE Reserve"`
+- **Morale/experience** (0–100) live on the elements; the scenario sets them at
+  any granularity, most specific wins: `[[units.elements]]` override → `[[units]]`
+  → faction default on `[[players]]` (stored on the runtime `Player` so events can
+  shift it later) → 50. In combat, experience gates element commitment, both scale
+  element CV ×(1 + mor/100 + exp/100) (`morexp_modifier` in combat.rs), and the
+  unit's strength-weighted `average_morale()` gates routs
 - **Map files** (`maps/*.map`) — TOML: per-hex terrain + named offmap boxes ("GE Reserve")
 
 Conventions used throughout:
@@ -143,9 +147,10 @@ Conventions used throughout:
 1. **Combat resolution** — v1 implemented (fires-based, closing range bands,
    disrupt/damage/destroy hits, CV odds outcome, retreat execution with
    attrition/surrender, `simulate` tuning tool; docs/combat_design.md is the
-   spec). Next combat steps, in rough order: rate of fire + dual AP/HE fire
-   values (tanks currently can't hurt infantry — see the doc's "Observed
-   balance"), morale/experience.
+   spec; morale/experience are in — commit gate, CV modifier, routs). Next
+   combat steps, in rough order: rate of fire + dual AP/HE fire values (tanks
+   currently can't hurt infantry — see the doc's "Observed balance"), shatter
+   and experience gain from battles.
 2. Turn/phase system — `end_turn`, alternating players, date advancement
    (`turn_length` exists in scenarios but is unused).
 3. Movement rules — adjacency/cost/MP budget on the hex grid.

@@ -10,7 +10,7 @@ This project doubles as a learning exercise in AI-driven development: the large 
 
 The engine runs in the terminal and simulates battles between units on a hex map. Unit attributes (elements, TOEs) and maps are read from easy-to-edit TOML config files (`scenarios/*.scen`, `maps/*.map`), so scenarios are data, not code. A simple Bevy-based map visualiser is included for debugging.
 
-Currently implemented: scenario/map loading, unit inspection, simple movement, save/load, map visualiser, and a first fires-based combat resolution (`attack`). Next up: retreat execution and battle tuning tooling.
+Currently implemented: scenario/map loading, unit inspection, simple movement, save/load, map visualiser, and a fires-based combat resolution (`attack`) with retreats, morale/experience and a `simulate` tuning tool. Next up: rate of fire and dual AP/HE fire values.
 
 Design notes live in `docs/` (`combat_design.md` for the battle model, `ideas.md` for the idea backlog).
 
@@ -29,7 +29,7 @@ The prompt supports tab completion (command names, and file paths for `new`/`loa
 | Command | Description |
 |---|---|
 | `new <path.scen>` | start a new game from a scenario file, e.g. `new scenarios/basic_scenario.scen` |
-| `inspect <x> <y>` | inspect the location at (x, y): terrain plus each unit there with its TOE, morale/experience and per-element ready/damaged counts |
+| `inspect <x> <y>` | inspect the location at (x, y): terrain plus each unit there with its TOE and per-element ready/damaged counts and morale/experience |
 | `inspect <name>` | inspect the offmap location with the given name |
 | `units` | list all units (`units detail` for more detail) |
 | `move <x1> <y1> <x2> <y2> <unit_index>` | move the unit with the given index from the start hex to the destination hex; stacked units are indexed in alphabetical order, matching the order `inspect` lists them |

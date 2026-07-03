@@ -5,12 +5,18 @@ map = "maps/basic_map.map"
 start_date = "1941-06-22"
 turn_length = 7
 
+# morale/experience: faction-wide defaults; units and single elements can
+# override them (the most specific setting wins, absent everywhere = 50).
 [[players]]
-faction_name = "Axis" 
+faction_name = "Axis"
 faction_tag = "AX"
+morale = 75
+experience = 65
 [[players]]
 faction_name = "Soviet Union"
 faction_tag = "SU"
+morale = 45
+experience = 35
 
 [[toe]]
 name = "SU_inf_div_41a"
@@ -97,13 +103,16 @@ range = 800
 v_inf = 100
 v_arm = 100
 
+# Inherits the Soviet faction defaults (45/35), except the gun crews.
 [[units]]
 name = "101st Infantry division"
 toe = "SU_inf_div_41a"
 faction = "SU"
 location = { x = 3, y = 3 }
-morale = 45
-experience = 35
+
+[[units.elements]]
+name = "SU_122mm_howitzer_M1938"
+experience = 55
 
 [[units]]
 name = "4th Panzer Division"

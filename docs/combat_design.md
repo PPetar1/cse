@@ -61,12 +61,26 @@ iff its `range` stat ≥ the current band. Fire within a round is simultaneous:
 all shots resolved against the round's starting states, then effects applied —
 no first-strike advantage from code ordering.
 
+### Morale & experience (per element)
+
+Every element carries `morale` and `experience` (0–100). The scenario sets
+them at whatever granularity is convenient — the most specific setting wins:
+
+1. `[[units.elements]]` override on a single element type of a unit,
+2. `morale`/`experience` on the `[[units]]` entry (all its elements inherit),
+3. faction-wide defaults on `[[players]]` (kept on the runtime player so
+   future events can shift them over time),
+4. absent everywhere: 50.
+
+Effects: experience gates commitment (below), both scale the element's CV
+contribution (see Outcome), and the unit's strength-weighted average morale
+gates routs (see Retreat execution).
+
 ### One shot, three rolls
 
 Each Ready, in-range element fires one shot per round (rate of fire: later),
-**if it commits**: an element fires only when a d100 roll is under its unit's
-`experience` (0–100, scenario-configurable, default 50) — WitE's "green units
-fail to commit". Then:
+**if it commits**: an element fires only when a d100 roll is under its
+`experience` — WitE's "green units fail to commit". Then:
 
 1. **Target**: uniform random over enemy Ready elements. Because the snapshot
    is per-instance, numerous element types soak proportionally more fire — an
@@ -90,10 +104,17 @@ fail to commit". Then:
 
 ### Outcome
 
-Final CV per side = Σ `cv` of elements still Ready. Defender CV is multiplied
-by a flat terrain defense factor (Plains/Desert/Water 1.0, Hills 1.5,
-Forest/Swamp 2.0, Mountain/Urban 3.0). **Odds ≥ 2:1 → defender retreats**,
-else defender holds. No rout/shatter yet (need morale).
+Final CV per side = Σ `cv × (1 + morale/100 + experience/100)` of elements
+still Ready: ×1 at 0/0, ×2 at the 50/50 baseline, ×3 at 100/100. The additive
+form (WitE-style) was chosen over the multiplicative `(mor/100 × exp/100)`
+because outcomes ride on the odds *ratio*: additive, elite (80/70) vs green
+(45/35) tilts the odds ×1.39 on stats alone; multiplicative it would be ×3.5,
+letting stats dwarf equipment. One function (`morexp_modifier`) to swap if
+tuning wants a different curve.
+
+Defender CV is further multiplied by a flat terrain defense factor
+(Plains/Desert/Water 1.0, Hills 1.5, Forest/Swamp 2.0, Mountain/Urban 3.0).
+**Odds ≥ 2:1 → defender retreats**, else defender holds. No shatter yet.
 
 ### Retreat execution
 
@@ -107,10 +128,9 @@ needs the map and unit occupancy. On a retreat outcome:
 - **Retreat attrition**: each ready element of a retreating unit has a 10%
   chance to end up damaged; each damaged element (hard to drag along, per
   WitE's capture rule) has a 25% chance to be lost for good.
-- **Rout**: a retreating unit routs when a d100 roll beats its `morale`
-  (0–100, scenario-configurable, default 50) — the attrition rolls then run
-  twice. Morale/experience are unit-level for now; per-element experience
-  needs per-instance state the ready/damaged buckets don't hold.
+- **Rout**: a retreating unit routs when a d100 roll beats its
+  strength-weighted average element morale — the attrition rolls then run
+  twice.
 - **Surrender**: if no valid destination exists, the defenders are cut off and
   surrender — the units are removed from the game.
 
@@ -163,13 +183,20 @@ commit most shots), the Soviet counter-attack loses ~1.7:1. Still 0% retreats
 everywhere — dislodging a dug-in division needs the AP/HE fix and probably
 odds/CV work.
 
+With the CV modifiers added on top (panzers ×2.5 vs Soviet infantry ×1.8),
+the stat gap now shows in the odds too: the forest attack averages 1.1:1
+(was ~0.5:1 on raw CV — forest ×2 still holds the line), the Soviet
+counter-attack 0.4:1 with ~2.2:1 losses against it. Retreats remain at 0%;
+the AP/HE fire-value split is still the lever that has to move first.
+
 ## Open questions / next steps (rough order)
 
 1. Rate of fire + dual AP/HE fire values per element; retune the numeric
    knobs (severity split, cover table, CV multipliers, retreat attrition)
    with `simulate` evidence.
-2. Morale/experience effects beyond commit/rout: shatter, CV scaling,
-   experience gain from battles, per-element experience.
+2. Morale/experience effects beyond commit/CV/rout: shatter, experience gain
+   from battles, morale drops from lost battles (the event hook for shifting
+   faction defaults over time exists on the runtime player).
 3. Attacker advance into the vacated hex after a retreat?
 4. Adjacency requirement for `attack` (arrives with movement rules).
 5. Longer term: swap-in experiment — 2D tactical battlefield with generated

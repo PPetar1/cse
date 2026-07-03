@@ -36,6 +36,7 @@ pub struct CombatElement {
     pub element_name: String,
     pub state: CombatElementState,
     cv: f32,
+    morale: u32,
     experience: u32,
     accuracy: u32,
     range: u32,
@@ -96,7 +97,8 @@ pub fn combat_elements(
                     element_name: element_type.name.clone(),
                     state: CombatElementState::Ready,
                     cv: element_type.cv,
-                    experience: unit.experience,
+                    morale: element_in_unit.morale,
+                    experience: element_in_unit.experience,
                     accuracy: element_type.accuracy,
                     range: element_type.range,
                     v_inf: element_type.v_inf,
@@ -309,8 +311,17 @@ fn has_ready(side: &[CombatElement]) -> bool {
 fn ready_cv(side: &[CombatElement]) -> f32 {
     side.iter()
         .filter(|element| element.state == CombatElementState::Ready)
-        .map(|element| element.cv)
+        .map(|element| element.cv * morexp_modifier(element))
         .sum()
+}
+
+/// Morale/experience scaling of an element's CV: ×1 at 0/0, ×2 at the 50/50
+/// baseline, ×3 at 100/100. Additive (WitE-style) so stats tilt the odds
+/// without dwarfing equipment — the multiplicative alternative
+/// (mor/100 × exp/100) would hand elite-vs-green a 3.5:1 CV gap on stats
+/// alone. Swap this function to try other curves.
+fn morexp_modifier(element: &CombatElement) -> f32 {
+    1.0 + element.morale as f32 / 100.0 + element.experience as f32 / 100.0
 }
 
 fn losses(side: &[CombatElement]) -> Losses {
@@ -519,12 +530,21 @@ mod tests {
             name: name.to_string(),
             toe: "test_toe".to_string(),
             faction: "AX".to_string(),
-            // Veterans: every element always commits, keeping the shot
-            // counts asserted below deterministic.
-            morale: 100,
-            experience: 100,
             location: UnitLocation::Offmap("irrelevant".to_string()),
             elements,
+        }
+    }
+
+    /// Veterans (morale/experience 100): every element always commits, keeping
+    /// the shot counts asserted below deterministic, and the CV modifier is a
+    /// flat ×3.
+    fn veterans(name: &str, ready: u32, damaged: u32) -> ElementInUnit {
+        ElementInUnit {
+            name: name.to_string(),
+            ready,
+            damaged,
+            morale: 100,
+            experience: 100,
         }
     }
 
@@ -541,7 +561,7 @@ mod tests {
     ) -> Vec<CombatElement> {
         let unit = unit_with(
             "Test Division",
-            vec![ElementInUnit { name: "squad".to_string(), ready: count, damaged: 0 }],
+            vec![veterans("squad", count, 0)],
         );
         let types = registry(vec![element_type("squad", ElementClass::Inf, accuracy, range, cv)]);
         combat_elements(&[&unit], &types).unwrap()
@@ -551,7 +571,7 @@ mod tests {
     fn snapshot_expands_ready_counts_and_skips_damaged() {
         let unit = unit_with(
             "Test Division",
-            vec![ElementInUnit { name: "squad".to_string(), ready: 3, damaged: 2 }],
+            vec![veterans("squad", 3, 2)],
         );
         let types = registry(vec![element_type("squad", ElementClass::Inf, 20, 100, 4.0)]);
 
@@ -566,7 +586,7 @@ mod tests {
     fn snapshot_rejects_unknown_element_type() {
         let unit = unit_with(
             "Test Division",
-            vec![ElementInUnit { name: "ghost".to_string(), ready: 1, damaged: 0 }],
+            vec![veterans("ghost", 1, 0)],
         );
 
         let error = combat_elements(&[&unit], &HashMap::new()).unwrap_err();
@@ -608,8 +628,9 @@ mod tests {
         assert_eq!(report.outcome, BattleOutcome::DefenderHolds);
         assert_eq!(report.rounds.len(), RANGE_BANDS.len());
         assert!(report.rounds.iter().all(|r| r.attacker_hits == 0 && r.defender_hits == 0));
-        assert_eq!(report.attacker_cv, 40.0);
-        assert_eq!(report.defender_cv, 40.0);
+        // 10 elements × cv 4 × the veterans' ×3 morale/experience modifier.
+        assert_eq!(report.attacker_cv, 120.0);
+        assert_eq!(report.defender_cv, 120.0);
     }
 
     #[test]
@@ -666,8 +687,29 @@ mod tests {
         let report =
             resolve_battle(&mut attackers, &mut defenders, Terrain::Mountain, &mut rng);
 
-        assert_eq!(report.attacker_cv, 40.0);
-        assert_eq!(report.defender_cv, 120.0);
+        assert_eq!(report.attacker_cv, 120.0);
+        assert_eq!(report.defender_cv, 360.0);
+    }
+
+    #[test]
+    fn morale_and_experience_scale_the_final_cv() {
+        // Same equipment on both sides, but the defenders are broken recruits:
+        // their CV modifier drops from ×3 to ×1 and the 3:1 modified odds
+        // force them back without a shot fired.
+        let mut attackers = side(10, 0, 3000, 4.0);
+        let mut defenders = side(10, 0, 3000, 4.0);
+        for element in &mut defenders {
+            element.morale = 0;
+            element.experience = 0;
+        }
+        let mut rng = StdRng::seed_from_u64(42);
+
+        let report =
+            resolve_battle(&mut attackers, &mut defenders, Terrain::Plains, &mut rng);
+
+        assert_eq!(report.attacker_cv, 120.0);
+        assert_eq!(report.defender_cv, 40.0);
+        assert_eq!(report.outcome, BattleOutcome::DefenderRetreats);
     }
 
     #[test]
@@ -702,8 +744,8 @@ mod tests {
 
         assert_eq!(report.retreats, 0);
         assert_eq!(report.attacker_losses.damaged, 0.0);
-        assert_eq!(report.attacker_cv, 40.0);
-        assert_eq!(report.defender_cv, 40.0);
+        assert_eq!(report.attacker_cv, 120.0);
+        assert_eq!(report.defender_cv, 120.0);
     }
 
     #[test]

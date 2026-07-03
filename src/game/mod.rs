@@ -205,7 +205,7 @@ impl Game {
                         .expect("retreating unit vanished mid-attack");
                     // Broken morale turns an orderly retreat into a rout:
                     // the attrition rolls happen twice.
-                    let routed = rng.random_range(0.0..100.0) >= unit.morale as f32;
+                    let routed = rng.random_range(0.0..100.0) >= unit.average_morale() as f32;
                     let (mut damaged, mut lost) = retreat_attrition(unit, rng);
                     if routed {
                         let (extra_damaged, extra_lost) = retreat_attrition(unit, rng);
@@ -367,9 +367,16 @@ fn single_faction(units: &[&Unit], side: &str) -> Result<String, Error> {
 }
 
 #[derive(Debug, Clone, serde::Deserialize, serde::Serialize)]
-struct Player {
+pub struct Player {
     faction_name: String,
-    faction_tag: String,
+    pub faction_tag: String,
+    /// Faction-wide default morale/experience, inherited by every element of
+    /// the faction's units unless the unit or element sets its own. Lives on
+    /// the runtime player so future events can shift it over time.
+    #[serde(default = "default_stat")]
+    pub morale: u32,
+    #[serde(default = "default_stat")]
+    pub experience: u32,
 }
 
 #[derive(Debug, serde::Deserialize, serde::Serialize)]
@@ -390,7 +397,7 @@ pub struct Scenario {
     #[allow(dead_code)]
     turn_length: u32,
 
-    players: Vec<Player>,
+    pub players: Vec<Player>,
 
     pub toe: Vec<Toe>,
     
@@ -405,14 +412,25 @@ pub struct UnitConfig {
     pub toe: String,
     pub faction: String,
     pub location: UnitLocationConfig,
-    #[serde(default = "default_unit_stat")]
-    pub morale: u32,
-    #[serde(default = "default_unit_stat")]
-    pub experience: u32,
+    /// Unit-wide morale/experience, inherited by all its elements. Absent =
+    /// the faction default from [[players]].
+    pub morale: Option<u32>,
+    pub experience: Option<u32>,
+    /// Per-element stat overrides ([[units.elements]]), the most specific
+    /// setting. Names must exist in the unit's TOE.
+    #[serde(default)]
+    pub elements: Vec<ElementStatsConfig>,
 }
 
-/// Scenario units that don't specify morale/experience get an average rating.
-fn default_unit_stat() -> u32 {
+#[derive(serde::Deserialize)]
+pub struct ElementStatsConfig {
+    pub name: String,
+    pub morale: Option<u32>,
+    pub experience: Option<u32>,
+}
+
+/// Factions that don't specify default morale/experience get an average rating.
+fn default_stat() -> u32 {
     50
 }
 
@@ -756,9 +774,12 @@ location = { x = 1, y = 1 }
 "#;
         let game = Game::build(minimal_scenario(ONE_PLAYER, units)).unwrap();
 
-        let rated = &game.state.units["Rated Division"];
+        // Stats live on the elements; a unit-level scenario setting is
+        // inherited by all of them.
+        let rated = &game.state.units["Rated Division"].elements[0];
         assert_eq!((rated.morale, rated.experience), (80, 65));
-        let unrated = &game.state.units["Unrated Division"];
+        // No unit or faction setting: the default rating.
+        let unrated = &game.state.units["Unrated Division"].elements[0];
         assert_eq!((unrated.morale, unrated.experience), (50, 50));
     }
 
@@ -925,5 +946,13 @@ location = { x = 2, y = 1 }
         assert_eq!(game.state.units.len(), 3);
         // Guards the TOE/element referential integrity of the shipped scenario.
         assert!(game.state.elements.contains_key("SU_45mm_at_gun"));
+        // Morale/experience inheritance: the 101st takes the Soviet faction
+        // defaults, except its howitzer crews' experience override.
+        let infantry = &game.state.units["101st Infantry division"];
+        let squads = infantry.elements.iter().find(|e| e.name == "SU_inf_squad").unwrap();
+        assert_eq!((squads.morale, squads.experience), (45, 35));
+        let howitzers = infantry.elements.iter()
+            .find(|e| e.name == "SU_122mm_howitzer_M1938").unwrap();
+        assert_eq!((howitzers.morale, howitzers.experience), (45, 55));
     }
 }
