@@ -2,8 +2,6 @@ use std::fmt::Display;
 
 use hexx::*;
 
-use crate::core::unit::{LocationCoords, UnitLocation};
-
 #[derive(Debug, serde::Deserialize, PartialEq, serde::Serialize)]
 pub struct Location {
     hex: Option<Hex>, 
@@ -49,15 +47,6 @@ impl Location {
         Some(self.hex?.unsigned_distance_to(other.hex?))
     }
 
-    pub fn get_coords(&self) -> UnitLocation {
-        if let Some(hex) = self.hex {
-            let coords = hex.to_offset_coordinates(OffsetHexMode::Even, HexOrientation::Pointy);
-            UnitLocation::OnMap(LocationCoords { x: coords[0] as u32, y: coords[1] as u32 })
-        }
-        else {
-            UnitLocation::Offmap(self.name.clone().unwrap())
-        }
-    }
 }
 
 impl Display for Location {
@@ -122,22 +111,6 @@ impl OffmapLocations {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn get_coords_round_trips_offset_coordinates() {
-        let location = Location::new(Some((3, 4)), Terrain::Plains, None);
-
-        let coords = location.get_coords();
-        assert_eq!(coords, UnitLocation::OnMap(LocationCoords { x: 3, y: 4 }));
-    }
-
-    #[test]
-    fn get_coords_returns_name_for_offmap_location() {
-        let location = Location::new(None, Terrain::Urban, Some("Reserve".to_string()));
-
-        let coords = location.get_coords();
-        assert_eq!(coords, UnitLocation::Offmap("Reserve".to_string()));
-    }
 
     #[test]
     fn interior_hex_has_six_neighbours_at_distance_one() {

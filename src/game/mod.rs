@@ -64,20 +64,24 @@ impl Game {
        Ok(game)
     }
 
-    pub fn load() -> Result<Game, Error> {
-        Err(Error { error_message: "Not implemented yet.".to_string() })
-    }
-
     pub fn list_units(&self) {
-        for unit in self.state.units.values() {
+        for unit in self.units_by_name() {
             println!("{}", unit);
         }
     }
 
     pub fn list_units_detail(&self) {
-        for unit in self.state.units.values() {
+        for unit in self.units_by_name() {
             println!("{:?}", unit);
         }
+    }
+
+    /// All units sorted by name — HashMap iteration order would make the
+    /// listing shuffle between runs.
+    fn units_by_name(&self) -> Vec<&Unit> {
+        let mut units: Vec<&Unit> = self.state.units.values().collect();
+        units.sort_by(|a, b| a.name.cmp(&b.name));
+        units
     }
     
     /// Units at a location, sorted by name. Sorting matters: the unit index
@@ -137,8 +141,14 @@ impl Game {
         to: (u32, u32),
         rng: &mut impl Rng,
     ) -> Result<AttackReport, Error> {
-        let BattlePlan { mut attackers, mut defenders, defender_terrain, defender_names, defender_faction } =
-            self.prepare_battle(from, to)?;
+        let BattlePlan {
+            mut attackers,
+            mut defenders,
+            defender_terrain,
+            attacker_names,
+            defender_names,
+            defender_faction,
+        } = self.prepare_battle(from, to)?;
 
         let battle = combat::resolve_battle(&mut attackers, &mut defenders, defender_terrain, rng);
 
@@ -157,11 +167,12 @@ impl Game {
         };
 
         // Morale settles last, once routs are known: winners rally, losers
-        // sag, routed units sag a second time. (Shattered/surrendered units
-        // are already gone and are skipped.)
+        // sag, routed units sag a second time. Morale is collective — every
+        // bucket of a participating unit shifts, fought or not — so it works
+        // by unit name. (Shattered/surrendered units are gone and skipped.)
         let (winners, losers) = match battle.outcome {
-            BattleOutcome::DefenderRetreats => (&attackers, &defenders),
-            BattleOutcome::DefenderHolds => (&defenders, &attackers),
+            BattleOutcome::DefenderRetreats => (&attacker_names, &defender_names),
+            BattleOutcome::DefenderHolds => (&defender_names, &attacker_names),
         };
         self.apply_morale_shift(winners, true);
         self.apply_morale_shift(losers, false);
@@ -217,6 +228,7 @@ impl Game {
             attackers: combat::combat_elements(&attacker_units, &self.state.elements)?,
             defenders: combat::combat_elements(&defender_units, &self.state.elements)?,
             defender_terrain: to_location.terrain,
+            attacker_names: attacker_units.iter().map(|unit| unit.name.clone()).collect(),
             defender_names: defender_units.iter().map(|unit| unit.name.clone()).collect(),
             defender_faction,
         })
@@ -317,23 +329,22 @@ impl Game {
         }
     }
 
-    /// Post-battle morale for one side's participating buckets (once per
-    /// bucket): winners rally toward 100, losers sag toward 0.
-    fn apply_morale_shift(&mut self, elements: &[CombatElement], won: bool) {
-        let mut seen = std::collections::HashSet::new();
-        for element in elements {
-            if !seen.insert((&element.unit_name, &element.element_name)) {
+    /// Post-battle morale for one side's units: winners rally toward 100,
+    /// losers sag toward 0. Every bucket of the unit shifts — morale is
+    /// collective, unlike the individual experience gain.
+    fn apply_morale_shift(&mut self, unit_names: &[String], won: bool) {
+        for name in unit_names {
+            let Some(unit) = self.state.units.get_mut(name) else {
                 continue;
-            }
-            if let Some(unit) = self.state.units.get_mut(&element.unit_name)
-                && let Some(entry) = unit.elements.iter_mut().find(|e| e.name == element.element_name) {
-                    if won {
-                        entry.morale +=
-                            100u32.saturating_sub(entry.morale).div_ceil(MORALE_SHIFT_STEP);
-                    } else {
-                        entry.morale -= morale_loss(entry.morale);
-                    }
+            };
+            for entry in &mut unit.elements {
+                if won {
+                    entry.morale +=
+                        100u32.saturating_sub(entry.morale).div_ceil(MORALE_SHIFT_STEP);
+                } else {
+                    entry.morale -= morale_loss(entry.morale);
                 }
+            }
         }
     }
 
@@ -411,6 +422,7 @@ struct BattlePlan {
     attackers: Vec<CombatElement>,
     defenders: Vec<CombatElement>,
     defender_terrain: Terrain,
+    attacker_names: Vec<String>,
     defender_names: Vec<String>,
     defender_faction: String,
 }
@@ -464,9 +476,9 @@ impl Display for UnitRetreat {
 /// side or a mixed stack (multi-faction hexes are unsupported for now).
 fn single_faction(units: &[&Unit], side: &str) -> Result<String, Error> {
     let first = units.first()
-        .ok_or_else(|| Error::new(&format!("No units at the {side} hex.")))?;
+        .ok_or_else(|| Error::new(format!("No units at the {side} hex.")))?;
     if units.iter().any(|unit| unit.faction != first.faction) {
-        return Err(Error::new(&format!(
+        return Err(Error::new(format!(
             "Units of multiple factions at the {side} hex are not supported.",
         )));
     }
@@ -650,6 +662,37 @@ hard_attack = 3
         Game::build(minimal_scenario(ONE_PLAYER, ONMAP_UNIT)).unwrap()
     }
 
+    /// Three stacked attacking divisions at (1, 1) vs one defender at (2, 1)
+    /// with the given morale — the standard "defender surely loses" setup.
+    fn three_vs_one(defender_morale: u32) -> String {
+        format!(r#"
+[[units]]
+name = "Axis First"
+toe = "test_toe"
+faction = "AX"
+location = {{ x = 1, y = 1 }}
+
+[[units]]
+name = "Axis Second"
+toe = "test_toe"
+faction = "AX"
+location = {{ x = 1, y = 1 }}
+
+[[units]]
+name = "Axis Third"
+toe = "test_toe"
+faction = "AX"
+location = {{ x = 1, y = 1 }}
+
+[[units]]
+name = "Soviet Division"
+toe = "test_toe"
+faction = "SU"
+location = {{ x = 2, y = 1 }}
+morale = {defender_morale}
+"#)
+    }
+
     #[test]
     fn builds_a_game_from_a_minimal_scenario() {
         let game = one_unit_game();
@@ -815,33 +858,7 @@ location = { x = 2, y = 1 }
     #[test]
     fn a_lost_battle_forces_a_retreat_to_an_adjacent_hex() {
         // Three divisions against one: the defender loses and must retreat.
-        let units = r#"
-[[units]]
-name = "Axis First"
-toe = "test_toe"
-faction = "AX"
-location = { x = 1, y = 1 }
-
-[[units]]
-name = "Axis Second"
-toe = "test_toe"
-faction = "AX"
-location = { x = 1, y = 1 }
-
-[[units]]
-name = "Axis Third"
-toe = "test_toe"
-faction = "AX"
-location = { x = 1, y = 1 }
-
-[[units]]
-name = "Soviet Division"
-toe = "test_toe"
-faction = "SU"
-location = { x = 2, y = 1 }
-morale = 100
-"#;
-        let mut game = Game::build(minimal_scenario(TWO_PLAYERS, units)).unwrap();
+        let mut game = Game::build(minimal_scenario(TWO_PLAYERS, &three_vs_one(100))).unwrap();
         let mut rng = StdRng::seed_from_u64(42);
 
         let report = game.attack((1, 1), (2, 1), &mut rng).unwrap();
@@ -896,33 +913,7 @@ location = { x = 1, y = 1 }
 
     #[test]
     fn a_defender_with_broken_morale_routs() {
-        let units = r#"
-[[units]]
-name = "Axis First"
-toe = "test_toe"
-faction = "AX"
-location = { x = 1, y = 1 }
-
-[[units]]
-name = "Axis Second"
-toe = "test_toe"
-faction = "AX"
-location = { x = 1, y = 1 }
-
-[[units]]
-name = "Axis Third"
-toe = "test_toe"
-faction = "AX"
-location = { x = 1, y = 1 }
-
-[[units]]
-name = "Soviet Division"
-toe = "test_toe"
-faction = "SU"
-location = { x = 2, y = 1 }
-morale = 0
-"#;
-        let mut game = Game::build(minimal_scenario(TWO_PLAYERS, units)).unwrap();
+        let mut game = Game::build(minimal_scenario(TWO_PLAYERS, &three_vs_one(0))).unwrap();
         let mut rng = StdRng::seed_from_u64(42);
 
         let report = game.attack((1, 1), (2, 1), &mut rng).unwrap();
@@ -938,33 +929,7 @@ morale = 0
 
     #[test]
     fn a_routed_understrength_defender_shatters() {
-        let units = r#"
-[[units]]
-name = "Axis First"
-toe = "test_toe"
-faction = "AX"
-location = { x = 1, y = 1 }
-
-[[units]]
-name = "Axis Second"
-toe = "test_toe"
-faction = "AX"
-location = { x = 1, y = 1 }
-
-[[units]]
-name = "Axis Third"
-toe = "test_toe"
-faction = "AX"
-location = { x = 1, y = 1 }
-
-[[units]]
-name = "Soviet Division"
-toe = "test_toe"
-faction = "SU"
-location = { x = 2, y = 1 }
-morale = 0
-"#;
-        let mut game = Game::build(minimal_scenario(TWO_PLAYERS, units)).unwrap();
+        let mut game = Game::build(minimal_scenario(TWO_PLAYERS, &three_vs_one(0))).unwrap();
         // Already mauled: 2 of 10 TOE elements ready — far below the shatter
         // threshold. Morale 0 fails both the rout and the shatter roll.
         game.state.units.get_mut("Soviet Division").unwrap().elements[0].ready = 2;
@@ -1033,22 +998,10 @@ morale = 100
     }
 
     #[test]
-    fn a_routed_unit_loses_morale_twice() {
+    fn morale_shifts_reach_buckets_that_could_not_fight() {
         let units = r#"
 [[units]]
-name = "Axis First"
-toe = "test_toe"
-faction = "AX"
-location = { x = 1, y = 1 }
-
-[[units]]
-name = "Axis Second"
-toe = "test_toe"
-faction = "AX"
-location = { x = 1, y = 1 }
-
-[[units]]
-name = "Axis Third"
+name = "Axis Division"
 toe = "test_toe"
 faction = "AX"
 location = { x = 1, y = 1 }
@@ -1058,9 +1011,27 @@ name = "Soviet Division"
 toe = "test_toe"
 faction = "SU"
 location = { x = 2, y = 1 }
-morale = 40
+morale = 100
 "#;
         let mut game = Game::build(minimal_scenario(TWO_PLAYERS, units)).unwrap();
+        // The defender has nothing ready to fight with, so it fields no
+        // combat elements at all — but morale is collective, and losing the
+        // hex must still sag it.
+        let bucket = &mut game.state.units.get_mut("Soviet Division").unwrap().elements[0];
+        bucket.ready = 0;
+        bucket.damaged = 10;
+        let mut rng = StdRng::seed_from_u64(42);
+
+        let report = game.attack((1, 1), (2, 1), &mut rng).unwrap();
+
+        assert_eq!(report.battle.outcome, BattleOutcome::DefenderRetreats);
+        // Defeat: 100 - ceil(100/20) = 95; morale 100 never routs.
+        assert_eq!(game.state.units["Soviet Division"].elements[0].morale, 95);
+    }
+
+    #[test]
+    fn a_routed_unit_loses_morale_twice() {
+        let mut game = Game::build(minimal_scenario(TWO_PLAYERS, &three_vs_one(40))).unwrap();
         let mut rng = StdRng::seed_from_u64(42);
 
         let report = game.attack((1, 1), (2, 1), &mut rng).unwrap();

@@ -119,9 +119,11 @@ commit" (one roll for the whole element). Then every in-range device fires
   alike — green troops learn fast (+7 at 35), veterans barely (+1 at 90),
   100 caps itself. Side effect worth knowing: repeatedly battering a
   defender also trains them.
-- **Morale shift**: settles last, once routs are known. The winning side's
-  buckets (a hold counts as a defender win) gain `ceil((100 − morale) / 20)`,
-  the losing side's lose `ceil(morale / 20)`, and a routed unit takes the
+- **Morale shift**: settles last, once routs are known, and is collective —
+  every bucket of a participating *unit* shifts, whether or not it could
+  fight (unlike experience, which only those who fought earn). The winning
+  side (a hold counts as a defender win) gains `ceil((100 − morale) / 20)`,
+  the losing side loses `ceil(morale / 20)`, and a routed unit takes the
   loss a second time — tapering toward the 0/100 bounds like experience.
   This is a deliberate feedback loop: repulsed attacks rally the defender
   (higher CV, steadier under rout checks) and discourage the attacker, so

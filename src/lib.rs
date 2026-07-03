@@ -294,9 +294,9 @@ pub struct Error {
 }
 
 impl Error {
-    pub fn new(error_message: &str) -> Error {
+    pub fn new(error_message: impl Into<String>) -> Error {
         Error {
-            error_message: error_message.to_string(),
+            error_message: error_message.into(),
         }
     }
 }

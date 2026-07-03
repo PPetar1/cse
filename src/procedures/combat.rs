@@ -235,9 +235,8 @@ fn fire_round(
         if firer.state != CombatElementState::Ready {
             continue;
         }
-        let in_range: Vec<&Device> =
-            firer.devices.iter().filter(|device| device.range >= band).collect();
-        if in_range.is_empty() {
+        let mut in_range = firer.devices.iter().filter(|device| device.range >= band).peekable();
+        if in_range.peek().is_none() {
             continue;
         }
         // Failure to commit: green elements often don't fire at all (WitE's

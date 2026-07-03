@@ -10,29 +10,6 @@ pub struct Map {
 }
 
 impl Map {
-    pub fn new_debug_map(width: u32, height: u32) -> Map {
-        let mut map = HashMap::new();
-
-        for i in 0..=width {
-            for j in 0..=height {
-                map.insert(
-                    (i, j),
-                    Location::new(Some((i, j)), Terrain::Plains, None),
-                );
-            }
-        }
-
-        let mut off_map = OffmapLocations::new();
-        off_map.insert(Location::new(None, Terrain::Urban, Some("SUReserve".to_string())));
-        off_map.insert(Location::new(None, Terrain::Urban, Some("GEReserve".to_string())));
-
-        Map {
-            name: "debug_map".to_string(),
-            map,
-            off_map,
-        }
-    }
-
     pub fn map_from_string(contents: &str) -> Result<Map, Error> {
         let map_file: MapFile = toml::from_str(contents)?;
         
