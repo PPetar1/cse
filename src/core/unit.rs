@@ -56,7 +56,7 @@ impl Display for Unit {
 /// Externally tagged (serde default) on purpose — postcard save files cannot
 /// handle `#[serde(untagged)]`. The scenario TOML uses the friendlier untagged
 /// `UnitLocationConfig` instead.
-#[derive(serde::Deserialize, Debug, PartialEq, serde::Serialize)]
+#[derive(serde::Deserialize, Debug, Clone, PartialEq, serde::Serialize)]
 pub enum UnitLocation {
     OnMap(LocationCoords),
     Offmap(String),
@@ -154,7 +154,7 @@ impl ElementClass {
     }
 }
 
-#[derive(serde::Deserialize, Debug, PartialEq, serde::Serialize)]
+#[derive(serde::Deserialize, Debug, Clone, PartialEq, serde::Serialize)]
 pub struct LocationCoords {
     pub x: u32,
     pub y: u32,

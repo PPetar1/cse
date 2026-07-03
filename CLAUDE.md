@@ -174,6 +174,23 @@ Key data model (all TOML-configurable, see `scenarios/basic_scenario.scen`):
   shows the same conditions and each objective hex's current holder at any
   time; `Game::victory_hexes` feeds the hexes to the map view as flag markers
   (see visualiser gotcha below)
+- **Reinforcements/withdrawals** — `[[reinforcements]]` and `[[withdrawals]]`
+  (each entry: `unit`, `turn`, `location` — reuses `UnitLocationConfig`, so a
+  hex or an offmap box name both work either direction) are mechanically
+  identical: at scenario load both parse into a single `Vec<ScheduledArrival>`
+  on `Game` (`ScheduledArrivalConfig` -> `ScheduledArrival` via `From`, same
+  config/runtime split as `UnitLocationConfig`/`UnitLocation`, needed because
+  postcard save files must carry the still-pending schedule forward). Unit
+  names and location targets are validated against the built `State` the same
+  way victory hexes are. `Game::begin_turn` applies any entry whose `turn`
+  matches the current turn and whose unit belongs to the faction coming on
+  turn, before the MP refill/morale drift — since `begin_turn` only fires from
+  `end_turn`, turn-1 arrivals for the very first mover are applied once more
+  explicitly right after `Game::build`. The `reinforcements` command
+  (`Game::reinforcement_schedule_summary`) lists every entry with a
+  pending/arrived status inferred from `turn` vs. the current turn (no
+  separate "already executed" flag needed, since each (unit, turn) pair's
+  owning faction gets exactly one `begin_turn` call for that turn number)
 
 Conventions used throughout:
 - Hex coords: offset coordinates, `OffsetHexMode::Even`, `HexOrientation::Pointy`
@@ -233,9 +250,12 @@ objective hexes with flat points, plus points for enemy strength destroyed and
 a penalty for strength lost, scored at a scenario's `last_turn` (`end_turn`
 prints the result); the `victory` command shows the conditions and current
 hex holders at any time, and the map view flags objective hexes with their
-point value. `basic_scenario.scen` carries a `[victory_conditions]` table and
-8 units (up from 3) spread across a larger map (10x8, up from 6x6) — untuned,
-for exercising the new mechanics. Still open: scheduled reinforcements/
-withdrawals from offmap boxes and first scenario events.
+point value. Scheduled reinforcements/withdrawals are done too:
+`[[reinforcements]]`/`[[withdrawals]]` move a unit on/off the map at a given
+turn, and the `reinforcements` command shows the schedule and its
+pending/arrived status. `basic_scenario.scen` exercises both — a
+`[victory_conditions]` table, two reinforcements and a withdrawal, and 8 units
+(up from 3) spread across a larger map (10x8, up from 6x6) — untuned, for
+testing the new mechanics. Still open: first scenario events.
 Landmark: win — or lose — a game of CSE. Combat knob retuning via `simulate`
 continues alongside.

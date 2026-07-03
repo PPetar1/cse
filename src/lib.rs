@@ -64,6 +64,10 @@ pub fn run(input: &str, mut current_game: Option<&mut Game>) -> Result<Option<Ga
             println!("{}", require_game(current_game.as_deref_mut())?.victory_conditions_summary());
             None
         }
+        Command::Reinforcements => {
+            println!("{}", require_game(current_game.as_deref_mut())?.reinforcement_schedule_summary());
+            None
+        }
         Command::View => {
             view(require_game(current_game.as_deref_mut())?)?;
             None
@@ -87,7 +91,7 @@ pub fn run(input: &str, mut current_game: Option<&mut Game>) -> Result<Option<Ga
 /// `Command::parse` and HELP_TEXT.
 pub const COMMAND_KEYWORDS: &[&str] = &[
     "new", "load", "save", "inspect", "units", "move", "attack", "simulate", "end_turn", "status",
-    "victory", "view", "help", "exit",
+    "victory", "reinforcements", "view", "help", "exit",
 ];
 
 const HELP_TEXT: &str = "\
@@ -103,6 +107,7 @@ Commands:
   end_turn                            pass control to the next player, advancing turn and date
   status                              show scenario, turn, date and who is to move
   victory                             show this scenario's victory conditions and who currently holds each objective hex
+  reinforcements                      show scheduled reinforcements/withdrawals and whether each has arrived
   view                                open the map window
   help                                show this help
   exit                                quit";
@@ -122,6 +127,7 @@ enum Command<'a> {
     EndTurn,
     Status,
     Victory,
+    Reinforcements,
     View,
     Help,
 }
@@ -201,6 +207,7 @@ impl<'a> Command<'a> {
             "end_turn" => Ok(Command::EndTurn),
             "status" => Ok(Command::Status),
             "victory" => Ok(Command::Victory),
+            "reinforcements" => Ok(Command::Reinforcements),
             "view" => Ok(Command::View),
             "help" => Ok(Command::Help),
             _ => Err(Error::new("Unknown command. Type 'help' for a list of commands.")),
@@ -487,6 +494,11 @@ mod tests {
     #[test]
     fn parses_a_victory_command() {
         assert_eq!(Command::parse("victory").unwrap(), Command::Victory);
+    }
+
+    #[test]
+    fn parses_a_reinforcements_command() {
+        assert_eq!(Command::parse("reinforcements").unwrap(), Command::Reinforcements);
     }
 
     #[test]

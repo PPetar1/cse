@@ -237,6 +237,24 @@ experience = 70
 
 #[events]
 
+# Scheduled unit movement: reinforcements step onto the map at a given turn
+# (typically out of an offmap reserve box), withdrawals step off it (typically
+# back into one). Testing values, not balanced.
+[[reinforcements]]
+unit = "104th Infantry division"
+turn = 3
+location = { x = 6, y = 4 }
+
+[[reinforcements]]
+unit = "10th Panzer Division"
+turn = 4
+location = { x = 3, y = 5 }
+
+[[withdrawals]]
+unit = "103rd Infantry division"
+turn = 7
+location = "SU Reserve"
+
 # Win by holding the objective hexes at turn's end, by grinding down the
 # enemy, or both; losing your own force costs points too. Testing values,
 # not balanced.
