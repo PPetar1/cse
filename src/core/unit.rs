@@ -103,8 +103,16 @@ pub struct Element {
     pub cv: f32,
     pub accuracy: u32,
     pub range: u32,
-    pub v_inf: u32,
-    pub v_arm: u32,
+    /// 0–100. Strength of this element's fire against unarmored targets
+    /// (small arms, HE) — the chance a hit takes effect on a fully
+    /// vulnerable target.
+    pub soft_attack: u32,
+    /// 0–100. Strength of its fire against armored targets (AP).
+    pub hard_attack: u32,
+    /// 0–100. How easily fire takes effect on this element: armor for
+    /// vehicles, exposure for everything else. Targets are always engaged
+    /// with the fire value matching their hardness, so one stat suffices.
+    pub vulnerability: u32,
 }
 
 #[derive(serde::Deserialize, Debug, serde::Serialize)]
@@ -115,6 +123,14 @@ pub enum ElementClass {
     MotInf,
     LightArt,
     AtGun,
+}
+
+impl ElementClass {
+    /// Armored elements are engaged with hard (AP) fire; everything else
+    /// receives soft fire.
+    pub fn is_armored(&self) -> bool {
+        matches!(self, ElementClass::LightTank | ElementClass::MedTank)
+    }
 }
 
 #[derive(serde::Deserialize, Debug, PartialEq, serde::Serialize)]

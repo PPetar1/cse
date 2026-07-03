@@ -528,8 +528,9 @@ class = "Inf"
 cv = 4.0
 accuracy = 20
 range = 100
-v_inf = 100
-v_arm = 3
+soft_attack = 100
+hard_attack = 3
+vulnerability = 100
 
 {units}
 "#)

@@ -16,6 +16,15 @@ move it to the roadmap in CLAUDE.md.
   set up GitHub Actions matrix builds when nearing distribution. Habits now:
   `Path::join` over string paths, case-sensitive asset names.
 
+## Structure
+
+- **Separate factions from players** — factions are currently tied 1:1 to
+  players (`[[players]]` carries the faction). Later, multiple players should
+  be able to control parts of one faction (multiplayer), so faction-owned
+  state (units, morale/experience defaults, supplies) and player-owned state
+  (control, turn order) need to become distinct concepts. Fine as-is until
+  the turn system firms up.
+
 ## Combat
 
 - **Low-randomness battle setting** — since battle resolution is computationally

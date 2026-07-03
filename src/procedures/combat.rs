@@ -15,7 +15,7 @@ use rand::Rng;
 
 use crate::Error;
 use crate::core::location::Terrain;
-use crate::core::unit::{Element, ElementClass, Unit};
+use crate::core::unit::{Element, Unit};
 
 /// Engagement range bands in meters. One combat round per band, closing in;
 /// an element fires in a round iff its `range` stat covers the band.
@@ -40,9 +40,10 @@ pub struct CombatElement {
     experience: u32,
     accuracy: u32,
     range: u32,
-    v_inf: u32,
-    v_arm: u32,
-    fires: FireType,
+    soft_attack: u32,
+    hard_attack: u32,
+    vulnerability: u32,
+    armored: bool,
 }
 
 /// Variant order matters: later = worse, and a doubly-hit element keeps the
@@ -56,22 +57,6 @@ pub enum CombatElementState {
     Damaged,
     /// Persisted on the unit as a permanent loss.
     Destroyed,
-}
-
-#[derive(Debug, Clone, Copy)]
-enum FireType {
-    Soft,
-    ArmorPiercing,
-}
-
-/// Which vulnerability a target rolls against when this class fires at it.
-fn fire_type(class: &ElementClass) -> FireType {
-    match class {
-        ElementClass::AtGun | ElementClass::LightTank | ElementClass::MedTank => {
-            FireType::ArmorPiercing
-        }
-        ElementClass::Inf | ElementClass::MotInf | ElementClass::LightArt => FireType::Soft,
-    }
 }
 
 /// Expand units into per-instance combat elements — one entry per ready
@@ -101,9 +86,10 @@ pub fn combat_elements(
                     experience: element_in_unit.experience,
                     accuracy: element_type.accuracy,
                     range: element_type.range,
-                    v_inf: element_type.v_inf,
-                    v_arm: element_type.v_arm,
-                    fires: fire_type(&element_type.class),
+                    soft_attack: element_type.soft_attack,
+                    hard_attack: element_type.hard_attack,
+                    vulnerability: element_type.vulnerability,
+                    armored: element_type.class.is_armored(),
                 });
             }
         }
@@ -272,11 +258,12 @@ fn fire_round(
             continue;
         }
 
-        let vulnerability = match firer.fires {
-            FireType::ArmorPiercing => target.v_arm,
-            FireType::Soft => target.v_inf,
-        };
-        if rng.random_range(0.0..100.0) >= vulnerability as f32 {
+        // Effect: the firer engages with the fire value matching the target's
+        // hardness (AP at armor, small arms/HE at everything else), scaled by
+        // how vulnerable the target is to that kind of fire.
+        let attack = if target.armored { firer.hard_attack } else { firer.soft_attack };
+        let effect_chance = attack as f32 * target.vulnerability as f32 / 100.0;
+        if rng.random_range(0.0..100.0) >= effect_chance {
             continue;
         }
 
@@ -503,7 +490,7 @@ impl Display for AverageLosses {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::core::unit::{ElementInUnit, UnitLocation};
+    use crate::core::unit::{ElementClass, ElementInUnit, UnitLocation};
     use rand::SeedableRng;
     use rand::rngs::StdRng;
 
@@ -520,8 +507,9 @@ mod tests {
             cv,
             accuracy,
             range,
-            v_inf: 100,
-            v_arm: 3,
+            soft_attack: 100,
+            hard_attack: 3,
+            vulnerability: 100,
         }
     }
 
@@ -597,7 +585,8 @@ mod tests {
 
     #[test]
     fn overwhelming_attacker_forces_retreat_and_battle_ends_early() {
-        // Perfect accuracy vs v_inf 100 targets: every shot takes effect.
+        // Perfect accuracy, soft attack 100 vs fully vulnerable soft targets:
+        // every shot takes effect.
         let mut attackers = side(20, 100, 3000, 10.0);
         let mut defenders = side(2, 0, 3000, 1.0);
         let mut rng = StdRng::seed_from_u64(42);
@@ -663,6 +652,52 @@ mod tests {
 
         assert!(report.rounds.iter().all(|round| round.attacker_shots == 0));
         assert!(report.rounds.iter().all(|round| round.defender_shots == 5));
+    }
+
+    #[test]
+    fn soft_fire_cannot_hurt_armored_targets() {
+        // Perfect accuracy but no hard attack: shots at an armored target
+        // are taken and never take effect.
+        let mut attackers = side(5, 100, 3000, 4.0);
+        for element in &mut attackers {
+            element.hard_attack = 0;
+        }
+        let mut defenders = side(5, 0, 3000, 4.0);
+        for element in &mut defenders {
+            element.armored = true;
+        }
+        let mut rng = StdRng::seed_from_u64(42);
+
+        let report =
+            resolve_battle(&mut attackers, &mut defenders, Terrain::Plains, &mut rng);
+
+        assert!(report.rounds.iter().all(|round| round.attacker_shots == 5));
+        assert!(report.rounds.iter().all(|round| round.attacker_hits == 0));
+    }
+
+    #[test]
+    fn armored_targets_are_engaged_with_hard_fire() {
+        // No soft attack at all — only the hard fire value can be at work
+        // when these armored, fully vulnerable defenders go down.
+        let mut attackers = side(20, 100, 3000, 10.0);
+        for element in &mut attackers {
+            element.soft_attack = 0;
+            element.hard_attack = 100;
+        }
+        let mut defenders = side(2, 0, 3000, 1.0);
+        for element in &mut defenders {
+            element.armored = true;
+        }
+        let mut rng = StdRng::seed_from_u64(42);
+
+        let report =
+            resolve_battle(&mut attackers, &mut defenders, Terrain::Plains, &mut rng);
+
+        assert_eq!(report.outcome, BattleOutcome::DefenderRetreats);
+        let total_defender_losses = report.defender_losses.disrupted
+            + report.defender_losses.damaged
+            + report.defender_losses.destroyed;
+        assert_eq!(total_defender_losses, 2);
     }
 
     #[test]

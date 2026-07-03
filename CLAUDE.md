@@ -91,7 +91,9 @@ src/
 
 Key data model (all TOML-configurable, see `scenarios/basic_scenario.scen`):
 - **Element** — a weapon system type (rifle squad, Pz IV…): `class`, `cv`, `accuracy`,
-  `range` (meters), `v_inf`, `v_arm` (vulnerability vs inf/armor fire)
+  `range` (meters), `soft_attack`/`hard_attack` (fire strength vs unarmored/armored
+  targets — targets are engaged with the value matching their hardness, per
+  `ElementClass::is_armored`), `vulnerability` (armor for vehicles, exposure otherwise)
 - **TOE** — table of equipment: named list of (element, amount), with validity dates
 - **Unit** — a division etc.: points at a TOE by name; holds live `ElementInUnit`
   buckets (`ready`/`damaged` counts plus per-element `morale`/`experience`);
@@ -147,10 +149,10 @@ Conventions used throughout:
 1. **Combat resolution** — v1 implemented (fires-based, closing range bands,
    disrupt/damage/destroy hits, CV odds outcome, retreat execution with
    attrition/surrender, `simulate` tuning tool; docs/combat_design.md is the
-   spec; morale/experience are in — commit gate, CV modifier, routs). Next
-   combat steps, in rough order: rate of fire + dual AP/HE fire values (tanks
-   currently can't hurt infantry — see the doc's "Observed balance"), shatter
-   and experience gain from battles.
+   spec; morale/experience are in — commit gate, CV modifier, routs — and so
+   are soft/hard fire values per element). Next combat steps, in rough order:
+   rate of fire, shatter and experience gain from battles, knob retuning via
+   `simulate`.
 2. Turn/phase system — `end_turn`, alternating players, date advancement
    (`turn_length` exists in scenarios but is unused).
 3. Movement rules — adjacency/cost/MP budget on the hex grid.

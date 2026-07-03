@@ -89,9 +89,15 @@ Each Ready, in-range element fires one shot per round (rate of fire: later),
    applying only to shots *at the defender* (attacker is assumed advancing in
    the open). Cover: Plains/Desert/Water 1.0, Hills 0.8, Swamp 0.7, Forest 0.6,
    Mountain 0.5, Urban 0.4.
-3. **Damage save**: hit takes effect if a d100 roll is under the target's
-   vulnerability — `v_arm` if the firer's class shoots armor-piercing
-   (AtGun/LightTank/MedTank), `v_inf` otherwise (Inf/MotInf/LightArt).
+3. **Effect**: the firer engages with the fire value matching the target's
+   hardness — `hard_attack` (AP) against armored classes (LightTank/MedTank),
+   `soft_attack` (small arms/HE) against everything else — scaled by the
+   target's `vulnerability` (armor for vehicles, exposure for the rest):
+   effect chance = `attack × vulnerability / 100`, one d100 roll. Because a
+   target only ever receives the fire kind matching its hardness, one
+   vulnerability stat per element suffices (no v_inf/v_arm pair), and small
+   arms need no category of their own — they are simply the soft-attack
+   value of infantry elements.
 4. **Severity** on a failed save: 50% disrupted, 35% damaged, 15% destroyed.
 
 ### Loss flow
@@ -154,9 +160,6 @@ even in debug builds. It also underpins the low-randomness battle setting idea
 - Flat defender terrain CV multiplier instead of WitE2's per-class density
   rules (infantry ×2 / AFV ×0.5 in dense terrain). Worth adopting once battles
   are tunable via `simulate`.
-- Single fire type per element class. WitE2 devices carry both AP and HE
-  effect; our tanks always fire AP, so they are weak vs infantry (v_arm 3 on
-  squads). Likely the first data-model extension combat needs.
 - Fixed one round per range band; WitE2 has a variable number and can break
   off battles early on bad odds.
 - No morale/experience/fatigue/ammo/leader checks, no fort levels, no support
@@ -189,11 +192,19 @@ the stat gap now shows in the odds too: the forest attack averages 1.1:1
 counter-attack 0.4:1 with ~2.2:1 losses against it. Retreats remain at 0%;
 the AP/HE fire-value split is still the lever that has to move first.
 
+With soft/hard fire values (tanks can finally hurt infantry), the picture
+clicks into place: the panzer attack into the forest inflicts ~2.5:1 losses
+but the defender still holds 100% at 1.2:1 odds — while the same attack
+against infantry caught on open plains forces a retreat 100% of the time at
+2.8:1. The Soviet counter-attack on the panzers loses ~3.9:1. Dug-in forest
+infantry holding a frontal armor attack while bleeding, and getting thrown
+back in the open, is the intended flavor — a solid baseline for future
+tuning.
+
 ## Open questions / next steps (rough order)
 
-1. Rate of fire + dual AP/HE fire values per element; retune the numeric
-   knobs (severity split, cover table, CV multipliers, retreat attrition)
-   with `simulate` evidence.
+1. Rate of fire per element; retune the numeric knobs (severity split,
+   cover table, CV multipliers, retreat attrition) with `simulate` evidence.
 2. Morale/experience effects beyond commit/CV/rout: shatter, experience gain
    from battles, morale drops from lost battles (the event hook for shifting
    faction defaults over time exists on the runtime player).

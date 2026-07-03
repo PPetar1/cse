@@ -48,6 +48,9 @@ amount = 20
 name = "GE_pz_4"
 amount = 30
 
+# soft_attack/hard_attack: fire strength vs unarmored/armored targets;
+# vulnerability: how easily fire takes effect on the element (armor for
+# vehicles, exposure for the rest).
 [[elements]]
 name = "SU_inf_squad"
 #[[device]]
@@ -55,17 +58,19 @@ class = "Inf"
 cv = 4
 accuracy = 20
 range = 100
-v_inf = 100
-v_arm = 3
- 
+soft_attack = 100
+hard_attack = 5
+vulnerability = 100
+
 [[elements]]
 name = "SU_45mm_at_gun"
 class = "AtGun"
 cv = 0.2
 accuracy = 60
 range = 300
-v_inf = 10
-v_arm = 50
+soft_attack = 15
+hard_attack = 90
+vulnerability = 60
 
 [[elements]]
 name = "SU_122mm_howitzer_M1938"
@@ -73,8 +78,9 @@ class = "LightArt"
 cv = 0.5
 accuracy = 5
 range = 11000
-v_inf = 100
-v_arm = 10
+soft_attack = 100
+hard_attack = 15
+vulnerability = 70
 
 [[elements]]
 name = "GE_pz_g_squad"
@@ -82,8 +88,9 @@ class = "MotInf"
 cv = 4
 accuracy = 20
 range = 100
-v_inf = 100
-v_arm = 3
+soft_attack = 100
+hard_attack = 5
+vulnerability = 100
 
 [[elements]]
 name = "GE_pz_2"
@@ -91,8 +98,9 @@ class = "LightTank"
 cv = 8
 accuracy = 60
 range = 600
-v_inf = 100
-v_arm = 30
+soft_attack = 50
+hard_attack = 70
+vulnerability = 40
 
 [[elements]]
 name = "GE_pz_4"
@@ -100,8 +108,9 @@ class = "MedTank"
 cv = 12
 accuracy = 60
 range = 800
-v_inf = 100
-v_arm = 100
+soft_attack = 70
+hard_attack = 80
+vulnerability = 25
 
 # Inherits the Soviet faction defaults (45/35), except the gun crews.
 [[units]]
