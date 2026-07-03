@@ -114,6 +114,11 @@ commit" (one roll for the whole element). Then every in-range device fires
 - **Damaged**: persisted `ready → damaged` on the owning unit. No repair system
   yet (comes with the turn system).
 - **Destroyed**: `ready` decremented, element gone.
+- **Experience gain**: every element bucket that fielded instances in the
+  battle gains `ceil((100 − experience) / 10)` experience, winners and losers
+  alike — green troops learn fast (+7 at 35), veterans barely (+1 at 90),
+  100 caps itself. Side effect worth knowing: repeatedly battering a
+  defender also trains them.
 
 ### Outcome
 
@@ -144,6 +149,10 @@ needs the map and unit occupancy. On a retreat outcome:
 - **Rout**: a retreating unit routs when a d100 roll beats its
   strength-weighted average element morale — the attrition rolls then run
   twice.
+- **Shatter**: a routing unit whose ready strength has fallen below half of
+  its TOE (SHATTER_STRENGTH_FRACTION) disintegrates outright when a second
+  roll also beats its morale — the unit is removed from the game. Fresh
+  units never shatter from a single lost battle; worn-down ones can.
 - **Surrender**: if no valid destination exists, the defenders are cut off and
   surrender — the units are removed from the game.
 
@@ -218,9 +227,9 @@ feels too high once turns exist, `rate_of_fire`/`accuracy` are the knobs.
 
 1. Retune the numeric knobs (severity split, cover table, CV multipliers,
    retreat attrition) with `simulate` evidence.
-2. Morale/experience effects beyond commit/CV/rout: shatter, experience gain
-   from battles, morale drops from lost battles (the event hook for shifting
-   faction defaults over time exists on the runtime player).
+2. Morale shifts: drops from lost battles/routs, gains from victories (the
+   event hook for shifting faction defaults over time exists on the runtime
+   player).
 3. Attacker advance into the vacated hex after a retreat?
 4. Adjacency requirement for `attack` (arrives with movement rules).
 5. Longer term: swap-in experiment — 2D tactical battlefield with generated

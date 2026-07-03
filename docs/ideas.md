@@ -25,6 +25,12 @@ move it to the roadmap in CLAUDE.md.
   (control, turn order) need to become distinct concepts. Fine as-is until
   the turn system firms up.
 
+- **Air and naval warfare** — the end goal includes air warfare and possibly
+  naval. Nothing built yet; the constraint it imposes today is only that
+  ground-combat design choices stay generic (fires-based resolution, devices,
+  data-driven element types) so new domains slot in as more element classes,
+  devices and mission procedures rather than parallel engines.
+
 ## Combat
 
 - **Armor piercing model** — replace the flat `hard_attack × vulnerability`

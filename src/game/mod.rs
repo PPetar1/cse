@@ -15,6 +15,15 @@ use crate::procedures::combat::{
 const RETREAT_DAMAGE_CHANCE: f32 = 10.0;
 const RETREAT_LOSS_CHANCE: f32 = 25.0;
 
+/// A routing unit whose ready strength has fallen below this fraction of its
+/// TOE shatters (disintegrates) when a second roll beats its morale.
+const SHATTER_STRENGTH_FRACTION: f32 = 0.5;
+
+/// After a battle every participating element bucket gains
+/// `ceil((100 - experience) / EXPERIENCE_GAIN_STEP)` experience: green troops
+/// learn fast, veterans have little left to learn, 100 caps itself.
+const EXPERIENCE_GAIN_STEP: u32 = 10;
+
 #[derive(Debug, serde::Deserialize, serde::Serialize)]
 pub struct Game {
     pub state: State,
@@ -127,6 +136,11 @@ impl Game {
 
         let battle = combat::resolve_battle(&mut attackers, &mut defenders, defender_terrain, rng);
 
+        // Winners and losers alike learn from standing in a battle — granted
+        // before losses and retreats reshape (or remove) the rosters.
+        self.apply_experience_gain(&attackers);
+        self.apply_experience_gain(&defenders);
+
         self.apply_battle_losses(&attackers);
         self.apply_battle_losses(&defenders);
 
@@ -203,9 +217,21 @@ impl Game {
                 Some((x, y)) => {
                     let unit = self.state.units.get_mut(name)
                         .expect("retreating unit vanished mid-attack");
+                    let morale = unit.average_morale() as f32;
                     // Broken morale turns an orderly retreat into a rout:
                     // the attrition rolls happen twice.
-                    let routed = rng.random_range(0.0..100.0) >= unit.average_morale() as f32;
+                    let routed = rng.random_range(0.0..100.0) >= morale;
+                    // A rout can end the unit outright: badly depleted units
+                    // that fail a second morale roll disintegrate.
+                    let toe = self.state.toe.get(&unit.toe).expect("unit's toe vanished");
+                    let shattered = routed
+                        && ready_fraction(unit, toe) < SHATTER_STRENGTH_FRACTION
+                        && rng.random_range(0.0..100.0) >= morale;
+                    if shattered {
+                        self.state.units.remove(name);
+                        results.push(UnitRetreat::Shattered { unit: name.clone() });
+                        continue;
+                    }
                     let (mut damaged, mut lost) = retreat_attrition(unit, rng);
                     if routed {
                         let (extra_damaged, extra_lost) = retreat_attrition(unit, rng);
@@ -251,6 +277,22 @@ impl Game {
             .map(|(coords, _)| coords)
     }
 
+    /// Every element bucket that fielded instances in the battle learns from
+    /// it (once per bucket, however many instances fought).
+    fn apply_experience_gain(&mut self, elements: &[CombatElement]) {
+        let mut seen = std::collections::HashSet::new();
+        for element in elements {
+            if !seen.insert((&element.unit_name, &element.element_name)) {
+                continue;
+            }
+            if let Some(unit) = self.state.units.get_mut(&element.unit_name)
+                && let Some(entry) = unit.elements.iter_mut().find(|e| e.name == element.element_name) {
+                    entry.experience +=
+                        100u32.saturating_sub(entry.experience).div_ceil(EXPERIENCE_GAIN_STEP);
+                }
+        }
+    }
+
     /// Persist battle results: damaged elements move ready → damaged,
     /// destroyed ones are removed for good. Disrupted elements recover and
     /// leave no trace. Each snapshot instance came from one point of `ready`,
@@ -271,6 +313,17 @@ impl Game {
                 }
         }
     }
+}
+
+/// The unit's ready elements as a fraction of what its TOE prescribes —
+/// the strength measure behind the shatter check.
+fn ready_fraction(unit: &Unit, toe: &Toe) -> f32 {
+    let prescribed: u32 = toe.elements.iter().map(|element| element.amount).sum();
+    if prescribed == 0 {
+        return 0.0;
+    }
+    let ready: u32 = unit.elements.iter().map(|element| element.ready).sum();
+    ready as f32 / prescribed as f32
 }
 
 /// Retreat attrition rolls for one unit: ready elements may end up damaged
@@ -323,6 +376,7 @@ pub struct AttackReport {
 #[derive(Debug, PartialEq)]
 pub enum UnitRetreat {
     Retreated { unit: String, to: (u32, u32), damaged: u32, lost: u32, routed: bool },
+    Shattered { unit: String },
     Surrendered { unit: String },
 }
 
@@ -346,6 +400,9 @@ impl Display for UnitRetreat {
                 if *routed { "routs" } else { "retreats" },
                 to.0, to.1, damaged, lost,
             ),
+            UnitRetreat::Shattered { unit } => {
+                write!(f, "{} routs and shatters — the unit disintegrates!", unit)
+            }
             UnitRetreat::Surrendered { unit } => {
                 write!(f, "{} has nowhere to retreat and surrenders!", unit)
             }
@@ -820,11 +877,94 @@ morale = 0
 
         let report = game.attack((1, 1), (2, 1), &mut rng).unwrap();
 
-        // Morale 0 always routs when forced back.
+        // Morale 0 always routs when forced back — but a unit still near
+        // full strength never shatters, it stays in the game.
         assert!(matches!(
             report.retreat[..],
             [UnitRetreat::Retreated { routed: true, .. }],
         ));
+        assert!(game.state.units.contains_key("Soviet Division"));
+    }
+
+    #[test]
+    fn a_routed_understrength_defender_shatters() {
+        let units = r#"
+[[units]]
+name = "Axis First"
+toe = "test_toe"
+faction = "AX"
+location = { x = 1, y = 1 }
+
+[[units]]
+name = "Axis Second"
+toe = "test_toe"
+faction = "AX"
+location = { x = 1, y = 1 }
+
+[[units]]
+name = "Axis Third"
+toe = "test_toe"
+faction = "AX"
+location = { x = 1, y = 1 }
+
+[[units]]
+name = "Soviet Division"
+toe = "test_toe"
+faction = "SU"
+location = { x = 2, y = 1 }
+morale = 0
+"#;
+        let mut game = Game::build(minimal_scenario(TWO_PLAYERS, units)).unwrap();
+        // Already mauled: 2 of 10 TOE elements ready — far below the shatter
+        // threshold. Morale 0 fails both the rout and the shatter roll.
+        game.state.units.get_mut("Soviet Division").unwrap().elements[0].ready = 2;
+        let mut rng = StdRng::seed_from_u64(42);
+
+        let report = game.attack((1, 1), (2, 1), &mut rng).unwrap();
+
+        assert_eq!(
+            report.retreat,
+            vec![UnitRetreat::Shattered { unit: "Soviet Division".to_string() }],
+        );
+        assert!(!game.state.units.contains_key("Soviet Division"));
+    }
+
+    #[test]
+    fn battles_grant_experience_to_both_sides() {
+        let mut game = Game::build(minimal_scenario(TWO_PLAYERS, OPPOSING_UNITS)).unwrap();
+        let mut rng = StdRng::seed_from_u64(42);
+
+        game.attack((1, 1), (2, 1), &mut rng).unwrap();
+
+        // Both start at the default 50: gain is ceil(50 / 10) = 5.
+        assert_eq!(game.state.units["Axis Division"].elements[0].experience, 55);
+        assert_eq!(game.state.units["Soviet Division"].elements[0].experience, 55);
+    }
+
+    #[test]
+    fn experience_gain_tapers_off_and_caps_at_100() {
+        let units = r#"
+[[units]]
+name = "Axis Division"
+toe = "test_toe"
+faction = "AX"
+location = { x = 1, y = 1 }
+experience = 98
+
+[[units]]
+name = "Soviet Division"
+toe = "test_toe"
+faction = "SU"
+location = { x = 2, y = 1 }
+experience = 100
+"#;
+        let mut game = Game::build(minimal_scenario(TWO_PLAYERS, units)).unwrap();
+        let mut rng = StdRng::seed_from_u64(42);
+
+        game.attack((1, 1), (2, 1), &mut rng).unwrap();
+
+        assert_eq!(game.state.units["Axis Division"].elements[0].experience, 99);
+        assert_eq!(game.state.units["Soviet Division"].elements[0].experience, 100);
     }
 
     #[test]

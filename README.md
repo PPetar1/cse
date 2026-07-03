@@ -1,6 +1,6 @@
 # CSE — Combat Simulation Engine
 
-A combat simulation engine/wargame centered around WW2 written in Rust, inspired by Gary Grigsby's War in the East series.
+A combat simulation engine/wargame written in Rust, inspired by Gary Grigsby's War in the East series. WW2 is the first target; the long-term goal is an engine generic enough to model fires-based conflicts of any era (Napoleonic through modern), eventually including air — and possibly naval — warfare.
 
 Side project, worked on in free time.
 
@@ -10,7 +10,7 @@ This project doubles as a learning exercise in AI-driven development: the large 
 
 The engine runs in the terminal and simulates battles between units on a hex map. Unit attributes (elements, TOEs) and maps are read from easy-to-edit TOML config files (`scenarios/*.scen`, `maps/*.map`), so scenarios are data, not code. A simple Bevy-based map visualiser is included for debugging.
 
-Currently implemented: scenario/map loading, unit inspection, simple movement, save/load, map visualiser, and a fires-based combat resolution (`attack`) with retreats, morale/experience, device-level weapons (accuracy, rate of fire, soft/hard attack) and a `simulate` tuning tool. Next up: the turn/phase system or further combat depth (shatter, experience gain).
+Currently implemented: scenario/map loading, unit inspection, simple movement, save/load, map visualiser, and a fires-based combat resolution (`attack`) with retreats/routs/shatters, morale/experience (including experience gain from battles), device-level weapons (accuracy, rate of fire, soft/hard attack) and a `simulate` tuning tool. Next up: the turn/phase system or morale shifts from battle outcomes.
 
 Design notes live in `docs/` (`combat_design.md` for the battle model, `ideas.md` for the idea backlog).
 
@@ -33,7 +33,7 @@ The prompt supports tab completion (command names, and file paths for `new`/`loa
 | `inspect <name>` | inspect the offmap location with the given name |
 | `units` | list all units (`units detail` for more detail) |
 | `move <x1> <y1> <x2> <y2> <unit_index>` | move the unit with the given index from the start hex to the destination hex; stacked units are indexed in alphabetical order, matching the order `inspect` lists them |
-| `attack <x1> <y1> <x2> <y2>` | all units at the first hex attack all units at the second hex; prints a battle report (rounds at closing range, losses, final CV odds, outcome). Losses persist; beaten defenders retreat to an adjacent free hex with extra attrition, or surrender if surrounded. See `docs/combat_design.md` |
+| `attack <x1> <y1> <x2> <y2>` | all units at the first hex attack all units at the second hex; prints a battle report (rounds at closing range, losses, final CV odds, outcome). Losses and experience gain persist; beaten defenders retreat to an adjacent free hex with extra attrition — routing if morale breaks, shattering if also badly depleted — or surrender if surrounded. See `docs/combat_design.md` |
 | `simulate <x1> <y1> <x2> <y2> <n>` | fight that attack n times without changing the game and print statistics: hold/retreat rates, average losses, mean final CVs. For balance tuning |
 | `view` | open a window visualising the map and unit positions; the terminal stays usable while the window is open, and `view` can be called again after closing it (Esc or close the window to dismiss) |
 | `help` | list all commands |

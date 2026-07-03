@@ -5,6 +5,12 @@ Design goal: scalable engine-first architecture — terminal-driven simulation c
 richer frontends later. Unit/TOE/element attributes come from easy-to-edit TOML config
 files, so scenarios are data, not code.
 
+WW2 is the first target, not the boundary: the engine should be able to model any
+fires-based conflict from roughly Napoleonic to modern, with air — and possibly
+naval — warfare eventually. Keep design choices era-agnostic: mechanics generic,
+era flavor in scenario data. (`ElementClass` is the main code-side taxonomy to
+watch as eras multiply.)
+
 **Standing rules from the author:**
 - After every code change, update README.md and this file in the same pass
   (commands/usage in README; architecture, conventions, gotchas, roadmap here).
@@ -48,7 +54,8 @@ in `lib.rs`, which parses and dispatches. Commands:
 - `units` / `units detail` — list all units
 - `move <x1> <y1> <x2> <y2> <unit_index>` — teleport-style move (no distance/cost checks yet)
 - `attack <x1> <y1> <x2> <y2>` — units at hex 1 attack units at hex 2; prints a battle
-  report and persists losses; beaten defenders retreat (with attrition) or surrender
+  report and persists losses + experience gain; beaten defenders retreat (with
+  attrition), rout, shatter, or surrender
 - `simulate <x1> <y1> <x2> <y2> <n>` — fight that attack n times state-untouched,
   print hold/retreat rates + average losses (the balance-tuning tool)
 - `view` — open the Bevy map window in a detached subprocess (terminal stays usable;
@@ -152,10 +159,11 @@ Conventions used throughout:
 1. **Combat resolution** — v1 implemented (fires-based, closing range bands,
    disrupt/damage/destroy hits, CV odds outcome, retreat execution with
    attrition/surrender, `simulate` tuning tool; docs/combat_design.md is the
-   spec; morale/experience are in — commit gate, CV modifier, routs — and so
-   is device-level fire: accuracy/rate-of-fire/soft+hard attack per weapon).
-   Next combat steps, in rough order: shatter and experience gain from
-   battles, knob retuning via `simulate`; later piercing + AoE fire (ideas.md).
+   spec; morale/experience are in — commit gate, CV modifier, routs, shatter,
+   experience gain from battles — and so is device-level fire:
+   accuracy/rate-of-fire/soft+hard attack per weapon). Next combat steps, in
+   rough order: morale shifts from battle outcomes, knob retuning via
+   `simulate`; later piercing + AoE fire (ideas.md).
 2. Turn/phase system — `end_turn`, alternating players, date advancement
    (`turn_length` exists in scenarios but is unused).
 3. Movement rules — adjacency/cost/MP budget on the hex grid.
