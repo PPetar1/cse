@@ -58,10 +58,10 @@ in `lib.rs`, which parses and dispatches. Commands:
   enemy-occupied destinations are rejected (that's `attack`); only the on-turn
   faction's units
 - `attack <x1> <y1> <x2> <y2>` — units at hex 1 attack units at the adjacent hex 2
-  (on-turn faction only; `simulate` is exempt from both gates); prints a battle
-  report and persists losses + experience gain; beaten defenders retreat (with
-  attrition), rout, shatter, or surrender, and the attackers advance into the
-  vacated hex (free, automatic)
+  (on-turn faction only; `simulate` shares this validation via `prepare_battle`);
+  prints a battle report and persists losses + experience gain; beaten defenders
+  retreat (with attrition), rout, shatter, or surrender, and the attackers
+  advance into the vacated hex (free, automatic)
 - `simulate <x1> <y1> <x2> <y2> <n>` — fight that attack n times state-untouched,
   print hold/retreat rates + average losses (the balance-tuning tool)
 - `end_turn` — pass control to the next player (IGO-UGO); when every player has

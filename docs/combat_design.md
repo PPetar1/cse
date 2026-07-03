@@ -41,7 +41,10 @@ attack all units in the target hex. Pure resolution engine in
 `src/procedures/combat.rs`; the `Game` layer builds battle snapshots, calls the
 engine, applies losses back, executes retreats, and prints the report. An
 attack order must come from the faction on turn and target an adjacent hex;
-`simulate` is exempt from both gates so tuning can probe any matchup.
+`simulate` obeys the same rules (shared validation in `prepare_battle`), so a
+simulation is always of an attack the player could actually order — and any
+future order logic keyed on the source hex or the turn (reserve activation…)
+automatically covers both.
 
 ### Snapshot seam (the load-bearing design decision)
 
@@ -251,6 +254,6 @@ feels too high once turns exist, `rate_of_fire`/`accuracy` are the knobs.
    interface.
 
 Resolved in Phase 1: adjacency requirement for `attack` (attacks must target
-an adjacent hex, `simulate` stays unrestricted); attacker advance after
-retreat (automatic, free — see Retreat execution); morale recovery over time
-(turn-start drift toward the faction default — see Morale recovery above).
+an adjacent hex; `simulate` shares all attack validation); attacker advance
+after retreat (automatic, free — see Retreat execution); morale recovery over
+time (turn-start drift toward the faction default — see Morale recovery above).

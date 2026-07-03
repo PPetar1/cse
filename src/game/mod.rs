@@ -234,29 +234,14 @@ impl Game {
         to: (u32, u32),
         rng: &mut impl Rng,
     ) -> Result<AttackReport, Error> {
-        // Order gates live here, not in prepare_battle: `simulate` must stay
-        // free to probe any matchup from any hex, off-turn included.
-        let from_location = self.state.map.get_location(from.0, from.1)
-            .ok_or_else(|| Error::new("Invalid attacking location."))?;
-        let to_location = self.state.map.get_location(to.0, to.1)
-            .ok_or_else(|| Error::new("Invalid target location."))?;
-        if from_location.distance_to(to_location) != Some(1) {
-            return Err(Error::new("Attacks can only target an adjacent hex."));
-        }
-
         let BattlePlan {
             mut attackers,
             mut defenders,
             defender_terrain,
             attacker_names,
             defender_names,
-            attacker_faction,
             defender_faction,
         } = self.prepare_battle(from, to)?;
-
-        if attacker_faction != self.player_on_turn().faction_tag {
-            return Err(Error::new(format!("It is not {attacker_faction}'s turn.")));
-        }
 
         let battle = combat::resolve_battle(&mut attackers, &mut defenders, defender_terrain, rng);
 
@@ -328,12 +313,18 @@ impl Game {
 
     /// Validate an attack order and build the battle snapshots for it.
     /// Shared by `attack` (which then persists results) and `simulate`
-    /// (which never does).
+    /// (which never does) — both obey the same rules, adjacency and turn
+    /// order included, so a simulation is always of a legal attack. Future
+    /// order logic that cares about the source hex or whose turn it is
+    /// (reserve activation etc.) belongs here too.
     fn prepare_battle(&self, from: (u32, u32), to: (u32, u32)) -> Result<BattlePlan, Error> {
         let from_location = self.state.map.get_location(from.0, from.1)
             .ok_or_else(|| Error::new("Invalid attacking location."))?;
         let to_location = self.state.map.get_location(to.0, to.1)
             .ok_or_else(|| Error::new("Invalid target location."))?;
+        if from_location.distance_to(to_location) != Some(1) {
+            return Err(Error::new("Attacks can only target an adjacent hex."));
+        }
 
         // Sorted by name (units_at_location), so the snapshot order — and with
         // it a seeded battle — is deterministic despite HashMap storage.
@@ -345,6 +336,9 @@ impl Game {
         if attacker_faction == defender_faction {
             return Err(Error::new("Cannot attack units of the same faction."));
         }
+        if attacker_faction != self.player_on_turn().faction_tag {
+            return Err(Error::new(format!("It is not {attacker_faction}'s turn.")));
+        }
 
         Ok(BattlePlan {
             attackers: combat::combat_elements(&attacker_units, &self.state.elements)?,
@@ -352,7 +346,6 @@ impl Game {
             defender_terrain: to_location.terrain,
             attacker_names: attacker_units.iter().map(|unit| unit.name.clone()).collect(),
             defender_names: defender_units.iter().map(|unit| unit.name.clone()).collect(),
-            attacker_faction,
             defender_faction,
         })
     }
@@ -557,7 +550,6 @@ struct BattlePlan {
     defender_terrain: Terrain,
     attacker_names: Vec<String>,
     defender_names: Vec<String>,
-    attacker_faction: String,
     defender_faction: String,
 }
 
@@ -1129,9 +1121,22 @@ location = { x = 3, y = 1 }
         let error = game.attack((1, 1), (3, 1), &mut rng).unwrap_err();
         assert!(error.error_message.contains("adjacent"));
 
-        // The tuning tool is exempt from both the range and the turn gate:
-        // it can probe the reverse matchup while Axis is on turn.
-        game.simulate((3, 1), (1, 1), 5, &mut rng).unwrap();
+        // The tuning tool obeys the same rules — a simulation is always of
+        // a legal attack.
+        let error = game.simulate((1, 1), (3, 1), 5, &mut rng).unwrap_err();
+        assert!(error.error_message.contains("adjacent"));
+    }
+
+    #[test]
+    fn simulate_rejects_the_off_turn_faction() {
+        let mut game = Game::build(minimal_scenario(TWO_PLAYERS, OPPOSING_UNITS)).unwrap();
+        let mut rng = StdRng::seed_from_u64(42);
+
+        let error = game.simulate((2, 1), (1, 1), 5, &mut rng).unwrap_err();
+        assert!(error.error_message.contains("not SU's turn"));
+
+        game.end_turn();
+        game.simulate((2, 1), (1, 1), 5, &mut rng).unwrap();
     }
 
     #[test]
