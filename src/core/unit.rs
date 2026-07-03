@@ -101,18 +101,32 @@ pub struct Element {
     pub name: String,
     pub class: ElementClass,
     pub cv: f32,
-    pub accuracy: u32,
-    pub range: u32,
-    /// 0–100. Strength of this element's fire against unarmored targets
-    /// (small arms, HE) — the chance a hit takes effect on a fully
-    /// vulnerable target.
-    pub soft_attack: u32,
-    /// 0–100. Strength of its fire against armored targets (AP).
-    pub hard_attack: u32,
     /// 0–100. How easily fire takes effect on this element: armor for
     /// vehicles, exposure for everything else. Targets are always engaged
     /// with the fire value matching their hardness, so one stat suffices.
     pub vulnerability: u32,
+    /// The weapons this element fights with; every in-range device fires
+    /// each combat round. Must not be empty (State::build validates).
+    pub devices: Vec<Device>,
+}
+
+/// One weapon carried by an element — a rifle/LMG volley, a tank's main gun,
+/// its hull machine guns…
+#[derive(serde::Deserialize, Debug, Clone, serde::Serialize)]
+pub struct Device {
+    pub name: String,
+    /// 0–100. Chance for a single shot to hit its target.
+    pub accuracy: u32,
+    /// Meters. The device fires in a combat round iff this covers the
+    /// round's range band.
+    pub range: u32,
+    /// Shots per combat round.
+    pub rate_of_fire: u32,
+    /// 0–100. How devastating a hit is against unarmored targets (small
+    /// arms, HE) — the chance it takes effect on a fully vulnerable target.
+    pub soft_attack: u32,
+    /// 0–100. How devastating a hit is against armored targets (AP).
+    pub hard_attack: u32,
 }
 
 #[derive(serde::Deserialize, Debug, serde::Serialize)]

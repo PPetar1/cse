@@ -15,7 +15,7 @@ use rand::Rng;
 
 use crate::Error;
 use crate::core::location::Terrain;
-use crate::core::unit::{Element, Unit};
+use crate::core::unit::{Device, Element, Unit};
 
 /// Engagement range bands in meters. One combat round per band, closing in;
 /// an element fires in a round iff its `range` stat covers the band.
@@ -38,12 +38,9 @@ pub struct CombatElement {
     cv: f32,
     morale: u32,
     experience: u32,
-    accuracy: u32,
-    range: u32,
-    soft_attack: u32,
-    hard_attack: u32,
     vulnerability: u32,
     armored: bool,
+    devices: Vec<Device>,
 }
 
 /// Variant order matters: later = worse, and a doubly-hit element keeps the
@@ -84,12 +81,9 @@ pub fn combat_elements(
                     cv: element_type.cv,
                     morale: element_in_unit.morale,
                     experience: element_in_unit.experience,
-                    accuracy: element_type.accuracy,
-                    range: element_type.range,
-                    soft_attack: element_type.soft_attack,
-                    hard_attack: element_type.hard_attack,
                     vulnerability: element_type.vulnerability,
                     armored: element_type.class.is_armored(),
+                    devices: element_type.devices.clone(),
                 });
             }
         }
@@ -238,7 +232,12 @@ fn fire_round(
     let mut shots = 0;
     let mut hits = Vec::new();
     for firer in firers {
-        if firer.state != CombatElementState::Ready || firer.range < band {
+        if firer.state != CombatElementState::Ready {
+            continue;
+        }
+        let in_range: Vec<&Device> =
+            firer.devices.iter().filter(|device| device.range >= band).collect();
+        if in_range.is_empty() {
             continue;
         }
         // Failure to commit: green elements often don't fire at all (WitE's
@@ -246,28 +245,33 @@ fn fire_round(
         if rng.random_range(0.0..100.0) >= firer.experience as f32 {
             continue;
         }
-        shots += 1;
 
-        // Uniform pick over enemy instances: numerous element types soak
-        // proportionally more fire, an emergent screening effect.
-        let target_index = target_pool[rng.random_range(0..target_pool.len())];
-        let target = &targets[target_index];
+        for device in in_range {
+            for _ in 0..device.rate_of_fire {
+                shots += 1;
 
-        let hit_chance = firer.accuracy as f32 * target_cover;
-        if rng.random_range(0.0..100.0) >= hit_chance {
-            continue;
+                // Uniform pick over enemy instances: numerous element types
+                // soak proportionally more fire, an emergent screening effect.
+                let target_index = target_pool[rng.random_range(0..target_pool.len())];
+                let target = &targets[target_index];
+
+                let hit_chance = device.accuracy as f32 * target_cover;
+                if rng.random_range(0.0..100.0) >= hit_chance {
+                    continue;
+                }
+
+                // Effect: the device's fire value matching the target's
+                // hardness (AP at armor, small arms/HE at everything else),
+                // scaled by how vulnerable the target is to that kind of fire.
+                let attack = if target.armored { device.hard_attack } else { device.soft_attack };
+                let effect_chance = attack as f32 * target.vulnerability as f32 / 100.0;
+                if rng.random_range(0.0..100.0) >= effect_chance {
+                    continue;
+                }
+
+                hits.push((target_index, severity(rng.random_range(0.0..100.0))));
+            }
         }
-
-        // Effect: the firer engages with the fire value matching the target's
-        // hardness (AP at armor, small arms/HE at everything else), scaled by
-        // how vulnerable the target is to that kind of fire.
-        let attack = if target.armored { firer.hard_attack } else { firer.soft_attack };
-        let effect_chance = attack as f32 * target.vulnerability as f32 / 100.0;
-        if rng.random_range(0.0..100.0) >= effect_chance {
-            continue;
-        }
-
-        hits.push((target_index, severity(rng.random_range(0.0..100.0))));
     }
     (shots, hits)
 }
@@ -494,6 +498,17 @@ mod tests {
     use rand::SeedableRng;
     use rand::rngs::StdRng;
 
+    fn device(accuracy: u32, range: u32, rate_of_fire: u32) -> Device {
+        Device {
+            name: "test_gun".to_string(),
+            accuracy,
+            range,
+            rate_of_fire,
+            soft_attack: 100,
+            hard_attack: 3,
+        }
+    }
+
     fn element_type(
         name: &str,
         class: ElementClass,
@@ -505,11 +520,8 @@ mod tests {
             name: name.to_string(),
             class,
             cv,
-            accuracy,
-            range,
-            soft_attack: 100,
-            hard_attack: 3,
             vulnerability: 100,
+            devices: vec![device(accuracy, range, 1)],
         }
     }
 
@@ -639,6 +651,45 @@ mod tests {
     }
 
     #[test]
+    fn rate_of_fire_multiplies_shots() {
+        let mut attackers = side(5, 0, 3000, 4.0);
+        for element in &mut attackers {
+            element.devices[0].rate_of_fire = 3;
+        }
+        let mut defenders = side(5, 0, 3000, 4.0);
+        let mut rng = StdRng::seed_from_u64(42);
+
+        let report =
+            resolve_battle(&mut attackers, &mut defenders, Terrain::Plains, &mut rng);
+
+        for round in &report.rounds {
+            assert_eq!(round.attacker_shots, 15);
+            assert_eq!(round.defender_shots, 5);
+        }
+    }
+
+    #[test]
+    fn every_in_range_device_of_an_element_fires() {
+        // A tank-like element: long-range main gun (1 shot) plus short-range
+        // machine guns (4 shots that join once the range closes).
+        let unit = unit_with("Test Division", vec![veterans("tank", 2, 0)]);
+        let mut tank = element_type("tank", ElementClass::MedTank, 0, 0, 8.0);
+        tank.devices = vec![device(0, 3000, 1), device(0, 100, 4)];
+        let types = registry(vec![tank]);
+        let mut attackers = combat_elements(&[&unit], &types).unwrap();
+        let mut defenders = side(5, 0, 3000, 4.0);
+        let mut rng = StdRng::seed_from_u64(42);
+
+        let report =
+            resolve_battle(&mut attackers, &mut defenders, Terrain::Plains, &mut rng);
+
+        for round in &report.rounds {
+            let expected_shots = if round.range <= 100 { 2 * (1 + 4) } else { 2 };
+            assert_eq!(round.attacker_shots, expected_shots);
+        }
+    }
+
+    #[test]
     fn elements_without_experience_never_commit() {
         let mut attackers = side(5, 100, 3000, 4.0);
         for element in &mut attackers {
@@ -660,7 +711,7 @@ mod tests {
         // are taken and never take effect.
         let mut attackers = side(5, 100, 3000, 4.0);
         for element in &mut attackers {
-            element.hard_attack = 0;
+            element.devices[0].hard_attack = 0;
         }
         let mut defenders = side(5, 0, 3000, 4.0);
         for element in &mut defenders {
@@ -681,8 +732,8 @@ mod tests {
         // when these armored, fully vulnerable defenders go down.
         let mut attackers = side(20, 100, 3000, 10.0);
         for element in &mut attackers {
-            element.soft_attack = 0;
-            element.hard_attack = 100;
+            element.devices[0].soft_attack = 0;
+            element.devices[0].hard_attack = 100;
         }
         let mut defenders = side(2, 0, 3000, 1.0);
         for element in &mut defenders {

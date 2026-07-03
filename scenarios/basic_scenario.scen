@@ -48,69 +48,116 @@ amount = 20
 name = "GE_pz_4"
 amount = 30
 
-# soft_attack/hard_attack: fire strength vs unarmored/armored targets;
-# vulnerability: how easily fire takes effect on the element (armor for
-# vehicles, exposure for the rest).
+# An element fights with its devices: each in-range device fires
+# rate_of_fire shots per combat round. accuracy: chance a shot hits;
+# soft_attack/hard_attack: how devastating a hit is vs unarmored/armored
+# targets; vulnerability (element-level): how easily fire takes effect on
+# it — armor for vehicles, exposure for the rest.
 [[elements]]
 name = "SU_inf_squad"
-#[[device]]
 class = "Inf"
 cv = 4
+vulnerability = 100
+[[elements.devices]]
+name = "rifles_and_lmg"
 accuracy = 20
 range = 100
-soft_attack = 100
-hard_attack = 5
-vulnerability = 100
+rate_of_fire = 3
+soft_attack = 40
+hard_attack = 0
+[[elements.devices]]
+name = "at_grenades"
+accuracy = 15
+range = 100
+rate_of_fire = 1
+soft_attack = 0
+hard_attack = 10
 
 [[elements]]
 name = "SU_45mm_at_gun"
 class = "AtGun"
 cv = 0.2
+vulnerability = 60
+[[elements.devices]]
+name = "45mm_m1937"
 accuracy = 60
 range = 300
+rate_of_fire = 2
 soft_attack = 15
 hard_attack = 90
-vulnerability = 60
 
 [[elements]]
 name = "SU_122mm_howitzer_M1938"
 class = "LightArt"
 cv = 0.5
+vulnerability = 70
+[[elements.devices]]
+name = "122mm_m1938"
 accuracy = 5
 range = 11000
+rate_of_fire = 2
 soft_attack = 100
 hard_attack = 15
-vulnerability = 70
 
 [[elements]]
 name = "GE_pz_g_squad"
 class = "MotInf"
 cv = 4
+vulnerability = 100
+[[elements.devices]]
+name = "rifles_and_mg34"
 accuracy = 20
 range = 100
-soft_attack = 100
-hard_attack = 5
-vulnerability = 100
+rate_of_fire = 3
+soft_attack = 40
+hard_attack = 0
+[[elements.devices]]
+name = "at_grenades"
+accuracy = 15
+range = 100
+rate_of_fire = 1
+soft_attack = 0
+hard_attack = 10
 
 [[elements]]
 name = "GE_pz_2"
 class = "LightTank"
 cv = 8
-accuracy = 60
-range = 600
-soft_attack = 50
-hard_attack = 70
 vulnerability = 40
+[[elements.devices]]
+name = "20mm_kwk30"
+accuracy = 50
+range = 600
+rate_of_fire = 4
+soft_attack = 30
+hard_attack = 50
+[[elements.devices]]
+name = "mg34_coaxial"
+accuracy = 30
+range = 200
+rate_of_fire = 6
+soft_attack = 40
+hard_attack = 0
 
 [[elements]]
 name = "GE_pz_4"
 class = "MedTank"
 cv = 12
+vulnerability = 25
+[[elements.devices]]
+name = "75mm_kwk37"
 accuracy = 60
 range = 800
-soft_attack = 70
-hard_attack = 80
-vulnerability = 25
+rate_of_fire = 2
+soft_attack = 60
+hard_attack = 70
+[[elements.devices]]
+name = "mg34_coaxial"
+accuracy = 30
+range = 200
+rate_of_fire = 6
+soft_attack = 40
+hard_attack = 0
 
 # Inherits the Soviet faction defaults (45/35), except the gun crews.
 [[units]]

@@ -27,6 +27,17 @@ move it to the roadmap in CLAUDE.md.
 
 ## Combat
 
+- **Armor piercing model** — replace the flat `hard_attack × vulnerability`
+  effect roll with penetration vs armor: a device's AP value degrades with
+  range and must beat the target's armor rating for full effect (glances/
+  partial damage otherwise). Gives heavy tanks their proper terror and makes
+  gun/armor upgrades over the war matter. Slots onto devices.
+
+- **Area-of-effect fire** — grenades, artillery stonks and rockets shouldn't
+  resolve as single-target shots: one hit should roll effects against several
+  co-located targets (blast value per device deciding how many). Needed for
+  artillery to feel right; also the hook for entrenchment reducing blast.
+
 - **Low-randomness battle setting** — since battle resolution is computationally
   cheap, offer a setting that resolves each battle by simulating it N times
   (e.g. 10) and taking the average as the result. Reduces dice-luck swings for

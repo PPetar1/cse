@@ -57,9 +57,9 @@ engine's control flow. Damaged elements do not participate.
 Range bands: **3000 → 1500 → 800 → 400 → 100 meters**, one round per band.
 Defender terrain sets the opening band: Plains/Desert/Water start at 3000,
 Hills/Forest/Swamp/Mountain at 800, Urban at 400. An element fires in a round
-iff its `range` stat ≥ the current band. Fire within a round is simultaneous:
-all shots resolved against the round's starting states, then effects applied —
-no first-strike advantage from code ordering.
+iff at least one of its devices' `range` covers the current band. Fire within
+a round is simultaneous: all shots resolved against the round's starting
+states, then effects applied — no first-strike advantage from code ordering.
 
 ### Morale & experience (per element)
 
@@ -76,11 +76,18 @@ Effects: experience gates commitment (below), both scale the element's CV
 contribution (see Outcome), and the unit's strength-weighted average morale
 gates routs (see Retreat execution).
 
-### One shot, three rolls
+### Devices: one shot, three rolls
 
-Each Ready, in-range element fires one shot per round (rate of fire: later),
-**if it commits**: an element fires only when a d100 roll is under its
-`experience` — WitE's "green units fail to commit". Then:
+An element fights with its **devices** — a rifle/LMG volley, a tank's main
+gun, its coaxial MG — each carrying `accuracy` (chance a shot hits), `range`,
+`rate_of_fire` (shots per round) and `soft_attack`/`hard_attack` (how
+devastating a hit is). This is what lets a Pz IV spray MG fire at infantry
+while taking two aimed cannon shots at a gun line.
+
+Each Ready element with a device in range first **commits**: it fires only
+when a d100 roll is under its `experience` — WitE's "green units fail to
+commit" (one roll for the whole element). Then every in-range device fires
+`rate_of_fire` shots; per shot:
 
 1. **Target**: uniform random over enemy Ready elements. Because the snapshot
    is per-instance, numerous element types soak proportionally more fire — an
@@ -89,15 +96,15 @@ Each Ready, in-range element fires one shot per round (rate of fire: later),
    applying only to shots *at the defender* (attacker is assumed advancing in
    the open). Cover: Plains/Desert/Water 1.0, Hills 0.8, Swamp 0.7, Forest 0.6,
    Mountain 0.5, Urban 0.4.
-3. **Effect**: the firer engages with the fire value matching the target's
+3. **Effect**: the device engages with the fire value matching the target's
    hardness — `hard_attack` (AP) against armored classes (LightTank/MedTank),
    `soft_attack` (small arms/HE) against everything else — scaled by the
-   target's `vulnerability` (armor for vehicles, exposure for the rest):
-   effect chance = `attack × vulnerability / 100`, one d100 roll. Because a
-   target only ever receives the fire kind matching its hardness, one
-   vulnerability stat per element suffices (no v_inf/v_arm pair), and small
-   arms need no category of their own — they are simply the soft-attack
-   value of infantry elements.
+   target's element-level `vulnerability` (armor for vehicles, exposure for
+   the rest): effect chance = `attack × vulnerability / 100`, one d100 roll.
+   Because a target only ever receives the fire kind matching its hardness,
+   one vulnerability stat per element suffices (no v_inf/v_arm pair), and
+   small arms need no category of their own — they are simply the
+   soft-attack value of an infantry device.
 4. **Severity** on a failed save: 50% disrupted, 35% damaged, 15% destroyed.
 
 ### Loss flow
@@ -201,10 +208,16 @@ infantry holding a frontal armor attack while bleeding, and getting thrown
 back in the open, is the intended flavor — a solid baseline for future
 tuning.
 
+Devices + rate of fire keep that shape but make battles bloodier (more shots
+per round, MGs joining at close range): forest attack holds 100% at 1.4:1
+with ~3:1 defender losses (~62 of 260 elements per attack), plains defense
+collapses 100% at 3.5:1, the Soviet counter-attack loses ~5:1. If attrition
+feels too high once turns exist, `rate_of_fire`/`accuracy` are the knobs.
+
 ## Open questions / next steps (rough order)
 
-1. Rate of fire per element; retune the numeric knobs (severity split,
-   cover table, CV multipliers, retreat attrition) with `simulate` evidence.
+1. Retune the numeric knobs (severity split, cover table, CV multipliers,
+   retreat attrition) with `simulate` evidence.
 2. Morale/experience effects beyond commit/CV/rout: shatter, experience gain
    from battles, morale drops from lost battles (the event hook for shifting
    faction defaults over time exists on the runtime player).

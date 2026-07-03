@@ -526,11 +526,14 @@ amount = 10
 name = "test_element"
 class = "Inf"
 cv = 4.0
+vulnerability = 100
+[[elements.devices]]
+name = "test_rifles"
 accuracy = 20
 range = 100
+rate_of_fire = 1
 soft_attack = 100
 hard_attack = 3
-vulnerability = 100
 
 {units}
 "#)

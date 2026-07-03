@@ -30,6 +30,11 @@ impl State {
         let mut elements = HashMap::new();
        
         for element in scenario.elements {
+            if element.devices.is_empty() {
+                return Err(Error {
+                    error_message: format!("Element '{}' has no devices.", element.name),
+                });
+            }
             elements.insert(element.name.clone(), element);
         }
 
@@ -131,21 +136,27 @@ end_date = "1941-08-01"
 name = "test_element"
 class = "Inf"
 cv = 4.0
+vulnerability = 100
+[[elements.devices]]
+name = "test_rifles"
 accuracy = 20
 range = 100
+rate_of_fire = 1
 soft_attack = 100
 hard_attack = 3
-vulnerability = 100
 
 [[elements]]
 name = "second_element"
 class = "AtGun"
 cv = 0.5
+vulnerability = 60
+[[elements.devices]]
+name = "test_at_gun"
 accuracy = 60
 range = 300
+rate_of_fire = 2
 soft_attack = 15
 hard_attack = 90
-vulnerability = 60
 
 {units}
 "#)
@@ -238,6 +249,29 @@ location = { x = 1, y = 1 }
 
         assert!(error.error_message.contains("missing_element"));
         assert!(error.error_message.contains("test_toe"));
+    }
+
+    #[test]
+    fn element_without_devices_is_rejected() {
+        // Piggybacks on the units slot to append an extra element block.
+        let units = r#"
+[[units]]
+name = "1st Test Division"
+toe = "test_toe"
+faction = "AX"
+location = { x = 1, y = 1 }
+
+[[elements]]
+name = "unarmed_element"
+class = "Inf"
+cv = 1.0
+vulnerability = 100
+devices = []
+"#;
+        let error = build_state(VALID_TOE_ELEMENTS, units).unwrap_err();
+
+        assert!(error.error_message.contains("unarmed_element"));
+        assert!(error.error_message.contains("no devices"));
     }
 
     #[test]
