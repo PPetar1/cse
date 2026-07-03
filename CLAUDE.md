@@ -243,6 +243,14 @@ Conventions used throughout:
   only, with a `From` impl to the runtime type.
 - The visualiser gets a `MapSnapshot` (plain serde data, no game references) — keep
   it decoupled; don't hand it `&State`.
+- **The camera is centered on the map's bounding box at `Startup`** (`map_center`
+  in `visualiser.rs`), not left at world origin — hex (0, 0) sits near the
+  origin (`hex_layout`'s `origin` field), so an uncentered camera left most of
+  a map bigger than the window off screen. This only runs once, since the map
+  geometry never changes within a session (only unit positions do, which
+  `reload_on_change` already respawns); a `load` that swapped in a
+  differently-shaped map mid-session would need the camera recentered too,
+  but that isn't a case that occurs yet (`view` opens a fresh window per game).
 - Fields deserialized from config but not yet read (`Scenario.start_date`,
   `MapFile.width`…) carry `#[allow(dead_code)]`; remove the attribute when a
   system starts using them. The build is warning-free and `cargo clippy` is

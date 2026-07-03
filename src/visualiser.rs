@@ -97,8 +97,50 @@ fn setup(
     mut materials: ResMut<Assets<ColorMaterial>>,
     snapshot: Res<MapSnapshot>,
 ) {
-    commands.spawn(Camera2d);
+    // The camera defaults to world origin, but hex (0, 0) is also pinned near
+    // the origin (see hex_layout's origin field) — with a map of any size
+    // that leaves most of it off to one side of the window. Center the
+    // camera on the map's bounding box instead. The map itself never changes
+    // within a session, so this only needs to run once at Startup.
+    let center = map_center(&snapshot.hexes);
+    let mut camera_transform = Transform::default();
+    camera_transform.translation.x = center.x;
+    camera_transform.translation.y = center.y;
+    commands.spawn((Camera2d, camera_transform));
+
     spawn_map(&mut commands, &mut meshes, &mut materials, &snapshot);
+}
+
+fn hex_layout() -> HexLayout {
+    HexLayout {
+        orientation: HexOrientation::Pointy,
+        scale: HexVec2::splat(HEX_SIZE),
+        origin: HexVec2::ZERO,
+    }
+}
+
+/// Center of the map's bounding box in world space, for pointing the camera
+/// at the middle of the hex grid instead of leaving it at world origin.
+fn map_center(hexes: &[HexDisplay]) -> Vec2 {
+    let layout = hex_layout();
+    let positions = hexes.iter().map(|hex| {
+        let h = Hex::from_offset_coordinates(
+            [hex.x as i32, hex.y as i32],
+            OffsetHexMode::Even,
+            HexOrientation::Pointy,
+        );
+        layout.hex_to_world_pos(h)
+    });
+
+    let (mut min, mut max) = (Vec2::splat(f32::MAX), Vec2::splat(f32::MIN));
+    for pos in positions {
+        min = min.min(Vec2::new(pos.x, pos.y));
+        max = max.max(Vec2::new(pos.x, pos.y));
+    }
+    if min.x > max.x {
+        return Vec2::ZERO; // No hexes — nothing to center on.
+    }
+    (min + max) / 2.0
 }
 
 /// Poll the snapshot file; when the game process has rewritten it, replace the
@@ -143,11 +185,7 @@ fn spawn_map(
     materials: &mut Assets<ColorMaterial>,
     snapshot: &MapSnapshot,
 ) {
-    let layout = HexLayout {
-        orientation: HexOrientation::Pointy,
-        scale: HexVec2::splat(HEX_SIZE),
-        origin: HexVec2::ZERO,
-    };
+    let layout = hex_layout();
 
     // ── Terrain hexes ─────────────────────────────────────────────────────────
     for hex in &snapshot.hexes {
@@ -291,5 +329,34 @@ fn faction_color(faction: &str) -> Color {
         "AX" => Color::srgb(0.80, 0.20, 0.20),
         "SU" => Color::srgb(0.20, 0.20, 0.80),
         _    => Color::srgb(0.50, 0.50, 0.50),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn map_center_is_the_bounding_box_midpoint_not_the_origin() {
+        // A real map's center sits well away from hex (0, 0)'s own position —
+        // the camera used to sit fixed at world origin (effectively hex
+        // (0, 0)), which is what left most of a bigger map off screen.
+        let hexes = vec![
+            HexDisplay { x: 0, y: 0, terrain: Terrain::Plains },
+            HexDisplay { x: 9, y: 7, terrain: Terrain::Plains },
+        ];
+
+        let center = map_center(&hexes);
+
+        let origin_pos = hex_layout().hex_to_world_pos(
+            Hex::from_offset_coordinates([0, 0], OffsetHexMode::Even, HexOrientation::Pointy),
+        );
+        assert!((center.x - origin_pos.x).abs() > HEX_SIZE);
+        assert!((center.y - origin_pos.y).abs() > HEX_SIZE);
+    }
+
+    #[test]
+    fn map_center_of_no_hexes_is_the_origin() {
+        assert_eq!(map_center(&[]), Vec2::ZERO);
     }
 }
