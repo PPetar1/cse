@@ -32,6 +32,24 @@ section of CLAUDE.md.
   data-driven element types) so new domains slot in as more element classes,
   devices and mission procedures rather than parallel engines.
 
+## Command & doctrine
+
+- **Split doctrine out of morale** — WitE "morale" conflates two things: a
+  unit's fighting spirit and the faction's overall combat-doctrine
+  effectiveness. Split them: morale stays per-element, and a separate
+  faction-wide **doctrine** modifier captures how well the faction fights as an
+  institution. Doctrine improves when high-initiative leaders take part in
+  battles (scaled by battle size or similar) and drifts toward the faction's
+  average leader capability over time. The pull goes both ways: leader stats
+  also drift toward the doctrine level, so leaders and doctrine converge.
+  Depends on leaders existing first. Slots naturally onto the runtime `Player`
+  (where faction-wide morale/experience defaults already live).
+
+- **Unit staffs** — beyond a single commanding leader, units carry a staff with
+  its own stats, influencing recovery, logistics throughput, leader checks and
+  similar administrative rolls. Lets HQ quality matter separately from the
+  general's personal ratings.
+
 ## Combat
 
 - **Armor piercing model** — replace the flat `hard_attack × vulnerability`

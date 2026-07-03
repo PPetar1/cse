@@ -69,8 +69,9 @@ When adding a command, update all three of: `Command::parse`, `HELP_TEXT`, and
 
 ## Design docs
 
-- `docs/roadmap.md` — the long-term compass: phased plan ending at a shipped game
-  that improves on WitE, with the "better than WitE" pillars used as design
+- `docs/roadmap.md` — the long-term compass: Part 1 is the phased path to a
+  playable prototype; Part 2 the (non-exhaustive) feature areas separating the
+  prototype from the finished game; the "better than WitE" pillars are design
   tiebreakers. Update it when direction changes, not per-feature.
 - `docs/combat_design.md` — living combat design doc: WitE2 findings (rules readable at
   dornshuld.com/rules/wite2), the current resolution model, deliberate deviations,
