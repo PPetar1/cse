@@ -135,6 +135,8 @@ src/
   game/victory.rs — victory scoring/report + the `victory` summary and map-view hex feed
   game/reinforcements.rs — runtime ScheduledArrival + arrival application and summary
   game/events.rs — event firing (morale/experience nudges, message queue) and summary
+  game/supply.rs — on-demand supply status query (supply_status_summary); no
+                   per-turn hook yet, see "Supply" below
   game/test_support.rs — shared #[cfg(test)] scenario fixtures for the game test suites
   core/mod.rs    — State::build: resolves a Scenario into runtime State (units get
                    their element rosters instantiated from their TOE here)
@@ -145,6 +147,8 @@ src/
   visualiser.rs  — self-contained Bevy 0.15 debug map view (see below)
   procedures/combat.rs — pure fires-based battle engine: CombatElement snapshots in,
                    BattleReport out; never touches Game/State (see docs/combat_design.md)
+  procedures/supply.rs — pure multi-source flood fill (reachable_hexes) over the
+                   map, blocked by enemy-occupied hexes and impassable terrain
   utils/         — empty
 ```
 
@@ -229,6 +233,20 @@ Key data model (all TOML-configurable, see `scenarios/basic_scenario.scen`):
   `Game::build` also runs the turn-1 explicit pass described above. The
   `events` command (`Game::event_schedule_summary`) lists the schedule with a
   pending/fired status, same heuristic and same caveat as reinforcements'
+- **Supply** — Phase 3's first slice, tracing only (no gameplay effect yet).
+  The scenario's `[[supply_sources]]` (`faction`, `x`, `y`) declare where each
+  faction's connectivity is traced back to; validated at load like victory
+  hexes (hex on the map) and events (`faction` known). `procedures::supply::
+  reachable_hexes` is a pure multi-source flood fill from those hexes —
+  `Location::neighbour_coords` expands the frontier, `TerrainCosts::cost`
+  stops it at impassable terrain, a caller-supplied `blocked` set (the
+  enemy's on-map hexes) stops it the same way `move_unit`'s pathfinding
+  already does; a source hex the enemy currently holds doesn't seed the
+  flood. `Game::supply_status_summary` (the `supply` command) computes this
+  fresh per faction on every call — nothing persists, since nothing yet
+  degrades a unit for being cut off. Degradation and surrender ("a pocket
+  starves and surrenders", the roadmap's stated landmark) are a deliberate
+  follow-up, not this slice.
 
 Conventions used throughout:
 - Hex coords: offset coordinates, `OffsetHexMode::Even`, `HexOrientation::Pointy`
@@ -318,5 +336,15 @@ a withdrawal, three narrative events, and three objective hexes. Landmark
 reached: win — or lose — a game of CSE. Combat knob retuning via `simulate`
 continues alongside.
 
-**Next: Phase 3 — the living army.** Supply traced through the hex grid,
-units degrading when cut off, replacements/repair at turn changeover, refit.
+**Now: Phase 3 — the living army.** First slice landed: supply connectivity
+tracing. `[[supply_sources]]` (per faction, on-map hexes) plus
+`procedures::supply::reachable_hexes` (a pure flood fill blocked by enemy
+hexes and impassable terrain, mirroring `move_unit`'s pathfinding rules) give
+`Game::supply_status_summary` (the `supply` command) a live supplied/cut-off
+read on every on-map unit. Deliberately narrow: nothing persists between
+calls and cut-off units suffer no effect yet — both shipped scenarios
+declare sources (`frontline_sector.scen`'s German source doubles as the
+"Rear supply depot" victory hex, so capturing it will do double duty once
+degradation lands). Still open: units degrading when cut off,
+replacements/repair at turn changeover, refit. Landmark ("a pocket starves
+and surrenders") waits on the degradation/surrender slice.
