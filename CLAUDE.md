@@ -46,15 +46,16 @@ cargo test           # run the test suite
 ```
 
 Tests are in-crate unit tests (`#[cfg(test)] mod tests` per module) since most types
-are crate-private. Fixtures are inline TOML strings; a few tests load the real
-`scenarios/basic_scenario.scen` / `maps/basic_map.map` via
+are crate-private. Fixtures are inline TOML strings — the shared scenario snippets
+live in `game/test_support.rs` — and a few tests load the real
+`scenarios/*.scen` / `maps/basic_map.map` via
 `concat!(env!("CARGO_MANIFEST_DIR"), ...)` so shipped-config drift breaks the build.
 There is no CI.
 
 ## Command loop
 
 `main.rs` reads lines from stdin and passes them to `cse::run(command, current_game)`
-in `lib.rs`, which parses and dispatches. Commands:
+in `lib.rs`, which parses (via `command.rs`) and dispatches. Commands:
 
 - `new <path.scen>` — start a game from a scenario file (e.g. `new scenarios/basic_scenario.scen`)
 - `load <path.sav>` / `save <path.sav>` — postcard (binary serde) save/load of the whole `Game`
@@ -82,11 +83,12 @@ in `lib.rs`, which parses and dispatches. Commands:
   Esc closes the window; can be called repeatedly); the window auto-updates as
   commands change the game (it polls the session's snapshot file, which `run`
   rewrites after every successful command)
-- `help` — print the command list (HELP_TEXT in lib.rs)
+- `help` — print the command list (HELP_TEXT in command.rs)
 - `exit`
 
 When adding a command, update all three of: `Command::parse`, `HELP_TEXT`, and
-`COMMAND_KEYWORDS` (drives tab completion; a lib.rs test guards keyword drift).
+`COMMAND_KEYWORDS` — all in command.rs (a test there guards keyword drift) —
+plus the dispatch match in `run` (lib.rs).
 
 ## Design docs
 
@@ -102,17 +104,38 @@ When adding a command, update all three of: `Command::parse`, `HELP_TEXT`, and
 
 ## Architecture
 
+Layering: `core/` is the data model, `procedures/` are pure algorithms on
+snapshots (no `Game`/`State` access), `game/` is the orchestration layer
+(turn flow, orders, scenario content — one module per concern; `Game` keeps
+its fields in `game/mod.rs`, submodules add `impl Game` blocks and mark
+what crosses module lines `pub(super)`), and the interface layer
+(`command.rs`/`view.rs`, later the real UI) talks to `Game`'s public API.
+Future systems follow the pattern: supply = `procedures/supply.rs` + a
+`game/` hook; the AI consumes `Game` like another front-end.
+
 ```
 src/
   main.rs        — rustyline prompt loop (tab completion via COMMAND_KEYWORDS +
                    FilenameCompleter, history) + `--view <snapshot>` subprocess entry
-  lib.rs         — command parsing/dispatch, save/load, view subprocess
-                   spawning (spawn_view_subprocess/run_view_subprocess) + live
-                   snapshot refresh (refresh_view/write_view_snapshot), Error type
-  game/mod.rs    — Game (state + players + turn/phase/date + TurnSystem), Scenario TOML
-                   schema, end_turn/status, move_unit, attack (builds combat snapshots,
-                   applies losses back, executes retreats/surrenders — destination +
-                   attrition rules live here)
+  lib.rs         — run(): command dispatch, save/load/inspect helpers, root re-exports
+  command.rs     — the command language: Command enum + parse, COMMAND_KEYWORDS, HELP_TEXT
+  view.rs        — view subprocess spawning (spawn_view_subprocess/run_view_subprocess)
+                   + live snapshot refresh (refresh_view/write_view_snapshot/cleanup_view)
+  error.rs       — crate-wide Error type + From impls (io/toml/postcard)
+  game/mod.rs    — Game (state + players + turn/phase/date), Game::build, unit queries
+  game/scenario.rs — the whole game-level .scen TOML schema (Scenario, Player, UnitConfig,
+                   ScheduledArrivalConfig, ScenarioEvent, VictoryConditions…) + parse and
+                   load-time validation; domain types it references stay in their domains
+  game/turn.rs   — end_turn/begin_turn/status, TurnPhase, TurnSystem (the WEGO seam),
+                   turn-start morale drift
+  game/orders/   — player orders, one module each: movement.rs (move_unit, MP charging),
+                   attack.rs (attack/simulate validation, battle orchestration, retreat/
+                   rout/shatter/surrender aftermath, AttackReport); a future WEGO order
+                   queue plugs in here
+  game/victory.rs — victory scoring/report + the `victory` summary and map-view hex feed
+  game/reinforcements.rs — runtime ScheduledArrival + arrival application and summary
+  game/events.rs — event firing (morale/experience nudges, message queue) and summary
+  game/test_support.rs — shared #[cfg(test)] scenario fixtures for the game test suites
   core/mod.rs    — State::build: resolves a Scenario into runtime State (units get
                    their element rosters instantiated from their TOE here)
   core/map.rs    — Map: HashMap<(u32,u32), Location> + offmap locations; TOML map
