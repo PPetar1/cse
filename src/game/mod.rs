@@ -1,5 +1,9 @@
+mod scenario;
 #[cfg(test)]
 mod test_support;
+
+pub use scenario::{Player, Scenario};
+use scenario::{ScenarioEvent, ScheduledArrivalConfig, VictoryConditions};
 
 use std::fmt::Display;
 
@@ -71,11 +75,7 @@ impl Game {
     }
 
     fn parse_scen_from_toml(scenario_toml: String) -> Result<Game, Error>  {
-       let mut scenario: Scenario = toml::from_str(&scenario_toml)?;
-
-       if scenario.players.is_empty() {
-           return Err(Error::new("The game must have at least 1 player."))
-       }
+       let mut scenario = scenario::parse(&scenario_toml)?;
 
        let players = scenario.players.clone();
        let scenario_name = scenario.name.clone();
@@ -95,47 +95,9 @@ impl Game {
 
        let state = State::build(scenario)?;
 
-       for hex in &victory_conditions.hexes {
-           if state.map.get_location(hex.x, hex.y).is_none() {
-               return Err(Error::new(format!(
-                   "Victory hex ({}, {}) is not on the map.", hex.x, hex.y,
-               )));
-           }
-       }
-
-       for event in &events {
-           if !players.iter().any(|player| player.faction_tag == event.faction) {
-               return Err(Error::new(format!(
-                   "Event at turn {} references unknown faction '{}'.", event.turn, event.faction,
-               )));
-           }
-       }
-
-       for arrival in &scheduled_arrivals {
-           if !state.units.contains_key(&arrival.unit) {
-               return Err(Error::new(format!(
-                   "Scheduled arrival references unknown unit '{}'.", arrival.unit,
-               )));
-           }
-           match &arrival.location {
-               UnitLocation::OnMap(coords) => {
-                   if state.map.get_location(coords.x, coords.y).is_none() {
-                       return Err(Error::new(format!(
-                           "Scheduled arrival for '{}' targets hex ({}, {}) which is not on the map.",
-                           arrival.unit, coords.x, coords.y,
-                       )));
-                   }
-               }
-               UnitLocation::Offmap(name) => {
-                   if state.map.get_offmap_location(name).is_none() {
-                       return Err(Error::new(format!(
-                           "Scheduled arrival for '{}' targets offmap location '{}' which does not exist.",
-                           arrival.unit, name,
-                       )));
-                   }
-               }
-           }
-       }
+       scenario::validate_victory_hexes(&victory_conditions, &state)?;
+       scenario::validate_events(&events, &players)?;
+       scenario::validate_arrivals(&scheduled_arrivals, &state)?;
 
        let mut game = Game {
            state,
@@ -904,19 +866,6 @@ fn single_faction(units: &[&Unit], side: &str) -> Result<String, Error> {
     Ok(first.faction.clone())
 }
 
-#[derive(Debug, Clone, serde::Deserialize, serde::Serialize)]
-pub struct Player {
-    faction_name: String,
-    pub faction_tag: String,
-    /// Faction-wide default morale/experience, inherited by every element of
-    /// the faction's units unless the unit or element sets its own. Lives on
-    /// the runtime player so future events can shift it over time.
-    #[serde(default = "default_stat")]
-    pub morale: u32,
-    #[serde(default = "default_stat")]
-    pub experience: u32,
-}
-
 #[derive(Debug, serde::Deserialize, serde::Serialize)]
 struct TurnPhase {
     player_on_turn: u32,
@@ -930,76 +879,6 @@ struct TurnPhase {
 pub enum TurnSystem {
     #[default]
     IgoUgo,
-}
-
-#[derive(serde::Deserialize)]
-pub struct Scenario {
-    name: String,
-    #[allow(dead_code)]
-    game_version: String,
-    pub map: String,
-
-    start_date: Date,
-    turn_length: u32,
-    #[serde(default)]
-    turn_system: TurnSystem,
-    /// `[terrain_costs]` — MP to enter a hex per terrain name, 0 = impassable.
-    /// Anything unlisted falls back to the code defaults
-    /// (`Terrain::default_movement_cost`).
-    #[serde(default)]
-    pub terrain_costs: std::collections::HashMap<Terrain, u32>,
-
-    pub players: Vec<Player>,
-
-    pub toe: Vec<Toe>,
-
-    pub elements: Vec<Element>,
-
-    pub units: Vec<UnitConfig>,
-
-    /// `[victory_conditions]` — optional; a scenario with none never scores
-    /// or ends on its own.
-    #[serde(default)]
-    victory_conditions: VictoryConditions,
-
-    /// `[[reinforcements]]` — units that step onto the map at a scheduled
-    /// turn (typically from an offmap box). Mechanically identical to
-    /// withdrawals; kept as a separate table only for scenario readability.
-    #[serde(default)]
-    reinforcements: Vec<ScheduledArrivalConfig>,
-    /// `[[withdrawals]]` — units that leave the map (typically back to an
-    /// offmap box) at a scheduled turn.
-    #[serde(default)]
-    withdrawals: Vec<ScheduledArrivalConfig>,
-
-    /// `[[events]]` — a message plus an optional morale/experience nudge to
-    /// a faction's default, due at a scheduled turn.
-    #[serde(default)]
-    events: Vec<ScenarioEvent>,
-}
-
-/// One scenario event: at `turn`, `faction`'s default morale/experience
-/// shifts by the given deltas (0 = no change either way) and `message`
-/// prints. No config/runtime split needed here — unlike locations, nothing
-/// about this shape is TOML-only.
-#[derive(Debug, Clone, serde::Deserialize, serde::Serialize)]
-struct ScenarioEvent {
-    turn: u32,
-    faction: String,
-    message: String,
-    #[serde(default)]
-    morale_delta: i32,
-    #[serde(default)]
-    experience_delta: i32,
-}
-
-/// TOML shape of one scheduled reinforcement or withdrawal entry: move
-/// `unit` to `location` the moment `turn` starts for its faction.
-#[derive(serde::Deserialize)]
-struct ScheduledArrivalConfig {
-    unit: String,
-    turn: u32,
-    location: UnitLocationConfig,
 }
 
 /// Runtime form of `ScheduledArrivalConfig` — kept separate the same way
@@ -1016,32 +895,6 @@ impl From<ScheduledArrivalConfig> for ScheduledArrival {
     fn from(config: ScheduledArrivalConfig) -> ScheduledArrival {
         ScheduledArrival { unit: config.unit, turn: config.turn, location: config.location.into() }
     }
-}
-
-/// How a scenario is won: flat points for holding named hexes at the end,
-/// plus points for enemy strength destroyed and a penalty for strength lost
-/// (both measured against `State::starting_strength`). `last_turn` is the
-/// last turn played; the score is tallied and the scenario ends right after.
-#[derive(Debug, Clone, Default, serde::Deserialize, serde::Serialize)]
-struct VictoryConditions {
-    #[serde(default)]
-    last_turn: Option<u32>,
-    #[serde(default)]
-    hexes: Vec<VictoryHex>,
-    #[serde(default)]
-    points_per_percent_enemy_destroyed: f32,
-    #[serde(default)]
-    points_per_percent_own_lost: f32,
-}
-
-#[derive(Debug, Clone, serde::Deserialize, serde::Serialize)]
-struct VictoryHex {
-    x: u32,
-    y: u32,
-    points: f32,
-    #[serde(default)]
-    #[allow(dead_code)]
-    name: Option<String>,
 }
 
 /// One objective hex, for display outside the game module (the `victory`
@@ -1107,52 +960,6 @@ impl Display for VictoryReport {
     }
 }
 
-#[derive(serde::Deserialize)]
-pub struct UnitConfig {
-    pub name: String,
-    pub toe: String,
-    pub faction: String,
-    pub location: UnitLocationConfig,
-    /// Unit-wide morale/experience, inherited by all its elements. Absent =
-    /// the faction default from [[players]].
-    pub morale: Option<u32>,
-    pub experience: Option<u32>,
-    /// Per-element stat overrides ([[units.elements]]), the most specific
-    /// setting. Names must exist in the unit's TOE.
-    #[serde(default)]
-    pub elements: Vec<ElementStatsConfig>,
-}
-
-#[derive(serde::Deserialize)]
-pub struct ElementStatsConfig {
-    pub name: String,
-    pub morale: Option<u32>,
-    pub experience: Option<u32>,
-}
-
-/// Factions that don't specify default morale/experience get an average rating.
-fn default_stat() -> u32 {
-    50
-}
-
-/// Scenario-file form of a unit location. Untagged so the TOML reads naturally:
-/// `location = { x = 3, y = 3 }` for a hex, `location = "GE Reserve"` for offmap.
-#[derive(serde::Deserialize)]
-#[serde(untagged)]
-pub enum UnitLocationConfig {
-    OnMap { x: u32, y: u32 },
-    Offmap(String),
-}
-
-impl From<UnitLocationConfig> for UnitLocation {
-    fn from(config: UnitLocationConfig) -> UnitLocation {
-        match config {
-            UnitLocationConfig::OnMap { x, y } => UnitLocation::OnMap(LocationCoords { x, y }),
-            UnitLocationConfig::Offmap(name) => UnitLocation::Offmap(name),
-        }
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1182,33 +989,6 @@ mod tests {
         game.end_turn();
         // Every player has moved: turn and date (turn_length = 7) advance.
         assert_eq!(game.status(), "test scenario — turn 2, 1941-06-29. Axis to move.");
-    }
-
-    #[test]
-    fn rejects_a_scenario_with_an_invalid_start_date() {
-        let scenario = minimal_scenario(ONE_PLAYER, ONMAP_UNIT)
-            .replace(r#"start_date = "1941-06-22""#, r#"start_date = "someday""#);
-
-        let error = Game::build(scenario).unwrap_err();
-        assert!(error.error_message.contains("start_date"));
-    }
-
-    #[test]
-    fn rejects_an_unknown_turn_system() {
-        let scenario = format!(
-            "turn_system = \"Wego\"\n{}",
-            minimal_scenario(ONE_PLAYER, ONMAP_UNIT),
-        );
-
-        let error = Game::build(scenario).unwrap_err();
-        assert!(error.error_message.contains("unknown variant"));
-    }
-
-    #[test]
-    fn rejects_a_scenario_with_no_players() {
-        let error = Game::build(minimal_scenario("players = []", ONMAP_UNIT)).unwrap_err();
-
-        assert!(error.error_message.contains("at least 1 player"));
     }
 
     #[test]
@@ -1349,14 +1129,6 @@ location = { x = 1, y = 2 }
         // 0 makes a terrain impassable: no going back onto the Plains.
         let error = game.move_unit(1, 2, 1, 1, 0).unwrap_err();
         assert!(error.error_message.contains("impassable"));
-    }
-
-    #[test]
-    fn rejects_an_unknown_terrain_in_terrain_costs() {
-        let units = format!("{ONMAP_UNIT}\n[terrain_costs]\nLava = 5\n");
-
-        let error = Game::build(minimal_scenario(ONE_PLAYER, &units)).unwrap_err();
-        assert!(error.error_message.contains("unknown variant"));
     }
 
     #[test]
@@ -1669,34 +1441,6 @@ location = { x = 2, y = 1 }
             // Advance after combat costs no movement points.
             assert_eq!(unit.mp_left, 16);
         }
-    }
-
-    #[test]
-    fn unit_stats_come_from_the_scenario_with_defaults() {
-        let units = r#"
-[[units]]
-name = "Rated Division"
-toe = "test_toe"
-faction = "AX"
-location = { x = 1, y = 1 }
-morale = 80
-experience = 65
-
-[[units]]
-name = "Unrated Division"
-toe = "test_toe"
-faction = "AX"
-location = { x = 1, y = 1 }
-"#;
-        let game = Game::build(minimal_scenario(ONE_PLAYER, units)).unwrap();
-
-        // Stats live on the elements; a unit-level scenario setting is
-        // inherited by all of them.
-        let rated = &game.state.units["Rated Division"].elements[0];
-        assert_eq!((rated.morale, rated.experience), (80, 65));
-        // No unit or faction setting: the default rating.
-        let unrated = &game.state.units["Unrated Division"].elements[0];
-        assert_eq!((unrated.morale, unrated.experience), (50, 50));
     }
 
     #[test]
@@ -2101,28 +1845,6 @@ points_per_percent_own_lost = 1.0
     }
 
     #[test]
-    fn rejects_a_victory_hex_outside_the_map() {
-        let units = r#"
-[[units]]
-name = "1st Test Division"
-toe = "test_toe"
-faction = "AX"
-location = { x = 1, y = 1 }
-
-[victory_conditions]
-last_turn = 5
-
-[[victory_conditions.hexes]]
-x = 999
-y = 999
-points = 10
-"#;
-        let error = Game::build(minimal_scenario(ONE_PLAYER, units)).unwrap_err();
-
-        assert!(error.error_message.contains("not on the map"));
-    }
-
-    #[test]
     fn a_reinforcement_scheduled_for_turn_one_arrives_immediately() {
         // begin_turn() only fires from end_turn, so turn-1 arrivals for the
         // first-moving player need to be applied right at Game::build.
@@ -2177,39 +1899,6 @@ points = 10
             game.state.units["Axis Division"].location,
             UnitLocation::Offmap("GE Reserve".to_string()),
         );
-    }
-
-    #[test]
-    fn rejects_a_reinforcement_for_an_unknown_unit() {
-        let units = format!(
-            "{ONMAP_UNIT}\n[[reinforcements]]\nunit = \"Ghost Division\"\nturn = 2\nlocation = {{ x = 2, y = 2 }}\n"
-        );
-
-        let error = Game::build(minimal_scenario(ONE_PLAYER, &units)).unwrap_err();
-
-        assert!(error.error_message.contains("Ghost Division"));
-    }
-
-    #[test]
-    fn rejects_a_reinforcement_targeting_a_hex_outside_the_map() {
-        let units = format!(
-            "{OFFMAP_UNIT}\n[[reinforcements]]\nunit = \"Reserve Division\"\nturn = 2\nlocation = {{ x = 999, y = 999 }}\n"
-        );
-
-        let error = Game::build(minimal_scenario(ONE_PLAYER, &units)).unwrap_err();
-
-        assert!(error.error_message.contains("not on the map"));
-    }
-
-    #[test]
-    fn rejects_a_withdrawal_targeting_an_unknown_offmap_location() {
-        let units = format!(
-            "{ONMAP_UNIT}\n[[withdrawals]]\nunit = \"1st Test Division\"\nturn = 2\nlocation = \"Nowhere\"\n"
-        );
-
-        let error = Game::build(minimal_scenario(ONE_PLAYER, &units)).unwrap_err();
-
-        assert!(error.error_message.contains("Nowhere"));
     }
 
     #[test]
@@ -2285,17 +1974,6 @@ points = 10
 
         // 20 + ceil((90 - 20) / 10) = 27.
         assert_eq!(game.state.units["1st Test Division"].elements[0].morale, 27);
-    }
-
-    #[test]
-    fn rejects_an_event_for_an_unknown_faction() {
-        let units = format!(
-            "{ONMAP_UNIT}\n[[events]]\nturn = 2\nfaction = \"ZZ\"\nmessage = \"Ghost event\"\n"
-        );
-
-        let error = Game::build(minimal_scenario(ONE_PLAYER, &units)).unwrap_err();
-
-        assert!(error.error_message.contains("ZZ"));
     }
 
     #[test]
