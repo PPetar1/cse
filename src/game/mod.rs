@@ -2,6 +2,7 @@ mod events;
 mod orders;
 mod reinforcements;
 mod scenario;
+mod supply;
 mod turn;
 mod victory;
 #[cfg(test)]
@@ -10,7 +11,7 @@ mod test_support;
 pub use scenario::{Player, Scenario};
 pub use victory::VictoryReport;
 use reinforcements::ScheduledArrival;
-use scenario::{ScenarioEvent, VictoryConditions};
+use scenario::{ScenarioEvent, SupplySource, VictoryConditions};
 use turn::{TurnPhase, TurnSystem};
 
 use time::Date;
@@ -43,6 +44,9 @@ pub struct Game {
     /// `take_event_messages` — transient, so it starts empty on load too.
     #[serde(skip)]
     pending_event_messages: Vec<String>,
+    /// Each faction's supply-source hexes, for tracing which of its units
+    /// are connected back to them (see `game::supply`).
+    supply_sources: Vec<SupplySource>,
 }
 
 impl Game {
@@ -68,12 +72,14 @@ impl Game {
            .map(ScheduledArrival::from)
            .collect();
        let events = scenario.events.clone();
+       let supply_sources = scenario.supply_sources.clone();
 
        let state = State::build(scenario)?;
 
        scenario::validate_victory_hexes(&victory_conditions, &state)?;
        scenario::validate_events(&events, &players)?;
        scenario::validate_arrivals(&scheduled_arrivals, &state)?;
+       scenario::validate_supply_sources(&supply_sources, &state, &players)?;
 
        let mut game = Game {
            state,
@@ -88,6 +94,7 @@ impl Game {
            scheduled_arrivals,
            events,
            pending_event_messages: Vec::new(),
+           supply_sources,
        };
        // begin_turn() only fires from end_turn, so the very first player's
        // turn-1 arrivals/events need an explicit first pass here.

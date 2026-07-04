@@ -1,5 +1,5 @@
 pub mod location;
-mod map;
+pub mod map;
 pub mod unit;
 
 use std::{collections::HashMap, fs::File, io::Read};

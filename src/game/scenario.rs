@@ -89,6 +89,29 @@ pub(super) fn validate_events(
     Ok(())
 }
 
+/// Every supply source must sit on the map and belong to a faction that has
+/// a player.
+pub(super) fn validate_supply_sources(
+    sources: &[SupplySource],
+    state: &State,
+    players: &[Player],
+) -> Result<(), Error> {
+    for source in sources {
+        if state.map.get_location(source.x, source.y).is_none() {
+            return Err(Error::new(format!(
+                "Supply source ({}, {}) is not on the map.", source.x, source.y,
+            )));
+        }
+        if !players.iter().any(|player| player.faction_tag == source.faction) {
+            return Err(Error::new(format!(
+                "Supply source ({}, {}) references unknown faction '{}'.",
+                source.x, source.y, source.faction,
+            )));
+        }
+    }
+    Ok(())
+}
+
 #[derive(serde::Deserialize)]
 pub struct Scenario {
     pub(super) name: String,
@@ -133,6 +156,11 @@ pub struct Scenario {
     /// a faction's default, due at a scheduled turn.
     #[serde(default)]
     pub(super) events: Vec<ScenarioEvent>,
+
+    /// `[[supply_sources]]` — a faction's supply-source hexes, for tracing
+    /// which of its units are connected back to them.
+    #[serde(default)]
+    pub(super) supply_sources: Vec<SupplySource>,
 }
 
 #[derive(Debug, Clone, serde::Deserialize, serde::Serialize)]
@@ -216,6 +244,16 @@ pub(super) struct ScenarioEvent {
     pub(super) morale_delta: i32,
     #[serde(default)]
     pub(super) experience_delta: i32,
+}
+
+/// One supply source: `faction`'s units trace connectivity back to this hex
+/// (see `game::supply`). No config/runtime split needed — plain data, same
+/// reasoning as `ScenarioEvent`.
+#[derive(Debug, Clone, serde::Deserialize, serde::Serialize)]
+pub(super) struct SupplySource {
+    pub(super) faction: String,
+    pub(super) x: u32,
+    pub(super) y: u32,
 }
 
 /// How a scenario is won: flat points for holding named hexes at the end,
@@ -343,6 +381,28 @@ points = 10
     fn rejects_an_event_for_an_unknown_faction() {
         let units = format!(
             "{ONMAP_UNIT}\n[[events]]\nturn = 2\nfaction = \"ZZ\"\nmessage = \"Ghost event\"\n"
+        );
+
+        let error = Game::build(minimal_scenario(ONE_PLAYER, &units)).unwrap_err();
+
+        assert!(error.error_message.contains("ZZ"));
+    }
+
+    #[test]
+    fn rejects_a_supply_source_outside_the_map() {
+        let units = format!(
+            "{ONMAP_UNIT}\n[[supply_sources]]\nfaction = \"AX\"\nx = 999\ny = 999\n"
+        );
+
+        let error = Game::build(minimal_scenario(ONE_PLAYER, &units)).unwrap_err();
+
+        assert!(error.error_message.contains("not on the map"));
+    }
+
+    #[test]
+    fn rejects_a_supply_source_for_an_unknown_faction() {
+        let units = format!(
+            "{ONMAP_UNIT}\n[[supply_sources]]\nfaction = \"ZZ\"\nx = 0\ny = 0\n"
         );
 
         let error = Game::build(minimal_scenario(ONE_PLAYER, &units)).unwrap_err();
