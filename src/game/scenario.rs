@@ -11,7 +11,7 @@ use crate::core::State;
 use crate::core::location::Terrain;
 use crate::core::unit::{Element, LocationCoords, Toe, UnitLocation};
 
-use super::ScheduledArrival;
+use super::reinforcements::ScheduledArrival;
 
 /// Parse a scenario file's TOML into the schema, rejecting scenarios no
 /// game could start from.
