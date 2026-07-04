@@ -9,7 +9,7 @@ use crate::Error;
 /// `Command::parse` and HELP_TEXT.
 pub const COMMAND_KEYWORDS: &[&str] = &[
     "new", "load", "save", "inspect", "units", "move", "attack", "simulate", "end_turn", "status",
-    "victory", "reinforcements", "events", "view", "help", "exit",
+    "victory", "reinforcements", "events", "supply", "view", "help", "exit",
 ];
 
 pub(crate) const HELP_TEXT: &str = "\
@@ -27,6 +27,7 @@ Commands:
   victory                             show this scenario's victory conditions and who currently holds each objective hex
   reinforcements                      show scheduled reinforcements/withdrawals and whether each has arrived
   events                              show scheduled scenario events and whether each has fired
+  supply                              show whether each on-map unit is supplied or cut off
   view                                open the map window
   help                                show this help
   exit                                quit";
@@ -47,6 +48,7 @@ pub(crate) enum Command<'a> {
     Victory,
     Reinforcements,
     Events,
+    Supply,
     View,
     Help,
 }
@@ -128,6 +130,7 @@ impl<'a> Command<'a> {
             "victory" => Ok(Command::Victory),
             "reinforcements" => Ok(Command::Reinforcements),
             "events" => Ok(Command::Events),
+            "supply" => Ok(Command::Supply),
             "view" => Ok(Command::View),
             "help" => Ok(Command::Help),
             _ => Err(Error::new("Unknown command. Type 'help' for a list of commands.")),
@@ -233,6 +236,11 @@ mod tests {
     #[test]
     fn parses_an_events_command() {
         assert_eq!(Command::parse("events").unwrap(), Command::Events);
+    }
+
+    #[test]
+    fn parses_a_supply_command() {
+        assert_eq!(Command::parse("supply").unwrap(), Command::Supply);
     }
 
     #[test]

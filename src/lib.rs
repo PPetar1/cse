@@ -82,6 +82,10 @@ pub fn run(input: &str, mut current_game: Option<&mut Game>) -> Result<Option<Ga
             println!("{}", require_game(current_game.as_deref_mut())?.event_schedule_summary());
             None
         }
+        Command::Supply => {
+            println!("{}", require_game(current_game.as_deref_mut())?.supply_status_summary());
+            None
+        }
         Command::View => {
             view(require_game(current_game.as_deref_mut())?)?;
             None

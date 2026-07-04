@@ -411,6 +411,21 @@ location = "GE Reserve"
 morale = 85
 experience = 75
 
+# Where each faction traces its supply connectivity back to (game::supply):
+# a unit cut off from every source of its own is reported "cut off" by the
+# `supply` command. No gameplay effect yet — that's a later slice. The
+# German source doubles as the "Rear supply depot" victory hex below: taking
+# it is worth points now and would also cut German supply once that lands.
+[[supply_sources]]
+faction = "SU"
+x = 4
+y = 0
+
+[[supply_sources]]
+faction = "AX"
+x = 4
+y = 7
+
 # Scenario events: a message plus an optional morale/experience nudge to a
 # faction's default, firing the moment that faction's turn reaches the
 # scheduled turn. Testing values, not balanced.

@@ -235,6 +235,19 @@ location = "GE Reserve"
 morale = 80
 experience = 70
 
+# Where each faction traces its supply connectivity back to (game::supply):
+# the `supply` command reports any unit that can't reach one of these as
+# "cut off". No gameplay effect yet — that's a later slice.
+[[supply_sources]]
+faction = "SU"
+x = 0
+y = 0
+
+[[supply_sources]]
+faction = "AX"
+x = 9
+y = 7
+
 # A message plus an optional morale/experience nudge to a faction's default,
 # firing the moment that faction's turn reaches the scheduled turn. Testing
 # values, not balanced.
