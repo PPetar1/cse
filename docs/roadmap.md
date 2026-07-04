@@ -70,9 +70,13 @@ scenario at division scale. **Landmark: win — or lose — a game of CSE.**
 
 ### Phase 3 — The living army
 
-Supply traced through the hex grid, units degrading when cut off, replacements
-and repair during turn changeover, refit. Encirclement becomes lethal — the
-East Front's defining mechanic. **Landmark: a pocket starves and surrenders.**
+Supply traced through the hex grid, replacements and repair during turn
+changeover (refit) gated on it. Scope call: unit degradation/surrender for
+units cut off from supply is dropped from the prototype — repair/replacement
+stalling is encirclement's whole consequence here, not attrition toward
+surrender. **Landmark (revised): repair/replacement stalls for a cut-off
+unit** — the original "a pocket starves and surrenders" won't be built;
+lethal encirclement, if it returns, belongs to Part 2's detailed logistics.
 
 ### Phase 4 — An opponent
 
