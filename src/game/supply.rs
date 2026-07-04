@@ -1,8 +1,8 @@
 //! On-demand supply status: whether each on-map unit can trace a path back
-//! to one of its faction's supply sources. Nothing here is persisted or
-//! affects play yet — this is purely a query, computed fresh every call, the
-//! first slice of Phase 3 (`docs/roadmap.md`). Degradation for units cut off
-//! is a follow-up.
+//! to one of its faction's supply sources. Nothing here is persisted; it's
+//! computed fresh every call. Tracing itself has no effect on play — cut off
+//! units neither degrade nor surrender — but `game::refit` gates repair and
+//! replacements on it, so encirclement isn't purely informational.
 
 use std::collections::HashSet;
 
@@ -15,7 +15,7 @@ impl Game {
     /// Every hex a faction's units can currently reach from that faction's
     /// supply sources, blocked by enemy-occupied hexes the same way movement
     /// is.
-    fn faction_supplied_hexes(&self, faction: &str) -> HashSet<(u32, u32)> {
+    pub(super) fn faction_supplied_hexes(&self, faction: &str) -> HashSet<(u32, u32)> {
         let sources = self.supply_sources.iter()
             .filter(|source| source.faction == faction)
             .map(|source| (source.x, source.y));

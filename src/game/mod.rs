@@ -1,5 +1,6 @@
 mod events;
 mod orders;
+mod refit;
 mod reinforcements;
 mod scenario;
 mod supply;

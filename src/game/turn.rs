@@ -40,12 +40,14 @@ impl Game {
     /// Turn-start effects for the faction coming on turn: scheduled
     /// reinforcements/withdrawals and scenario events land first (an event's
     /// morale/experience delta feeds straight into the same turn's drift
-    /// target below), then a fresh movement budget from the TOE, and morale
+    /// target below), then refit (repair/replacements for units connected to
+    /// supply), then a fresh movement budget from the TOE, and morale
     /// drifting back toward the faction default (rest heals battered units,
     /// euphoria fades).
     fn begin_turn(&mut self) {
         self.apply_scheduled_arrivals();
         self.apply_scheduled_events();
+        self.apply_refit();
 
         let player = self.player_on_turn();
         let faction = player.faction_tag.clone();
