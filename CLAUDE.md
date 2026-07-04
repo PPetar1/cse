@@ -135,8 +135,10 @@ src/
   game/victory.rs — victory scoring/report + the `victory` summary and map-view hex feed
   game/reinforcements.rs — runtime ScheduledArrival + arrival application and summary
   game/events.rs — event firing (morale/experience nudges, message queue) and summary
-  game/supply.rs — on-demand supply status query (supply_status_summary); no
-                   per-turn hook yet, see "Supply" below
+  game/supply.rs — on-demand supply status query (supply_status_summary);
+                   faction_supplied_hexes also backs game/refit.rs
+  game/refit.rs  — turn-start repair (damaged -> ready) and replacements
+                   (missing -> ready), gated on supply, see "Refit" below
   game/test_support.rs — shared #[cfg(test)] scenario fixtures for the game test suites
   core/mod.rs    — State::build: resolves a Scenario into runtime State (units get
                    their element rosters instantiated from their TOE here)
@@ -233,20 +235,29 @@ Key data model (all TOML-configurable, see `scenarios/basic_scenario.scen`):
   `Game::build` also runs the turn-1 explicit pass described above. The
   `events` command (`Game::event_schedule_summary`) lists the schedule with a
   pending/fired status, same heuristic and same caveat as reinforcements'
-- **Supply** — Phase 3's first slice, tracing only (no gameplay effect yet).
-  The scenario's `[[supply_sources]]` (`faction`, `x`, `y`) declare where each
-  faction's connectivity is traced back to; validated at load like victory
-  hexes (hex on the map) and events (`faction` known). `procedures::supply::
-  reachable_hexes` is a pure multi-source flood fill from those hexes —
-  `Location::neighbour_coords` expands the frontier, `TerrainCosts::cost`
-  stops it at impassable terrain, a caller-supplied `blocked` set (the
-  enemy's on-map hexes) stops it the same way `move_unit`'s pathfinding
-  already does; a source hex the enemy currently holds doesn't seed the
-  flood. `Game::supply_status_summary` (the `supply` command) computes this
-  fresh per faction on every call — nothing persists, since nothing yet
-  degrades a unit for being cut off. Degradation and surrender ("a pocket
-  starves and surrenders", the roadmap's stated landmark) are a deliberate
-  follow-up, not this slice.
+- **Supply** — the scenario's `[[supply_sources]]` (`faction`, `x`, `y`)
+  declare where each faction's connectivity is traced back to; validated at
+  load like victory hexes (hex on the map) and events (`faction` known).
+  `procedures::supply::reachable_hexes` is a pure multi-source flood fill
+  from those hexes — `Location::neighbour_coords` expands the frontier,
+  `TerrainCosts::cost` stops it at impassable terrain, a caller-supplied
+  `blocked` set (the enemy's on-map hexes) stops it the same way
+  `move_unit`'s pathfinding already does; a source hex the enemy currently
+  holds doesn't seed the flood. `Game::supply_status_summary` (the `supply`
+  command) computes this fresh per faction on every call — nothing persists.
+  Deliberately no degradation or surrender for cut-off units ("a pocket
+  starves and surrenders", the roadmap's stated landmark, was dropped by
+  design) — `game::refit` is the one thing that reads supply status.
+- **Refit** — turn-start repair and replacement, combined into one mechanic
+  (not a separate "pulled from the line" state). For every on-map unit of
+  the faction coming on turn that `faction_supplied_hexes` says is connected
+  to supply: each element bucket repairs `ceil(damaged / REPAIR_STEP)` back
+  to ready, then gains `ceil(missing / REPLACEMENT_STEP)` replacements where
+  `missing` is the gap to the TOE-prescribed count for that element type —
+  both tapering the same way morale/experience recovery already does, and
+  both naturally bounded (`div_ceil(x, step) <= x`) so neither needs a
+  separate cap. Cut-off units get neither. Runs in `Game::begin_turn` after
+  scheduled arrivals/events, before the MP refill/morale-drift loop.
 
 Conventions used throughout:
 - Hex coords: offset coordinates, `OffsetHexMode::Even`, `HexOrientation::Pointy`
@@ -336,15 +347,21 @@ a withdrawal, three narrative events, and three objective hexes. Landmark
 reached: win — or lose — a game of CSE. Combat knob retuning via `simulate`
 continues alongside.
 
-**Now: Phase 3 — the living army.** First slice landed: supply connectivity
-tracing. `[[supply_sources]]` (per faction, on-map hexes) plus
-`procedures::supply::reachable_hexes` (a pure flood fill blocked by enemy
-hexes and impassable terrain, mirroring `move_unit`'s pathfinding rules) give
+**Phase 3 — the living army — scope settled, two of three slices landed.**
+By author's call, this phase deliberately drops the roadmap's unit
+degradation/surrender (encirclement kills a pocket outright); the prototype
+stops at repair/replacement stalling for cut-off units, so the stated
+landmark ("a pocket starves and surrenders") will not be hit — that's
+intentional, not unfinished. Supply connectivity tracing:
+`[[supply_sources]]` (per faction, on-map hexes) plus `procedures::supply::
+reachable_hexes` (a pure flood fill blocked by enemy hexes and impassable
+terrain, mirroring `move_unit`'s pathfinding rules) give
 `Game::supply_status_summary` (the `supply` command) a live supplied/cut-off
-read on every on-map unit. Deliberately narrow: nothing persists between
-calls and cut-off units suffer no effect yet — both shipped scenarios
-declare sources (`frontline_sector.scen`'s German source doubles as the
-"Rear supply depot" victory hex, so capturing it will do double duty once
-degradation lands). Still open: units degrading when cut off,
-replacements/repair at turn changeover, refit. Landmark ("a pocket starves
-and surrenders") waits on the degradation/surrender slice.
+read on every on-map unit; both shipped scenarios declare sources
+(`frontline_sector.scen`'s German source doubles as the "Rear supply depot"
+victory hex). Refit: every turn, units connected to supply repair damaged
+elements and receive replacements for missing ones (both tapering, capped
+by construction); cut-off units get neither — supply's one gameplay effect
+in this prototype. Still open: replacements/repair could later gate on more
+than raw connectivity (distance, throughput) if Part 2's detailed logistics
+ever revisits this; not planned now.

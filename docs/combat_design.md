@@ -114,9 +114,10 @@ commit" (one roll for the whole element). Then every in-range device fires
 
 - **Disrupted**: out of the rest of this battle and the final CV; fully
   recovers afterwards (nothing persisted).
-- **Damaged**: persisted `ready → damaged` on the owning unit. No repair system
-  yet (comes with the turn system).
-- **Destroyed**: `ready` decremented, element gone.
+- **Damaged**: persisted `ready → damaged` on the owning unit. Repairs at
+  turn-start via `game::refit`, gated on supply connectivity (see below).
+- **Destroyed**: `ready` decremented, element gone; replaced over time via
+  `game::refit`, also gated on supply.
 - **Experience gain**: every element bucket that fielded instances in the
   battle gains `ceil((100 − experience) / 10)` experience, winners and losers
   alike — green troops learn fast (+7 at 35), veterans barely (+1 at 90),
@@ -257,3 +258,9 @@ Resolved in Phase 1: adjacency requirement for `attack` (attacks must target
 an adjacent hex; `simulate` shares all attack validation); attacker advance
 after retreat (automatic, free — see Retreat execution); morale recovery over
 time (turn-start drift toward the faction default — see Morale recovery above).
+
+Resolved in Phase 3: damaged-element repair and replacement of destroyed
+elements, both at turn-start and both gated on supply connectivity (`game::
+refit`, `game::supply`) — see Loss flow above. Deliberately no unit
+degradation or surrender for units cut off from supply; the prototype treats
+"repair/replace stops" as encirclement's whole consequence.
