@@ -99,7 +99,7 @@ pub struct Scenario {
     pub(super) start_date: Date,
     pub(super) turn_length: u32,
     #[serde(default)]
-    pub(super) turn_system: super::TurnSystem,
+    pub(super) turn_system: super::turn::TurnSystem,
     /// `[terrain_costs]` — MP to enter a hex per terrain name, 0 = impassable.
     /// Anything unlisted falls back to the code defaults
     /// (`Terrain::default_movement_cost`).
