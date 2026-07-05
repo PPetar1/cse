@@ -96,6 +96,9 @@ When adding a command, update all three of: `Command::parse`, `HELP_TEXT`, and
 `COMMAND_KEYWORDS` — all in command.rs (a test there guards keyword drift) —
 plus the dispatch match in `run` (lib.rs).
 
+Outside the command loop: `cse --gui <scenario.scen>` (Phase 6) opens the
+real interface instead — see "GUI" under Architecture below.
+
 ## Design docs
 
 - `docs/roadmap.md` — the long-term compass: Part 1 is the phased path to a
@@ -115,36 +118,40 @@ snapshots (no `Game`/`State` access), `game/` is the orchestration layer
 (turn flow, orders, scenario content — one module per concern; `Game` keeps
 its fields in `game/mod.rs`, submodules add `impl Game` blocks and mark
 what crosses module lines `pub(super)`), and the interface layer
-(`command.rs`/`view.rs`/`ai.rs`, later the real UI) talks to `Game`'s public
-API. Future systems follow the pattern: supply = `procedures/supply.rs` + a
+(`command.rs`/`view.rs`/`ai.rs`/`gui.rs`) talks to `Game`'s public API.
+Future systems follow the pattern: supply = `procedures/supply.rs` + a
 `game/` hook; the AI consumes `Game` like another front-end (this landed —
 `ai.rs` is that front-end, next to `command.rs`/`view.rs`, not a `game/`
-submodule).
+submodule); the real UI does too (`gui.rs`, Phase 6 — see "GUI" below).
 
 ```
 src/
   main.rs        — rustyline prompt loop (tab completion via COMMAND_KEYWORDS +
-                   FilenameCompleter, history) + `--view <snapshot>` subprocess entry
+                   FilenameCompleter, history) + `--view <snapshot>` subprocess entry +
+                   `--gui <scenario.scen>` entry (Phase 6, opt-in alongside the terminal)
   lib.rs         — run(): command dispatch, save/load/inspect helpers, root re-exports;
                    also plays out AI-controlled turns (play_pending_ai_turns) after a
                    human's end_turn and after new/load
   ai.rs          — the AI opponent: take_turn per faction, consuming Game's public API
                    the same way command.rs does (attack/move_unit/simulate, no new
                    pathfinding or combat logic)
+  gui.rs         — the real interface (Phase 6): an eframe/egui window owning a Game
+                   directly, in-process, for the whole session (see "GUI" below)
   command.rs     — the command language: Command enum + parse, COMMAND_KEYWORDS, HELP_TEXT
   view.rs        — view subprocess spawning (spawn_view_subprocess/run_view_subprocess)
                    + live snapshot refresh (refresh_view/write_view_snapshot/cleanup_view)
   error.rs       — crate-wide Error type + From impls (io/toml/postcard)
-  game/mod.rs    — Game (state + players + turn/phase/date), Game::build, unit queries
+  game/mod.rs    — Game (state + players + turn/phase/date), Game::build, unit queries,
+                   check_mission_range (shared by air_support/interdict, see "Airfields")
   game/scenario.rs — the whole game-level .scen TOML schema (Scenario, Player, UnitConfig,
                    ScheduledArrivalConfig, ScenarioEvent, VictoryConditions…) + parse and
                    load-time validation; domain types it references stay in their domains
   game/turn.rs   — end_turn/begin_turn/status, TurnPhase, TurnSystem (the WEGO seam),
-                   turn-start morale drift
+                   turn-start morale drift, interdiction-coverage reset
   game/orders/   — player orders, one module each: movement.rs (move_unit, MP charging),
-                   attack.rs (attack/simulate validation, battle orchestration, retreat/
-                   rout/shatter/surrender aftermath, AttackReport); a future WEGO order
-                   queue plugs in here
+                   attack.rs (attack/air_support/simulate validation, battle orchestration,
+                   retreat/rout/shatter/surrender aftermath, AttackReport); a future WEGO
+                   order queue plugs in here
   game/victory.rs — victory scoring/report + the `victory` summary and map-view hex feed
   game/reinforcements.rs — runtime ScheduledArrival + arrival application and summary
   game/events.rs — event firing (morale/experience nudges, message queue) and summary
@@ -152,14 +159,17 @@ src/
                    faction_supplied_hexes also backs game/refit.rs
   game/refit.rs  — turn-start repair (damaged -> ready) and replacements
                    (missing -> ready), gated on supply, see "Refit" below
+  game/interdiction.rs — interdict/interdiction_summary, covering_fighter_units (used by
+                   game/orders/attack.rs), see "Interdiction" below
   game/test_support.rs — shared #[cfg(test)] scenario fixtures for the game test suites
   core/mod.rs    — State::build: resolves a Scenario into runtime State (units get
                    their element rosters instantiated from their TOE here)
   core/map.rs    — Map: HashMap<(u32,u32), Location> + offmap locations; TOML map
                    parsing; cheapest_path_cost (hexx a_star; start hex is free)
   core/location.rs — Location wraps Option<hexx::Hex> (None = offmap), Terrain enum
-  core/unit.rs   — Unit, Toe, Element, ElementClass, Size + config structs
-  visualiser.rs  — self-contained Bevy 0.15 debug map view (see below)
+  core/unit.rs   — Unit, Toe (mp, range), Element, ElementClass, Size + config structs
+  visualiser.rs  — self-contained Bevy 0.15 debug map view (see below); superseded in
+                   spirit by gui.rs, kept for now — retiring it is a later cleanup
   procedures/combat.rs — pure fires-based battle engine: CombatElement snapshots in,
                    BattleReport out; never touches Game/State (see docs/combat_design.md)
   procedures/supply.rs — pure multi-source flood fill (reachable_hexes) over the
@@ -340,6 +350,16 @@ Key data model (all TOML-configurable, see `scenarios/basic_scenario.scen`):
   `Location::distance_to` against the range, called from both
   `prepare_battle`'s `air_support` branch and `Game::interdict`. See
   "Airfields" in docs/combat_design.md.
+- **GUI** — `cse --gui <scenario.scen>` (`gui.rs`, Phase 6 slice 1) opens an
+  eframe/egui window that owns a `Game` directly for the whole session — no
+  snapshot file/subprocess like `view`/`visualiser.rs` need, since there's
+  only ever one process and one window here. `MapView` (hex layout +
+  panel/map centering, ported from `visualiser.rs`'s `map_center`) maps hex
+  coordinates to `egui::Pos2` for drawing and back for click hit-testing
+  (`hexx::HexLayout::world_pos_to_hex`); clicking a hex sets `selected_hex`,
+  which drives a side panel listing that hex's units and rosters (the same
+  information `inspect` prints). Read-only for now — no orders issued from
+  the window; `view`/`visualiser.rs` stay as-is alongside it.
 - Hex coords: offset coordinates, `OffsetHexMode::Even`, `HexOrientation::Pointy`
   (conversion happens inside `Location`; the rest of the code speaks (x, y) u32)
 - Lookups by name: `State` keeps `HashMap<String, _>` registries for units/toe/elements
@@ -352,6 +372,15 @@ Key data model (all TOML-configurable, see `scenarios/basic_scenario.scen`):
 
 ## Gotchas
 
+- **eframe's default `wgpu` backend renders nothing in this project's
+  sandboxed dev VM** — the window opens, `App::ui` runs every frame
+  (confirmed with debug logging), but no frame ever visibly presents.
+  `glow` (OpenGL, via Mesa/llvmpipe here) works correctly in the same
+  environment. `Cargo.toml` disables eframe's default features and enables
+  `glow` explicitly for this reason — don't switch it back to (or add)
+  `wgpu` without re-confirming rendering actually shows up, e.g. via a
+  screenshot tool (`spectacle` worked in this environment; `grim` didn't —
+  "compositor doesn't support the screen capture protocol").
 - **glam version split**: hexx 0.23 uses glam 0.30, Bevy 0.15 uses glam 0.29. Their
   `Vec2`s are incompatible. In `visualiser.rs`, hexx's re-exported `Vec2` is aliased
   as `HexVec2` for `HexLayout`; positions cross into Bevy as plain f32 x/y. Keep any
@@ -477,3 +506,16 @@ both scenarios. The AI still doesn't know `air_support`/`interdict` exist,
 so in `frontline_sector.scen` (Axis played by the AI) its Stuka wing
 currently never flies and its opponent's fighters never get declared —
 only a human player can order either today.
+
+**Phase 6 — the real interface — slice 1 landed.** `cse --gui
+<scenario.scen>` (see "GUI" above) opens a real egui/eframe window: the
+map (terrain-colored hexes, coordinate labels, faction-colored unit
+markers) plus a status header (`Game::status()`), click a hex to select it
+and see its units/rosters in a side panel. Read-only — no orders issued
+from the window yet, `view`/`visualiser.rs` untouched alongside it. Still
+open, in rough order: issuing orders (move/attack/air_support/interdict/
+end_turn) from the window, save/load and an in-app scenario picker
+(loading is scenario-path-only, via a CLI arg, for this slice), victory-hex
+flag markers and multi-unit stacking offsets (both already exist in
+`visualiser.rs`, not yet ported), pan/zoom, and eventually retiring
+`view`/`visualiser.rs` once the egui map view covers what they show.

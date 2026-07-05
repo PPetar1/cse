@@ -5,14 +5,24 @@ Add freely; nothing here is a commitment. When an idea graduates into real work,
 fold it into the relevant phase in docs/roadmap.md and the "Current focus"
 section of CLAUDE.md.
 
-## UI / platform direction (discussed 2026-07, decision deferred)
+## UI / platform direction (decided 2026-07: egui/eframe, Phase 6 underway)
 
-- The engine↔visualiser snapshot seam keeps the UI choice swappable; decide
-  only when the game is playable end-to-end in the terminal.
-- Leading candidate for the real UI: **egui/eframe** — a WitE-like is a
-  data-dense panel/table UI around a 2D hex map, which is egui's sweet spot;
-  ~10 MB binaries, fast compiles. Step up to a Bevy + bevy_egui hybrid if the
-  map view needs game-engine feel (animated pan/zoom, movement tweening).
+- Chosen once the game was playable end-to-end in the terminal (Phase 5
+  done): **egui/eframe**, not a Bevy + bevy_egui hybrid — a WitE-like is a
+  data-dense panel/table UI around a 2D hex map, egui's sweet spot, and this
+  game has no real-time motion to animate. `src/gui.rs` (Phase 6 slice 1) is
+  the first slice: a real window, hex map + click-to-inspect, no orders yet.
+  `visualiser.rs`/`view.rs` (the old Bevy debug view) stay for now; retiring
+  them is a later cleanup once `gui.rs` covers what they show.
+- Dev-environment gotcha hit while building slice 1: eframe's default `wgpu`
+  backend opens a window but never presents a frame in this project's
+  sandboxed dev VM (confirmed via debug logging that render calls fire
+  correctly — the GPU path just never shows anything). `glow` (OpenGL, via
+  Mesa/llvmpipe here) works correctly in the same environment, so
+  `Cargo.toml` disables eframe's default features and opts into `glow`
+  specifically. Worth re-checking if this ever moves to a real GPU-backed
+  environment, but no reason to prefer wgpu here regardless — glow is
+  plenty for 2D immediate-mode UI.
 - Cross-platform is mostly free (all deps are pure Rust, tier-1 targets);
   set up GitHub Actions matrix builds when nearing distribution. Habits now:
   `Path::join` over string paths, case-sensitive asset names.
