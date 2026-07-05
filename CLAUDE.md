@@ -70,6 +70,10 @@ in `lib.rs`, which parses (via `command.rs`) and dispatches. Commands:
   prints a battle report and persists losses + experience gain; beaten defenders
   retreat (with attrition), rout, shatter, or surrender, and the attackers
   advance into the vacated hex (free, automatic)
+- `air_support <x1> <y1> <x2> <y2> <unit name>` — flies one owned unit's
+  elements into that attack as extra firers, for that battle only; same
+  report as `attack`, but the unit never advances and stays wherever it
+  started (see "Air support" below)
 - `simulate <x1> <y1> <x2> <y2> <n>` — fight that attack n times state-untouched,
   print hold/retreat rates + average losses (the balance-tuning tool)
 - `end_turn` — pass control to the next player (IGO-UGO); when every player has
@@ -283,8 +287,19 @@ Key data model (all TOML-configurable, see `scenarios/basic_scenario.scen`):
   score fires. Known gap, not guarded against: an all-AI scenario with no
   `last_turn` would loop here forever — every scenario so far assumes at
   least one human seat.
-
-Conventions used throughout:
+- **Air support** — the first Phase 5 mechanic: `ElementClass::GroundAttack`
+  (a CAS aircraft type, not armored so ground return fire engages it with
+  `soft_attack`) plus `Game::air_support` (`game/orders/attack.rs`), which
+  folds one owned unit's elements into an ongoing ground attack's attacker
+  snapshot for that battle only via a new `prepare_battle` parameter — same
+  validation as `attack` (adjacency, turn ownership, a ground stack must
+  already be present at the source hex), plus checks that the air unit
+  belongs to the attacking faction and isn't already part of that ground
+  stack. Deliberately: the air unit never advances into a vacated hex and
+  doesn't share in the post-battle morale shift (both use the ground-only
+  `attacker_names`/`defender_names`), but its element losses and experience
+  gain persist automatically, since those read the full `CombatElement`
+  snapshot directly. See "Air support" in docs/combat_design.md.
 - Hex coords: offset coordinates, `OffsetHexMode::Even`, `HexOrientation::Pointy`
   (conversion happens inside `Location`; the rest of the code speaks (x, y) u32)
 - Lookups by name: `State` keeps `HashMap<String, _>` registries for units/toe/elements
@@ -403,3 +418,12 @@ German side is now AI-controlled — the landmark scenario for "lose to the
 machine." The AI's decision-making is intentionally simple by design (the
 point was proving the seam, not strength); a stronger AI later replaces
 `take_turn`'s internals without touching how it's invoked.
+
+**Phase 5 — combined arms — slice 1 (ground support) landed.** The
+`air_support` command flies one owned unit's elements into an ongoing
+ground attack as extra firers for that battle (see "Air support" above);
+both shipped scenarios carry a small Stuka wing sitting in "GE Reserve" to
+exercise it. Still open, in the roadmap's own order: air superiority,
+interdiction, airfields (today an air unit has no on-map base or range
+limit — it can support any attack anywhere) — and the AI doesn't fly CAS
+missions yet, only ground orders.

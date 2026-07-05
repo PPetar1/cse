@@ -194,6 +194,40 @@ knob, re-run, compare distributions. 1000 runs resolve in well under a second
 even in debug builds. It also underpins the low-randomness battle setting idea
 (see docs/ideas.md).
 
+### Air support (Phase 5, slice 1)
+
+`Game::air_support(air_unit, from, to, rng)` flies one owned unit's elements
+into an ongoing ground attack as extra firers, for that battle only — the
+first piece of "combined arms" per the roadmap, and a direct test of
+`docs/ideas.md`'s claim that air warfare should slot into the existing
+engine as data (a new `ElementClass::GroundAttack`) rather than a parallel
+system.
+
+- The air unit's `CombatElement`s join the attacker snapshot in
+  `prepare_battle` (an added `air_support: Option<&str>` parameter), so the
+  whole existing round/CV/severity machinery just runs — nothing in
+  `procedures/combat.rs` changed. `attack`'s validation is unchanged and
+  fully reused: the air unit's faction must match the attacking faction and
+  a ground attacker must already be present at `from` (this mechanic only
+  augments an existing ground battle — a stand-alone air strike is a later
+  slice, along with air superiority, interdiction and airfields).
+- Ground defenders can shoot down supporting aircraft for free: defender
+  fire already targets any Ready element on the attacker side uniformly, no
+  special-casing needed. `GroundAttack` elements aren't flagged armored, so
+  that return fire uses `soft_attack` — standing in for flak/small-arms fire
+  at low altitude rather than a modeled AA mechanic.
+- Two deliberate simplifications for this slice: the air unit never
+  advances into a vacated hex (it stays at its home location, whatever that
+  is — nothing yet requires it to be an on-map airfield, or even nearby),
+  and its own morale does not shift from the battle's outcome (only the
+  ground attacker/defender names feed the post-battle morale shift).
+  Experience gain and element losses *do* persist for it, since those flow
+  from the generic per-`CombatElement` snapshot, not from the
+  ground-only name lists. Revisit both if it turns out to matter once the
+  mechanic gets played with.
+- `simulate` is untouched — no air-support preview yet; a natural follow-up
+  once the mechanic is proven.
+
 ## Deliberate deviations from WitE2 (for now)
 
 - Flat defender terrain CV multiplier instead of WitE2's per-class density
