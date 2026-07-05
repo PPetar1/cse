@@ -330,6 +330,16 @@ Key data model (all TOML-configurable, see `scenarios/basic_scenario.scen`):
   be redeclared every time the covering faction acts again. The
   `interdiction` command shows current coverage. See "Air support"/"Air
   superiority"/"Interdiction" in docs/combat_design.md.
+- **Airfields** — `Toe.range: Option<u32>` (`None` = unlimited, every TOE's
+  behavior before this field existed) caps how many hexes
+  `air_support`/`interdict` can reach from a unit's current on-map
+  location — its "airfield" is just wherever it sits, `UnitLocation::OnMap`
+  like any ground unit, no new type needed. `Game::check_mission_range`
+  (`game/mod.rs`) is a no-op for a still-offmap unit (nothing to measure a
+  distance from) or a TOE with no range set; otherwise it compares
+  `Location::distance_to` against the range, called from both
+  `prepare_battle`'s `air_support` branch and `Game::interdict`. See
+  "Airfields" in docs/combat_design.md.
 - Hex coords: offset coordinates, `OffsetHexMode::Even`, `HexOrientation::Pointy`
   (conversion happens inside `Location`; the rest of the code speaks (x, y) u32)
 - Lookups by name: `State` keeps `HashMap<String, _>` registries for units/toe/elements
@@ -449,21 +459,21 @@ machine." The AI's decision-making is intentionally simple by design (the
 point was proving the seam, not strength); a stronger AI later replaces
 `take_turn`'s internals without touching how it's invoked.
 
-**Phase 5 — combined arms — slices 1 through 3 landed.** Ground support:
-the `air_support` command flies one owned unit's elements into an ongoing
-ground attack as extra firers for that battle (see "Air support" above);
-both shipped scenarios carry a small Stuka wing sitting in "GE Reserve" to
-exercise it. Air superiority: domain-restricted targeting (see "Air
+**Phase 5 — combined arms — done, all four slices landed.** Ground
+support: the `air_support` command flies one owned unit's elements into an
+ongoing ground attack as extra firers for that battle (see "Air support"
+above). Air superiority: domain-restricted targeting (see "Air
 superiority" above) means fighters only ever fight other air-domain
 elements, bombers fight both (weakly against air), and only `anti_air`-
 flagged ground elements (both scenarios' 45mm/37mm AT guns are now
 dual-purpose) can hit air-domain targets at all. Interdiction: a fighter
-unit must now `interdict` a hex (up to 3 at a time) before it's pulled
-into any battle there — both scenarios' small Soviet fighter regiment in
-"SU Reserve" no longer joins automatically everywhere, only where and when
-it's been declared to cover. Still open, in the roadmap's own order:
-airfields (today an air unit has no on-map base or range limit — it can
-support, contest, or cover any hex anywhere) — and the AI still doesn't
-know `air_support`/`interdict` exist, so in `frontline_sector.scen` (Axis
-played by the AI) its Stuka wing currently never flies and its opponent's
-fighters never get declared; only a human player can order either today.
+unit must `interdict` a hex (up to 3 at a time) before it's pulled into
+any battle there. Airfields: both scenarios' air units (a Stuka wing, a
+Soviet fighter regiment) now sit on real map hexes — their old offmap
+supply/rear-depot hexes — instead of an offmap reserve box, and their TOEs
+cap `air_support`/`interdict` missions to 9 hexes from wherever they
+currently are (see "Airfields" above); testing values, like the rest of
+both scenarios. The AI still doesn't know `air_support`/`interdict` exist,
+so in `frontline_sector.scen` (Axis played by the AI) its Stuka wing
+currently never flies and its opponent's fighters never get declared —
+only a human player can order either today.

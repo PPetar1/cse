@@ -216,10 +216,10 @@ system.
   (below) replaced that with domain-restricted targeting — ordinary ground
   fire no longer can, only AA-flagged ground elements or enemy fighters can.
 - Two deliberate simplifications for this slice: the air unit never
-  advances into a vacated hex (it stays at its home location, whatever that
-  is — nothing yet requires it to be an on-map airfield, or even nearby),
-  and its own morale does not shift from the battle's outcome (only the
-  ground attacker/defender names feed the post-battle morale shift).
+  advances into a vacated hex (it stays at its home location, whether or not
+  that's an on-map airfield — see slice 4), and its own morale does not
+  shift from the battle's outcome (only the ground attacker/defender names
+  feed the post-battle morale shift).
   Experience gain and element losses *do* persist for it, since those flow
   from the generic per-`CombatElement` snapshot, not from the
   ground-only name lists. Revisit both if it turns out to matter once the
@@ -260,9 +260,7 @@ devices and mission procedures, not parallel engines" claim at face value.
   CAS mission — they're already part of the ordinary defender snapshot, and
   the targeting rules above just let them shoot back. Fighters needed one
   more piece, superseded by slice 3 below.
-- Not modeled yet: escort (an attacker-side fighter protecting its own CAS)
-  and airfields (range/basing limits — an air unit can support or contest a
-  mission anywhere, still).
+- Not modeled yet: escort (an attacker-side fighter protecting its own CAS).
 
 ### Interdiction (Phase 5, slice 3)
 
@@ -297,8 +295,30 @@ using `air_support`.
   the MP refill), so a declaration made on your turn survives exactly
   through the opponent's next turn — the only window in which it can
   matter under IGO-UGO — and must be redeclared every time you act again.
-- Not modeled yet: airfields (range/basing limits — a unit can declare
-  coverage of, or fly support/strikes against, any hex on the map).
+
+### Airfields (Phase 5, slice 4)
+
+Every slice above explicitly deferred the same gap: an air unit had no
+on-map base or range limit. This slice closes it without any new type —
+an air unit's "airfield" is just wherever it currently sits.
+
+- `Toe` gains `range: Option<u32>` (`#[serde(default)]`, so `None` —
+  unlimited — is every TOE's behavior before this field existed, and every
+  ground TOE's forever, since only air-mission code ever reads it).
+- `Game::check_mission_range(unit, target)` (`game/mod.rs`) is `Ok(())`
+  immediately if the unit is still `Offmap` (no coordinate to measure a
+  distance from — an offmap air unit keeps slices 1–3's original unlimited
+  behavior) or its TOE sets no `range`; otherwise it compares
+  `Location::distance_to` from the unit's current on-map hex against the
+  TOE's range, erroring with both numbers if it's out of reach. One
+  function, called from both mission orders: `prepare_battle`'s
+  `air_support` branch (`game/orders/attack.rs`) and `Game::interdict`
+  (`game/interdiction.rs`).
+- Basing is just `UnitLocation::OnMap` — the same enum every ground unit
+  already uses — so an air unit could in principle redeploy to a new
+  airfield with an ordinary `move_unit`, if its TOE ever gave it nonzero
+  `mp`. Not exercised yet; both shipped scenarios keep `mp = 0` (stationary
+  bases), only adding `range` and an on-map location.
 
 ## Deliberate deviations from WitE2 (for now)
 

@@ -84,7 +84,7 @@ A first AI: move toward objectives, attack at favorable odds (`simulate` can
 literally power its judgment). Doesn't need to be good; needs to fight back.
 **Landmark: lose to the machine.**
 
-### Phase 5 — Combined arms
+### Phase 5 — Combined arms ✅ (done)
 
 Air warfare as data + mission procedures: ground support first (extra firers in
 the existing battle), then air superiority, interdiction, airfields. Naval, if
