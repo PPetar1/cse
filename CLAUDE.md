@@ -107,15 +107,22 @@ snapshots (no `Game`/`State` access), `game/` is the orchestration layer
 (turn flow, orders, scenario content — one module per concern; `Game` keeps
 its fields in `game/mod.rs`, submodules add `impl Game` blocks and mark
 what crosses module lines `pub(super)`), and the interface layer
-(`command.rs`/`view.rs`, later the real UI) talks to `Game`'s public API.
-Future systems follow the pattern: supply = `procedures/supply.rs` + a
-`game/` hook; the AI consumes `Game` like another front-end.
+(`command.rs`/`view.rs`/`ai.rs`, later the real UI) talks to `Game`'s public
+API. Future systems follow the pattern: supply = `procedures/supply.rs` + a
+`game/` hook; the AI consumes `Game` like another front-end (this landed —
+`ai.rs` is that front-end, next to `command.rs`/`view.rs`, not a `game/`
+submodule).
 
 ```
 src/
   main.rs        — rustyline prompt loop (tab completion via COMMAND_KEYWORDS +
                    FilenameCompleter, history) + `--view <snapshot>` subprocess entry
-  lib.rs         — run(): command dispatch, save/load/inspect helpers, root re-exports
+  lib.rs         — run(): command dispatch, save/load/inspect helpers, root re-exports;
+                   also plays out AI-controlled turns (play_pending_ai_turns) after a
+                   human's end_turn and after new/load
+  ai.rs          — the AI opponent: take_turn per faction, consuming Game's public API
+                   the same way command.rs does (attack/move_unit/simulate, no new
+                   pathfinding or combat logic)
   command.rs     — the command language: Command enum + parse, COMMAND_KEYWORDS, HELP_TEXT
   view.rs        — view subprocess spawning (spawn_view_subprocess/run_view_subprocess)
                    + live snapshot refresh (refresh_view/write_view_snapshot/cleanup_view)
@@ -256,6 +263,26 @@ Key data model (all TOML-configurable, see `scenarios/basic_scenario.scen`):
   both naturally bounded (`div_ceil(x, step) <= x`) so neither needs a
   separate cap. Cut-off units get neither. Runs in `Game::begin_turn` after
   scheduled arrivals/events, before the MP refill/morale-drift loop.
+- **AI opponent** — a scenario's `[[players]]` entry gets an optional
+  `controller` (`Human`/`Ai`, default `Human`, `PlayerController` in
+  scenario.rs); `Game::current_player_is_ai`/`current_faction` (turn.rs) read
+  it. `ai::take_turn` (top-level `ai.rs`, not a `game/` submodule — see
+  Architecture above) plays one AI faction's turn: per on-map stack
+  (`Game::units_of_faction` grouped by hex), attack the best adjacent enemy
+  hex if `Game::simulate` predicts a defender-retreat rate clearing
+  `ATTACK_RETREAT_THRESHOLD`, otherwise move every unit in the stack toward
+  the nearest victory hex this faction doesn't hold (falling back to the
+  nearest enemy unit if the scenario has none) — trying the full
+  `Game::move_unit` jump first and a single best neighbouring step if that
+  errs. No new pathfinding or combat logic anywhere in `ai.rs`; every
+  decision bottoms out in `Game`'s existing public order methods, the same
+  ones `command.rs` calls. `lib.rs`'s `run()` auto-plays consecutive
+  AI-controlled turns (`play_pending_ai_turns`) after a human's `end_turn`
+  and after `new`/`load` (covers the case where the first or restored
+  on-turn player is AI), stopping once a human is on turn or the scenario's
+  score fires. Known gap, not guarded against: an all-AI scenario with no
+  `last_turn` would loop here forever — every scenario so far assumes at
+  least one human seat.
 
 Conventions used throughout:
 - Hex coords: offset coordinates, `OffsetHexMode::Even`, `HexOrientation::Pointy`
@@ -363,3 +390,16 @@ by construction); cut-off units get neither — supply's one gameplay effect
 in this prototype. Still open: replacements/repair could later gate on more
 than raw connectivity (distance, throughput) if Part 2's detailed logistics
 ever revisits this; not planned now.
+
+**Phase 4 — an opponent — done.** A scenario faction can be marked
+`controller = "Ai"`; `ai.rs`'s simple rule-based `take_turn` attacks
+adjacent enemies at favorable `simulate`-predicted odds and otherwise
+advances toward the nearest unclaimed victory hex or enemy, using only
+`Game`'s existing public order methods (see "AI opponent" above).
+`lib.rs::run` auto-plays every AI faction's turn in sequence after a human's
+`end_turn` (and after `new`/`load`, in case the game opens on an AI turn)
+until a human is on turn or the scenario scores. `frontline_sector.scen`'s
+German side is now AI-controlled — the landmark scenario for "lose to the
+machine." The AI's decision-making is intentionally simple by design (the
+point was proving the seam, not strength); a stronger AI later replaces
+`take_turn`'s internals without touching how it's invoked.
