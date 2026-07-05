@@ -256,23 +256,49 @@ devices and mission procedures, not parallel engines" claim at face value.
   or `anti_air` is involved, a firer's eligible pool is exactly the old
   shared Ready-target pool — a strict generalization, confirmed by the full
   pre-existing test suite passing unchanged.
-- **Auto-contested air support**: AA-flagged ground elements need no extra
-  wiring — they're already part of the ordinary defender snapshot, and the
-  targeting rules above just let them shoot back at an incoming CAS
-  mission. Fighters are the one case needing new plumbing, since they're a
-  separate unit: `Game::faction_fighter_units` finds any unit of the
-  defending faction fielding a `Fighter`-class element, and `prepare_battle`
-  folds all of it into the defender snapshot whenever `air_support` is used
-  — never into `defender_names`, so fighters don't retreat with the ground
-  defenders and don't join the post-battle morale shift, mirroring the air
-  unit's own exclusion from slice 1. This is IGO-UGO-clean: the defender
-  issues no order, their fielded aircraft are simply part of what's already
-  there when the attacker's mission arrives. A plain ground `attack` (no air
-  support) is completely unaffected — fighters are never pulled in unless
-  there's an air element to intercept.
-- Not modeled yet: escort (an attacker-side fighter protecting its own CAS),
-  interdiction, and airfields (range/basing limits — an air unit can support
-  or contest a mission anywhere, still).
+- AA-flagged ground elements need no extra wiring to contest an incoming
+  CAS mission — they're already part of the ordinary defender snapshot, and
+  the targeting rules above just let them shoot back. Fighters needed one
+  more piece, superseded by slice 3 below.
+- Not modeled yet: escort (an attacker-side fighter protecting its own CAS)
+  and airfields (range/basing limits — an air unit can support or contest a
+  mission anywhere, still).
+
+### Interdiction (Phase 5, slice 3)
+
+Slice 2 gave every fighter unit a faction owns a blanket, unconditional
+pass into any `air_support`-augmented battle, anywhere. Slice 3 replaces
+that with a declared, scarce resource: `Game::interdict(unit, target)`
+marks a hex as covered by a fighter-capable unit (up to
+`INTERDICTION_HEX_LIMIT` = 3 hexes per unit at a time); only a battle that
+actually happens at a covered hex pulls that unit's elements into the
+defender snapshot — and it does so for *any* battle there, not just ones
+using `air_support`.
+
+- Coverage is tracked on `Game` (`interdiction_coverage: HashMap<unit name,
+  Vec<hex>>`, `game/interdiction.rs`), not on `Unit` — matching how other
+  scheduling mechanics (`scheduled_arrivals`, `events`, `supply_sources`)
+  live as their own `Game` fields rather than being bolted onto the domain
+  types they act on.
+- `prepare_battle` (`game/orders/attack.rs`) unconditionally extends
+  `defenders` with `Game::covering_fighter_units(defender_faction, to)` —
+  whatever units of the defending faction currently cover the target hex.
+  This replaced slice 2's `air_support.is_some()`-gated, unconditional
+  `faction_fighter_units` call (now deleted). A plain ground `attack`
+  against a covered hex now pulls fighters in too; against an uncovered
+  hex, or with nothing covering it, nothing changes from before. Since a
+  fighter with no air-domain target present simply never fires and can
+  never be fired on (domain-restricted targeting again), a fighter pulled
+  into a battle with no air element on the attacker's side is a harmless
+  bystander — it still gains experience just for being fielded (same as
+  any element bucket in any battle), but never fights.
+- Coverage clears at the *covering faction's own* next turn start
+  (`reset_interdiction_coverage`, called from `Game::begin_turn` alongside
+  the MP refill), so a declaration made on your turn survives exactly
+  through the opponent's next turn — the only window in which it can
+  matter under IGO-UGO — and must be redeclared every time you act again.
+- Not modeled yet: airfields (range/basing limits — a unit can declare
+  coverage of, or fly support/strikes against, any hex on the map).
 
 ## Deliberate deviations from WitE2 (for now)
 

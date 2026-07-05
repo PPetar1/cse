@@ -74,6 +74,10 @@ in `lib.rs`, which parses (via `command.rs`) and dispatches. Commands:
   elements into that attack as extra firers, for that battle only; same
   report as `attack`, but the unit never advances and stays wherever it
   started (see "Air support" below)
+- `interdict <x> <y> <unit name>` — a fighter-capable unit covers that hex
+  this turn (up to 3 hexes per unit); any battle there this turn or the
+  opponent's next automatically pulls it in (see "Interdiction" below)
+- `interdiction` — show which units are covering which hexes
 - `simulate <x1> <y1> <x2> <y2> <n>` — fight that attack n times state-untouched,
   print hold/retreat rates + average losses (the balance-tuning tool)
 - `end_turn` — pass control to the next player (IGO-UGO); when every player has
@@ -309,15 +313,23 @@ Key data model (all TOML-configurable, see `scenarios/basic_scenario.scen`):
   generalization, since that pool equals the old shared one whenever
   nothing air-domain/anti-air is present. Fighters only ever hit air;
   bombers hit both (weakly against air); ordinary ground elements hit
-  ground only unless flagged `anti_air`. `Game::faction_fighter_units`
-  finds any unit of a faction fielding a `Fighter`-class element;
-  `prepare_battle` folds them into the *defender* snapshot whenever
-  `air_support` is used (never into `defender_names` — same exclusions as
-  the attacker's air unit), so a defending faction's fighters automatically
-  contest an incoming CAS mission with no order needed — IGO-UGO-clean,
-  since nothing reactive is required from the defender. A plain `attack`
-  (no air support) is completely unaffected. See "Air support"/"Air
-  superiority" in docs/combat_design.md.
+  ground only unless flagged `anti_air`.
+- **Interdiction** — `Game::interdict(unit, target)` (`game/
+  interdiction.rs`) declares that a fighter-capable unit covers a hex, up
+  to `INTERDICTION_HEX_LIMIT` (3) hexes at a time; `interdiction_coverage`
+  (a `HashMap<unit name, Vec<hex>>` on `Game`, not on `Unit` — same
+  separation-of-concerns as `scheduled_arrivals`/`events`/
+  `supply_sources`) tracks it. `prepare_battle` unconditionally extends the
+  defender snapshot with `Game::covering_fighter_units(defender_faction,
+  to)` — whatever's covering the target hex, for *any* battle there, not
+  just `air_support` ones (this replaced slice 2's `air_support.is_some()`
+  gated, unconditional `faction_fighter_units`, now deleted). Coverage
+  clears at the covering faction's own next turn start
+  (`reset_interdiction_coverage`, called from `Game::begin_turn`), so a
+  declaration survives exactly through the opponent's next turn and must
+  be redeclared every time the covering faction acts again. The
+  `interdiction` command shows current coverage. See "Air support"/"Air
+  superiority"/"Interdiction" in docs/combat_design.md.
 - Hex coords: offset coordinates, `OffsetHexMode::Even`, `HexOrientation::Pointy`
   (conversion happens inside `Location`; the rest of the code speaks (x, y) u32)
 - Lookups by name: `State` keeps `HashMap<String, _>` registries for units/toe/elements
@@ -437,18 +449,21 @@ machine." The AI's decision-making is intentionally simple by design (the
 point was proving the seam, not strength); a stronger AI later replaces
 `take_turn`'s internals without touching how it's invoked.
 
-**Phase 5 — combined arms — slices 1 and 2 landed.** Ground support: the
-`air_support` command flies one owned unit's elements into an ongoing
+**Phase 5 — combined arms — slices 1 through 3 landed.** Ground support:
+the `air_support` command flies one owned unit's elements into an ongoing
 ground attack as extra firers for that battle (see "Air support" above);
 both shipped scenarios carry a small Stuka wing sitting in "GE Reserve" to
 exercise it. Air superiority: domain-restricted targeting (see "Air
 superiority" above) means fighters only ever fight other air-domain
 elements, bombers fight both (weakly against air), and only `anti_air`-
 flagged ground elements (both scenarios' 45mm/37mm AT guns are now
-dual-purpose) can hit air-domain targets at all; both scenarios also carry
-a small Soviet fighter regiment in "SU Reserve" that automatically contests
-any German `air_support` mission, no order needed. Still open, in the roadmap's own order: interdiction, airfields (today an
-air unit has no on-map base or range limit — it can support or contest a
-mission anywhere) — and the AI still doesn't know `air_support` exists, so
-in `frontline_sector.scen` (Axis played by the AI) its Stuka wing currently
-never flies; only a human player can order one today.
+dual-purpose) can hit air-domain targets at all. Interdiction: a fighter
+unit must now `interdict` a hex (up to 3 at a time) before it's pulled
+into any battle there — both scenarios' small Soviet fighter regiment in
+"SU Reserve" no longer joins automatically everywhere, only where and when
+it's been declared to cover. Still open, in the roadmap's own order:
+airfields (today an air unit has no on-map base or range limit — it can
+support, contest, or cover any hex anywhere) — and the AI still doesn't
+know `air_support`/`interdict` exist, so in `frontline_sector.scen` (Axis
+played by the AI) its Stuka wing currently never flies and its opponent's
+fighters never get declared; only a human player can order either today.
