@@ -202,7 +202,7 @@ mod tests {
         let game = Game::build(contents).unwrap();
 
         assert_eq!(game.players.len(), 2);
-        assert_eq!(game.state.units.len(), 9);
+        assert_eq!(game.state.units.len(), 10);
         // Guards the TOE/element referential integrity of the shipped scenario.
         assert!(game.state.elements.contains_key("SU_45mm_at_gun"));
         // Morale/experience inheritance: the 101st takes the Soviet faction
@@ -224,9 +224,9 @@ mod tests {
         let mut game = Game::build(contents).unwrap();
 
         assert_eq!(game.players.len(), 2);
-        // 10 Soviet frontline + 2 reserve, 8 German infantry + 2 Panzer on
-        // the line + 1 Panzer in reserve + 1 Stuka wing in reserve.
-        assert_eq!(game.state.units.len(), 24);
+        // 10 Soviet frontline + 2 reserve + 1 fighter regiment, 8 German
+        // infantry + 2 Panzer on the line + 1 Panzer + 1 Stuka wing in reserve.
+        assert_eq!(game.state.units.len(), 25);
         // Guards the TOE/element referential integrity of the shipped scenario.
         assert!(game.state.elements.contains_key("GE_37mm_pak"));
         // The continuous Soviet line: every hex from (0, 4) to (9, 4) is held.

@@ -40,6 +40,14 @@ pub struct CombatElement {
     experience: u32,
     vulnerability: u32,
     armored: bool,
+    /// Whether this element is itself an air target (an aircraft) — decides
+    /// which attack value a hit on it uses, and which firers may target it
+    /// at all (see `can_target_ground`/`can_target_air`).
+    air_domain: bool,
+    /// Whether this element may fire on ground-domain targets.
+    can_target_ground: bool,
+    /// Whether this element may fire on air-domain targets.
+    can_target_air: bool,
     devices: Vec<Device>,
 }
 
@@ -73,6 +81,7 @@ pub fn combat_elements(
                     unit.name, element_in_unit.name
                 ),
             })?;
+            let air_domain = element_type.class.is_air_domain();
             for _ in 0..element_in_unit.ready {
                 elements.push(CombatElement {
                     unit_name: unit.name.clone(),
@@ -83,6 +92,9 @@ pub fn combat_elements(
                     experience: element_in_unit.experience,
                     vulnerability: element_type.vulnerability,
                     armored: element_type.class.is_armored(),
+                    air_domain,
+                    can_target_ground: element_type.class.can_target_ground(),
+                    can_target_air: air_domain || element_type.anti_air,
                     devices: element_type.devices.clone(),
                 });
             }
@@ -219,13 +231,13 @@ fn fire_round(
     target_cover: f32,
     rng: &mut impl Rng,
 ) -> (u32, Vec<(usize, CombatElementState)>) {
-    let target_pool: Vec<usize> = targets
+    let ready_targets: Vec<usize> = targets
         .iter()
         .enumerate()
         .filter(|(_, target)| target.state == CombatElementState::Ready)
         .map(|(index, _)| index)
         .collect();
-    if target_pool.is_empty() {
+    if ready_targets.is_empty() {
         return (0, Vec::new());
     }
 
@@ -245,13 +257,27 @@ fn fire_round(
             continue;
         }
 
+        // Domain-restricted targeting: fighters only ever see air targets,
+        // ground elements only ever see ground targets unless flagged
+        // anti-air, bombers see both. Equals `ready_targets` in full when
+        // nothing air-domain or anti-air is in the battle, so ground-only
+        // combat is unaffected.
+        let eligible_targets: Vec<usize> = ready_targets.iter().copied()
+            .filter(|&index| {
+                if targets[index].air_domain { firer.can_target_air } else { firer.can_target_ground }
+            })
+            .collect();
+        if eligible_targets.is_empty() {
+            continue;
+        }
+
         for device in in_range {
             for _ in 0..device.rate_of_fire {
                 shots += 1;
 
                 // Uniform pick over enemy instances: numerous element types
                 // soak proportionally more fire, an emergent screening effect.
-                let target_index = target_pool[rng.random_range(0..target_pool.len())];
+                let target_index = eligible_targets[rng.random_range(0..eligible_targets.len())];
                 let target = &targets[target_index];
 
                 let hit_chance = device.accuracy as f32 * target_cover;
@@ -260,9 +286,16 @@ fn fire_round(
                 }
 
                 // Effect: the device's fire value matching the target's
-                // hardness (AP at armor, small arms/HE at everything else),
-                // scaled by how vulnerable the target is to that kind of fire.
-                let attack = if target.armored { device.hard_attack } else { device.soft_attack };
+                // domain/hardness (air attack for aircraft, AP at armor,
+                // small arms/HE at everything else), scaled by how
+                // vulnerable the target is to that kind of fire.
+                let attack = if target.air_domain {
+                    device.air_attack
+                } else if target.armored {
+                    device.hard_attack
+                } else {
+                    device.soft_attack
+                };
                 let effect_chance = attack as f32 * target.vulnerability as f32 / 100.0;
                 if rng.random_range(0.0..100.0) >= effect_chance {
                     continue;
@@ -505,6 +538,7 @@ mod tests {
             rate_of_fire,
             soft_attack: 100,
             hard_attack: 3,
+            air_attack: 0,
         }
     }
 
@@ -520,6 +554,7 @@ mod tests {
             class,
             cv,
             vulnerability: 100,
+            anti_air: false,
             devices: vec![device(accuracy, range, 1)],
         }
     }
@@ -855,5 +890,105 @@ mod tests {
         apply_hits(&mut elements, &hits);
 
         assert_eq!(elements[0].state, CombatElementState::Destroyed);
+    }
+
+    #[test]
+    fn a_fighter_facing_only_ground_targets_never_fires_and_is_never_fired_on() {
+        // Perfect accuracy on both sides, but a fighter can't target ground
+        // and a plain (non-AA) ground element can't target air: nobody has
+        // anything they're allowed to shoot at.
+        let unit = unit_with("Fighter Wing", vec![veterans("interceptor", 5, 0)]);
+        let mut fighter = element_type("interceptor", ElementClass::Fighter, 100, 3000, 5.0);
+        fighter.devices[0].air_attack = 100;
+        let types = registry(vec![fighter]);
+        let mut attackers = combat_elements(&[&unit], &types).unwrap();
+        let mut defenders = side(5, 100, 3000, 4.0);
+        let mut rng = StdRng::seed_from_u64(42);
+
+        let report = resolve_battle(&mut attackers, &mut defenders, Terrain::Plains, &mut rng);
+
+        assert!(report.rounds.iter().all(|r| r.attacker_shots == 0 && r.defender_shots == 0));
+    }
+
+    #[test]
+    fn a_fighter_can_hit_an_air_domain_target() {
+        let unit = unit_with("Fighter Wing", vec![veterans("interceptor", 5, 0)]);
+        let mut fighter = element_type("interceptor", ElementClass::Fighter, 100, 3000, 5.0);
+        fighter.devices[0].air_attack = 100;
+        let types = registry(vec![fighter]);
+        let mut attackers = combat_elements(&[&unit], &types).unwrap();
+
+        // A bomber stack with zero accuracy: isolates the fighter's shots,
+        // since the bomber never lands a hit of its own.
+        let bomber_unit = unit_with("Bomber Wing", vec![veterans("bomber", 5, 0)]);
+        let bomber = element_type("bomber", ElementClass::GroundAttack, 0, 3000, 4.0);
+        let bomber_types = registry(vec![bomber]);
+        let mut defenders = combat_elements(&[&bomber_unit], &bomber_types).unwrap();
+        let mut rng = StdRng::seed_from_u64(42);
+
+        let report = resolve_battle(&mut attackers, &mut defenders, Terrain::Plains, &mut rng);
+
+        assert!(report.rounds.iter().any(|r| r.attacker_hits > 0));
+    }
+
+    #[test]
+    fn a_non_anti_air_ground_element_cannot_target_air_domain() {
+        let mut attackers = side(10, 100, 3000, 4.0);
+        let bomber_unit = unit_with("Bomber Wing", vec![veterans("bomber", 5, 0)]);
+        let bomber = element_type("bomber", ElementClass::GroundAttack, 0, 3000, 4.0);
+        let bomber_types = registry(vec![bomber]);
+        let mut defenders = combat_elements(&[&bomber_unit], &bomber_types).unwrap();
+        let mut rng = StdRng::seed_from_u64(42);
+
+        let report = resolve_battle(&mut attackers, &mut defenders, Terrain::Plains, &mut rng);
+
+        assert!(report.rounds.iter().all(|r| r.attacker_shots == 0));
+    }
+
+    #[test]
+    fn an_anti_air_ground_element_can_target_air_domain() {
+        let unit = unit_with("Flak Battery", vec![veterans("flak", 5, 0)]);
+        let mut flak = element_type("flak", ElementClass::AtGun, 100, 3000, 0.5);
+        flak.anti_air = true;
+        flak.devices[0].air_attack = 100;
+        let types = registry(vec![flak]);
+        let mut attackers = combat_elements(&[&unit], &types).unwrap();
+
+        let bomber_unit = unit_with("Bomber Wing", vec![veterans("bomber", 5, 0)]);
+        let bomber = element_type("bomber", ElementClass::GroundAttack, 0, 3000, 4.0);
+        let bomber_types = registry(vec![bomber]);
+        let mut defenders = combat_elements(&[&bomber_unit], &bomber_types).unwrap();
+        let mut rng = StdRng::seed_from_u64(42);
+
+        let report = resolve_battle(&mut attackers, &mut defenders, Terrain::Plains, &mut rng);
+
+        assert!(report.rounds.iter().any(|r| r.attacker_hits > 0));
+    }
+
+    #[test]
+    fn a_bomber_can_target_both_ground_and_air_domains() {
+        let unit = unit_with("Bomber Wing", vec![veterans("bomber", 10, 0)]);
+        let mut bomber = element_type("bomber", ElementClass::GroundAttack, 100, 3000, 4.0);
+        bomber.devices[0].air_attack = 100;
+        let types = registry(vec![bomber]);
+        let mut attackers = combat_elements(&[&unit], &types).unwrap();
+
+        // A mixed defending stack: one ground unit, one fighter unit.
+        let ground_unit = unit_with("Ground Defenders", vec![veterans("squad", 5, 0)]);
+        let ground_type = element_type("squad", ElementClass::Inf, 0, 3000, 4.0);
+        let fighter_unit = unit_with("Fighter Wing", vec![veterans("interceptor", 5, 0)]);
+        let fighter_type = element_type("interceptor", ElementClass::Fighter, 0, 3000, 4.0);
+        let types = registry(vec![ground_type, fighter_type]);
+        let mut defenders = combat_elements(&[&ground_unit, &fighter_unit], &types).unwrap();
+        let mut rng = StdRng::seed_from_u64(42);
+
+        resolve_battle(&mut attackers, &mut defenders, Terrain::Plains, &mut rng);
+
+        let ground_hit = defenders.iter()
+            .any(|e| e.unit_name == "Ground Defenders" && e.state != CombatElementState::Ready);
+        let air_hit = defenders.iter()
+            .any(|e| e.unit_name == "Fighter Wing" && e.state != CombatElementState::Ready);
+        assert!(ground_hit, "the bomber should be able to hit the ground defenders");
+        assert!(air_hit, "the bomber should also be able to hit the fighter wing");
     }
 }

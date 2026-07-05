@@ -112,6 +112,13 @@ pub struct Element {
     /// vehicles, exposure for everything else. Targets are always engaged
     /// with the fire value matching their hardness, so one stat suffices.
     pub vulnerability: u32,
+    /// Ground elements can't target air-domain elements unless flagged —
+    /// dual-purpose flak, historically. Meaningless (and harmless) on an
+    /// already-air-domain element (`ElementClass::is_air_domain`), which can
+    /// always engage air regardless of this flag. See
+    /// `ElementClass::can_target_air` and docs/combat_design.md.
+    #[serde(default)]
+    pub anti_air: bool,
     /// The weapons this element fights with; every in-range device fires
     /// each combat round. Must not be empty (State::build validates).
     pub devices: Vec<Device>,
@@ -134,9 +141,14 @@ pub struct Device {
     pub soft_attack: u32,
     /// 0–100. How devastating a hit is against armored targets (AP).
     pub hard_attack: u32,
+    /// 0–100. How devastating a hit is against air-domain targets — the
+    /// counterpart to soft/hard attack for the air domain. Only relevant on
+    /// a device belonging to a firer that `can_target_air`.
+    #[serde(default)]
+    pub air_attack: u32,
 }
 
-#[derive(serde::Deserialize, Debug, serde::Serialize)]
+#[derive(serde::Deserialize, Debug, PartialEq, serde::Serialize)]
 pub enum ElementClass {
     Inf,
     LightTank,
@@ -144,11 +156,13 @@ pub enum ElementClass {
     MotInf,
     LightArt,
     AtGun,
-    /// A CAS aircraft type — joins a ground attack as an extra firer via
-    /// `Game::air_support` (see docs/combat_design.md). Not armored: ground
-    /// return fire engages it with `soft_attack`, standing in for flak
-    /// rather than a modeled AA mechanic.
+    /// A CAS aircraft ("bomber") — joins a ground attack as an extra firer
+    /// via `Game::air_support` (see docs/combat_design.md). Air-domain: can
+    /// engage ground targets normally and air targets via `air_attack`.
     GroundAttack,
+    /// An air-superiority aircraft. Air-domain, but unlike `GroundAttack`
+    /// can *only* engage other air-domain targets.
+    Fighter,
 }
 
 impl ElementClass {
@@ -156,6 +170,18 @@ impl ElementClass {
     /// receives soft fire.
     pub fn is_armored(&self) -> bool {
         matches!(self, ElementClass::LightTank | ElementClass::MedTank)
+    }
+
+    /// Air-domain elements (aircraft) are valid targets for anything that
+    /// `can_target_air`, and never for ground-only firers.
+    pub fn is_air_domain(&self) -> bool {
+        matches!(self, ElementClass::GroundAttack | ElementClass::Fighter)
+    }
+
+    /// Whether an element of this class can engage ground-domain targets.
+    /// True for every class except `Fighter`, which only engages air.
+    pub fn can_target_ground(&self) -> bool {
+        !matches!(self, ElementClass::Fighter)
     }
 }
 

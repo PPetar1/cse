@@ -100,6 +100,19 @@ end_date = "1941-10-01"
 name = "GE_stuka"
 amount = 30
 
+# Air superiority (Phase 5, slice 2): a Fighter-class unit automatically
+# contests any air_support mission the enemy flies against it — no order
+# needed, see game::orders::attack::faction_fighter_units.
+[[toe]]
+name = "SU_fighter_regiment"
+size = "Regiment"
+mp = 0
+start_date = "1941-01-01"
+end_date = "1941-10-01"
+[[toe.elements]]
+name = "SU_yak1"
+amount = 30
+
 # An element fights with its devices: each in-range device fires
 # rate_of_fire shots per combat round. accuracy: chance a shot hits;
 # soft_attack/hard_attack: how devastating a hit is vs unarmored/armored
@@ -130,6 +143,9 @@ name = "SU_45mm_at_gun"
 class = "AtGun"
 cv = 0.2
 vulnerability = 60
+# Dual-purpose: same gun also engages air-domain targets (anti_air), at a
+# far weaker air_attack value than its anti-tank punch.
+anti_air = true
 [[elements.devices]]
 name = "45mm_m1937"
 accuracy = 60
@@ -137,6 +153,7 @@ range = 300
 rate_of_fire = 2
 soft_attack = 15
 hard_attack = 90
+air_attack = 10
 
 [[elements]]
 name = "SU_122mm_howitzer_M1938"
@@ -179,6 +196,9 @@ name = "GE_37mm_pak"
 class = "AtGun"
 cv = 0.3
 vulnerability = 55
+# Dual-purpose: same gun also engages air-domain targets (anti_air), at a
+# far weaker air_attack value than its anti-tank punch.
+anti_air = true
 [[elements.devices]]
 name = "37mm_pak36"
 accuracy = 55
@@ -186,6 +206,7 @@ range = 350
 rate_of_fire = 2
 soft_attack = 20
 hard_attack = 70
+air_attack = 10
 
 [[elements]]
 name = "GE_105mm_lefh"
@@ -260,10 +281,13 @@ rate_of_fire = 6
 soft_attack = 40
 hard_attack = 0
 
-# A CAS aircraft: not armored, so ground return fire engages it with
-# soft_attack (standing in for flak). range is set above the highest range
-# band so it fires in every round of whatever battle it joins, the same
-# trick the long-range artillery elements above already use.
+# A CAS aircraft (air-domain): engages ground targets normally, and air
+# targets weakly via air_attack (rear gunner vs intercepting fighters).
+# Only anti_air-flagged ground elements or enemy fighters can hit it back —
+# ordinary ground fire can't touch an air-domain target at all. range is
+# set above the highest range band so it fires in every round of whatever
+# battle it joins, the same trick the long-range artillery elements above
+# already use.
 [[elements]]
 name = "GE_stuka"
 class = "GroundAttack"
@@ -276,6 +300,23 @@ range = 3000
 rate_of_fire = 1
 soft_attack = 80
 hard_attack = 40
+air_attack = 10
+
+# An air-superiority fighter: air-domain, but unlike GroundAttack it can
+# only ever engage other air-domain targets (see ElementClass::Fighter).
+[[elements]]
+name = "SU_yak1"
+class = "Fighter"
+cv = 6
+vulnerability = 45
+[[elements.devices]]
+name = "shvak_cannon"
+accuracy = 30
+range = 3000
+rate_of_fire = 2
+soft_attack = 0
+hard_attack = 0
+air_attack = 60
 
 # ── The Soviet line: one rifle division per hex along y=4, edge to edge —
 # no gap for the Germans to walk through unopposed.
@@ -349,6 +390,14 @@ location = "SU Reserve"
 [[units]]
 name = "12th Rifle Division"
 toe = "SU_inf_div_41a"
+faction = "SU"
+location = "SU Reserve"
+
+# Air superiority: stays in SU Reserve permanently, automatically contesting
+# any German air_support mission (no order needed to activate it).
+[[units]]
+name = "1st Fighter Regiment"
+toe = "SU_fighter_regiment"
 faction = "SU"
 location = "SU Reserve"
 

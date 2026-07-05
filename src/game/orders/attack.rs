@@ -10,7 +10,7 @@ use rand::Rng;
 
 use crate::Error;
 use crate::core::location::Terrain;
-use crate::core::unit::{LocationCoords, Toe, Unit, UnitLocation};
+use crate::core::unit::{ElementClass, LocationCoords, Toe, Unit, UnitLocation};
 use crate::game::Game;
 use crate::procedures::combat::{
     self, BattleOutcome, BattleReport, CombatElement, CombatElementState, SimulationReport,
@@ -187,6 +187,7 @@ impl Game {
         }
 
         let mut attackers = combat::combat_elements(&attacker_units, &self.state.elements)?;
+        let mut defenders = combat::combat_elements(&defender_units, &self.state.elements)?;
         if let Some(name) = air_support {
             if attacker_units.iter().any(|unit| unit.name == name) {
                 return Err(Error::new(format!(
@@ -200,16 +201,39 @@ impl Game {
                 return Err(Error::new(format!("'{name}' does not belong to {attacker_faction}.")));
             }
             attackers.extend(combat::combat_elements(&[air_unit], &self.state.elements)?);
+
+            // Air superiority: any fighters the defending faction owns
+            // automatically contest an incoming air mission, whether or not
+            // the defender's ground stack has anti-air of its own. Never
+            // part of `defender_names` — they don't retreat with the
+            // ground defenders, they just fly back to base.
+            let fighter_units = self.faction_fighter_units(&defender_faction);
+            if !fighter_units.is_empty() {
+                defenders.extend(combat::combat_elements(&fighter_units, &self.state.elements)?);
+            }
         }
 
         Ok(BattlePlan {
             attackers,
-            defenders: combat::combat_elements(&defender_units, &self.state.elements)?,
+            defenders,
             defender_terrain: to_location.terrain,
             attacker_names: attacker_units.iter().map(|unit| unit.name.clone()).collect(),
             defender_names: defender_units.iter().map(|unit| unit.name.clone()).collect(),
             defender_faction,
         })
+    }
+
+    /// Every unit of `faction` that fields at least one `Fighter`-class
+    /// element — the units air superiority automatically pulls into a
+    /// battle against an incoming air-support mission.
+    fn faction_fighter_units(&self, faction: &str) -> Vec<&Unit> {
+        self.state.units.values()
+            .filter(|unit| unit.faction == faction)
+            .filter(|unit| unit.elements.iter().any(|element| {
+                self.state.elements.get(&element.name)
+                    .is_some_and(|element_type| element_type.class == ElementClass::Fighter)
+            }))
+            .collect()
     }
 
     /// Move the beaten defenders out of their hex, with attrition on the way.
@@ -995,5 +1019,103 @@ experience = 100
         let error = game.air_support("Axis Division", (1, 1), (2, 1), &mut rng).unwrap_err();
 
         assert!(error.error_message.contains("already part of"));
+    }
+
+    #[test]
+    fn air_support_is_contested_by_the_defenders_fighters() {
+        let units = r#"
+[[toe]]
+name = "bomber_toe"
+size = "Regiment"
+mp = 0
+start_date = "1941-01-01"
+end_date = "1941-08-01"
+[[toe.elements]]
+name = "bomber_element"
+amount = 20
+
+[[toe]]
+name = "fighter_toe"
+size = "Regiment"
+mp = 0
+start_date = "1941-01-01"
+end_date = "1941-08-01"
+[[toe.elements]]
+name = "fighter_element"
+amount = 20
+
+[[elements]]
+name = "bomber_element"
+class = "GroundAttack"
+cv = 5
+vulnerability = 100
+[[elements.devices]]
+name = "bombs"
+accuracy = 100
+range = 3000
+rate_of_fire = 1
+soft_attack = 0
+hard_attack = 0
+air_attack = 0
+
+[[elements]]
+name = "fighter_element"
+class = "Fighter"
+cv = 5
+vulnerability = 100
+[[elements.devices]]
+name = "cannon"
+accuracy = 100
+range = 3000
+rate_of_fire = 1
+soft_attack = 0
+hard_attack = 0
+air_attack = 100
+
+[[units]]
+name = "Axis Division"
+toe = "test_toe"
+faction = "AX"
+location = { x = 1, y = 1 }
+morale = 100
+experience = 100
+
+[[units]]
+name = "3rd Stuka Wing"
+toe = "bomber_toe"
+faction = "AX"
+location = "GE Reserve"
+morale = 100
+experience = 100
+
+[[units]]
+name = "Soviet Division"
+toe = "test_toe"
+faction = "SU"
+location = { x = 2, y = 1 }
+morale = 100
+experience = 100
+"#;
+
+        // Baseline: no Soviet fighters in play. Ground fire alone can't
+        // touch an air-domain target, so the Stuka wing takes no losses.
+        let mut baseline = Game::build(minimal_scenario(TWO_PLAYERS, units)).unwrap();
+        baseline.air_support("3rd Stuka Wing", (1, 1), (2, 1), &mut StdRng::seed_from_u64(42)).unwrap();
+        assert_eq!(baseline.state.units["3rd Stuka Wing"].elements[0].ready, 20);
+
+        // With a Soviet fighter wing available, the same mission is contested.
+        let with_fighters = format!(
+            "{units}\n[[units]]\nname = \"Soviet Fighter Wing\"\ntoe = \"fighter_toe\"\nfaction = \"SU\"\nlocation = \"SU Reserve\"\nmorale = 100\nexperience = 100\n"
+        );
+        let mut game = Game::build(minimal_scenario(TWO_PLAYERS, &with_fighters)).unwrap();
+
+        game.air_support("3rd Stuka Wing", (1, 1), (2, 1), &mut StdRng::seed_from_u64(42)).unwrap();
+
+        assert!(game.state.units["3rd Stuka Wing"].elements[0].ready < 20);
+        // The fighters never left their base, win or lose.
+        assert_eq!(
+            game.state.units["Soviet Fighter Wing"].location,
+            UnitLocation::Offmap("SU Reserve".to_string()),
+        );
     }
 }
