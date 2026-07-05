@@ -56,6 +56,14 @@ pub fn run(input: &str, mut current_game: Option<&mut Game>) -> Result<Option<Ga
             println!("{report}");
             None
         }
+        Command::Interdict { target, unit } => {
+            require_game(current_game.as_deref_mut())?.interdict(&unit, target)?;
+            None
+        }
+        Command::Interdiction => {
+            println!("{}", require_game(current_game.as_deref_mut())?.interdiction_summary());
+            None
+        }
         Command::Simulate { from, to, runs } => {
             let report = require_game(current_game.as_deref_mut())?.simulate(from, to, runs, &mut rand::rng())?;
             println!("{report}");

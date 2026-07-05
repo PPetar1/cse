@@ -10,7 +10,7 @@ use rand::Rng;
 
 use crate::Error;
 use crate::core::location::Terrain;
-use crate::core::unit::{ElementClass, LocationCoords, Toe, Unit, UnitLocation};
+use crate::core::unit::{LocationCoords, Toe, Unit, UnitLocation};
 use crate::game::Game;
 use crate::procedures::combat::{
     self, BattleOutcome, BattleReport, CombatElement, CombatElementState, SimulationReport,
@@ -201,16 +201,16 @@ impl Game {
                 return Err(Error::new(format!("'{name}' does not belong to {attacker_faction}.")));
             }
             attackers.extend(combat::combat_elements(&[air_unit], &self.state.elements)?);
+        }
 
-            // Air superiority: any fighters the defending faction owns
-            // automatically contest an incoming air mission, whether or not
-            // the defender's ground stack has anti-air of its own. Never
-            // part of `defender_names` — they don't retreat with the
-            // ground defenders, they just fly back to base.
-            let fighter_units = self.faction_fighter_units(&defender_faction);
-            if !fighter_units.is_empty() {
-                defenders.extend(combat::combat_elements(&fighter_units, &self.state.elements)?);
-            }
+        // Interdiction: any fighters the defending faction has declared to
+        // cover this hex (`Game::interdict`) automatically join the fight,
+        // whether or not the attacker flew an air_support mission. Never
+        // part of `defender_names` — they don't retreat with the ground
+        // defenders, they just fly back to base.
+        let covering_units = self.covering_fighter_units(&defender_faction, to);
+        if !covering_units.is_empty() {
+            defenders.extend(combat::combat_elements(&covering_units, &self.state.elements)?);
         }
 
         Ok(BattlePlan {
@@ -221,19 +221,6 @@ impl Game {
             defender_names: defender_units.iter().map(|unit| unit.name.clone()).collect(),
             defender_faction,
         })
-    }
-
-    /// Every unit of `faction` that fields at least one `Fighter`-class
-    /// element — the units air superiority automatically pulls into a
-    /// battle against an incoming air-support mission.
-    fn faction_fighter_units(&self, faction: &str) -> Vec<&Unit> {
-        self.state.units.values()
-            .filter(|unit| unit.faction == faction)
-            .filter(|unit| unit.elements.iter().any(|element| {
-                self.state.elements.get(&element.name)
-                    .is_some_and(|element_type| element_type.class == ElementClass::Fighter)
-            }))
-            .collect()
     }
 
     /// Move the beaten defenders out of their hex, with attrition on the way.
@@ -1103,11 +1090,16 @@ experience = 100
         baseline.air_support("3rd Stuka Wing", (1, 1), (2, 1), &mut StdRng::seed_from_u64(42)).unwrap();
         assert_eq!(baseline.state.units["3rd Stuka Wing"].elements[0].ready, 20);
 
-        // With a Soviet fighter wing available, the same mission is contested.
+        // With a Soviet fighter wing covering the target hex, the same
+        // mission is contested. Coverage must be declared on the Soviets'
+        // own turn; it survives the Axis turn that follows.
         let with_fighters = format!(
             "{units}\n[[units]]\nname = \"Soviet Fighter Wing\"\ntoe = \"fighter_toe\"\nfaction = \"SU\"\nlocation = \"SU Reserve\"\nmorale = 100\nexperience = 100\n"
         );
         let mut game = Game::build(minimal_scenario(TWO_PLAYERS, &with_fighters)).unwrap();
+        game.end_turn(); // Soviet Union's turn.
+        game.interdict("Soviet Fighter Wing", (2, 1)).unwrap();
+        game.end_turn(); // Back to Axis, still turn 1.
 
         game.air_support("3rd Stuka Wing", (1, 1), (2, 1), &mut StdRng::seed_from_u64(42)).unwrap();
 
@@ -1117,5 +1109,66 @@ experience = 100
             game.state.units["Soviet Fighter Wing"].location,
             UnitLocation::Offmap("SU Reserve".to_string()),
         );
+    }
+
+    const SOVIET_FIGHTER_WING: &str = r#"
+[[toe]]
+name = "fighter_toe"
+size = "Regiment"
+mp = 0
+start_date = "1941-01-01"
+end_date = "1941-08-01"
+[[toe.elements]]
+name = "fighter_element"
+amount = 10
+
+[[elements]]
+name = "fighter_element"
+class = "Fighter"
+cv = 5
+vulnerability = 100
+[[elements.devices]]
+name = "cannon"
+accuracy = 30
+range = 3000
+rate_of_fire = 1
+soft_attack = 0
+hard_attack = 0
+air_attack = 60
+
+[[units]]
+name = "Soviet Fighter Wing"
+toe = "fighter_toe"
+faction = "SU"
+location = "SU Reserve"
+"#;
+
+    #[test]
+    fn a_plain_attack_against_a_covered_hex_pulls_in_the_covering_fighters() {
+        let units = format!("{OPPOSING_UNITS}\n{SOVIET_FIGHTER_WING}");
+        let mut game = Game::build(minimal_scenario(TWO_PLAYERS, &units)).unwrap();
+        game.end_turn(); // Soviet Union's turn.
+        game.interdict("Soviet Fighter Wing", (2, 1)).unwrap();
+        game.end_turn(); // Back to Axis, still turn 1.
+        let mut rng = StdRng::seed_from_u64(42);
+
+        game.attack((1, 1), (2, 1), &mut rng).unwrap();
+
+        // Merely being pulled into the snapshot grants experience (see
+        // battles_grant_experience_to_both_sides), proving the fighter
+        // joined even though a plain ground attack gives it nothing to
+        // shoot at, or be shot by.
+        assert_eq!(game.state.units["Soviet Fighter Wing"].elements[0].experience, 55);
+    }
+
+    #[test]
+    fn a_plain_attack_against_an_uncovered_hex_never_involves_fighters() {
+        let units = format!("{OPPOSING_UNITS}\n{SOVIET_FIGHTER_WING}");
+        let mut game = Game::build(minimal_scenario(TWO_PLAYERS, &units)).unwrap();
+        let mut rng = StdRng::seed_from_u64(42);
+
+        game.attack((1, 1), (2, 1), &mut rng).unwrap();
+
+        assert_eq!(game.state.units["Soviet Fighter Wing"].elements[0].experience, 50);
     }
 }

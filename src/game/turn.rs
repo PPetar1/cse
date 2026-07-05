@@ -42,9 +42,10 @@ impl Game {
     /// reinforcements/withdrawals and scenario events land first (an event's
     /// morale/experience delta feeds straight into the same turn's drift
     /// target below), then refit (repair/replacements for units connected to
-    /// supply), then a fresh movement budget from the TOE, and morale
-    /// drifting back toward the faction default (rest heals battered units,
-    /// euphoria fades).
+    /// supply), then a fresh movement budget from the TOE, interdiction
+    /// coverage resetting (it must be redeclared every time this faction
+    /// acts), and morale drifting back toward the faction default (rest
+    /// heals battered units, euphoria fades).
     fn begin_turn(&mut self) {
         self.apply_scheduled_arrivals();
         self.apply_scheduled_events();
@@ -53,6 +54,7 @@ impl Game {
         let player = self.player_on_turn();
         let faction = player.faction_tag.clone();
         let default_morale = player.morale;
+        self.reset_interdiction_coverage(&faction);
         for unit in self.state.units.values_mut() {
             if unit.faction == faction {
                 unit.mp_left = self.state.toe.get(&unit.toe).expect("unit's toe vanished").mp;

@@ -1,4 +1,5 @@
 mod events;
+mod interdiction;
 mod orders;
 mod refit;
 mod reinforcements;
@@ -15,6 +16,7 @@ use reinforcements::ScheduledArrival;
 use scenario::{ScenarioEvent, SupplySource, VictoryConditions};
 use turn::{TurnPhase, TurnSystem};
 
+use std::collections::HashMap;
 use time::Date;
 
 use crate::core::State;
@@ -48,6 +50,11 @@ pub struct Game {
     /// Each faction's supply-source hexes, for tracing which of its units
     /// are connected back to them (see `game::supply`).
     supply_sources: Vec<SupplySource>,
+    /// Hexes each fighter-capable unit is currently covering (up to
+    /// `interdiction::INTERDICTION_HEX_LIMIT` each), keyed by unit name.
+    /// Declared via `interdict`; cleared for a faction's own units the
+    /// moment their turn starts again (see `game::interdiction`).
+    interdiction_coverage: HashMap<String, Vec<(u32, u32)>>,
 }
 
 impl Game {
@@ -96,6 +103,7 @@ impl Game {
            events,
            pending_event_messages: Vec::new(),
            supply_sources,
+           interdiction_coverage: HashMap::new(),
        };
        // begin_turn() only fires from end_turn, so the very first player's
        // turn-1 arrivals/events need an explicit first pass here.
