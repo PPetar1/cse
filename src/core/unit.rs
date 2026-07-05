@@ -144,6 +144,11 @@ pub enum ElementClass {
     MotInf,
     LightArt,
     AtGun,
+    /// A CAS aircraft type — joins a ground attack as an extra firer via
+    /// `Game::air_support` (see docs/combat_design.md). Not armored: ground
+    /// return fire engages it with `soft_attack`, standing in for flak
+    /// rather than a modeled AA mechanic.
+    GroundAttack,
 }
 
 impl ElementClass {

@@ -50,6 +50,12 @@ pub fn run(input: &str, mut current_game: Option<&mut Game>) -> Result<Option<Ga
             println!("{report}");
             None
         }
+        Command::AirSupport { from, to, air_unit } => {
+            let report = require_game(current_game.as_deref_mut())?
+                .air_support(&air_unit, from, to, &mut rand::rng())?;
+            println!("{report}");
+            None
+        }
         Command::Simulate { from, to, runs } => {
             let report = require_game(current_game.as_deref_mut())?.simulate(from, to, runs, &mut rand::rng())?;
             println!("{report}");

@@ -8,8 +8,8 @@ use crate::Error;
 /// Command keywords, used for terminal tab completion. Keep in sync with
 /// `Command::parse` and HELP_TEXT.
 pub const COMMAND_KEYWORDS: &[&str] = &[
-    "new", "load", "save", "inspect", "units", "move", "attack", "simulate", "end_turn", "status",
-    "victory", "reinforcements", "events", "supply", "view", "help", "exit",
+    "new", "load", "save", "inspect", "units", "move", "attack", "air_support", "simulate",
+    "end_turn", "status", "victory", "reinforcements", "events", "supply", "view", "help", "exit",
 ];
 
 pub(crate) const HELP_TEXT: &str = "\
@@ -21,6 +21,7 @@ Commands:
   units [detail]                      list all units
   move <x1> <y1> <x2> <y2> <index>    move the unit with that index (per inspect) between hexes
   attack <x1> <y1> <x2> <y2>          units at hex 1 attack units at hex 2
+  air_support <x1> <y1> <x2> <y2> <unit>  fly <unit>'s elements into that attack as extra firers
   simulate <x1> <y1> <x2> <y2> <n>    fight that attack n times without applying it, show statistics
   end_turn                            pass control to the next player, advancing turn and date
   status                              show scenario, turn, date and who is to move
@@ -42,6 +43,7 @@ pub(crate) enum Command<'a> {
     Units { detail: bool },
     Move { from: (u32, u32), to: (u32, u32), unit_index: usize },
     Attack { from: (u32, u32), to: (u32, u32) },
+    AirSupport { from: (u32, u32), to: (u32, u32), air_unit: String },
     Simulate { from: (u32, u32), to: (u32, u32), runs: u32 },
     EndTurn,
     Status,
@@ -113,6 +115,24 @@ impl<'a> Command<'a> {
                     Err(Error::new("Unable to parse arguments for attack order."))
                 }
             }
+            "air_support" => {
+                if args.len() < 5 {
+                    return Err(Error::new(
+                        "Need attacking hex, target hex and the air unit's name for air_support.",
+                    ));
+                }
+                if let (Ok(x_start), Ok(y_start), Ok(x_end), Ok(y_end))
+                    = (args[0].parse(), args[1].parse(), args[2].parse(), args[3].parse())
+                {
+                    Ok(Command::AirSupport {
+                        from: (x_start, y_start),
+                        to: (x_end, y_end),
+                        air_unit: args[4..].join(" "),
+                    })
+                } else {
+                    Err(Error::new("Unable to parse arguments for air_support."))
+                }
+            }
             "simulate" => {
                 if args.len() < 5 {
                     return Err(Error::new("Need attacking hex, target hex and number of battles for simulate."));
@@ -175,6 +195,23 @@ mod tests {
         let error = Command::parse("attack 3 4").unwrap_err();
 
         assert!(error.error_message.contains("attacking hex and target hex"));
+    }
+
+    #[test]
+    fn parses_an_air_support_command_with_a_multi_word_unit_name() {
+        let command = Command::parse("air_support 3 4 3 3 3rd Stuka Wing").unwrap();
+
+        assert_eq!(
+            command,
+            Command::AirSupport { from: (3, 4), to: (3, 3), air_unit: "3rd Stuka Wing".to_string() },
+        );
+    }
+
+    #[test]
+    fn rejects_air_support_with_missing_arguments() {
+        let error = Command::parse("air_support 3 4 3 3").unwrap_err();
+
+        assert!(error.error_message.contains("air unit's name"));
     }
 
     #[test]

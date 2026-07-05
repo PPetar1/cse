@@ -46,6 +46,31 @@ impl Game {
         to: (u32, u32),
         rng: &mut impl Rng,
     ) -> Result<AttackReport, Error> {
+        self.attack_with_air_support(from, to, None, rng)
+    }
+
+    /// Fly one owned unit's elements into an attack as extra firers — ground
+    /// support, folded into the same battle and resolved together with it
+    /// (see docs/combat_design.md). The unit never moves: it isn't part of
+    /// the ground stack, doesn't advance into a vacated hex, and returns to
+    /// base regardless of outcome.
+    pub fn air_support(
+        &mut self,
+        air_unit: &str,
+        from: (u32, u32),
+        to: (u32, u32),
+        rng: &mut impl Rng,
+    ) -> Result<AttackReport, Error> {
+        self.attack_with_air_support(from, to, Some(air_unit), rng)
+    }
+
+    fn attack_with_air_support(
+        &mut self,
+        from: (u32, u32),
+        to: (u32, u32),
+        air_support: Option<&str>,
+        rng: &mut impl Rng,
+    ) -> Result<AttackReport, Error> {
         let BattlePlan {
             mut attackers,
             mut defenders,
@@ -53,7 +78,7 @@ impl Game {
             attacker_names,
             defender_names,
             defender_faction,
-        } = self.prepare_battle(from, to)?;
+        } = self.prepare_battle(from, to, air_support)?;
 
         let battle = combat::resolve_battle(&mut attackers, &mut defenders, defender_terrain, rng);
 
@@ -119,17 +144,26 @@ impl Game {
         if runs == 0 {
             return Err(Error::new("Number of battles to simulate must be at least 1."));
         }
-        let plan = self.prepare_battle(from, to)?;
+        let plan = self.prepare_battle(from, to, None)?;
         Ok(combat::simulate_battles(&plan.attackers, &plan.defenders, plan.defender_terrain, runs, rng))
     }
 
     /// Validate an attack order and build the battle snapshots for it.
-    /// Shared by `attack` (which then persists results) and `simulate`
-    /// (which never does) — both obey the same rules, adjacency and turn
-    /// order included, so a simulation is always of a legal attack. Future
-    /// order logic that cares about the source hex or whose turn it is
-    /// (reserve activation etc.) belongs here too.
-    fn prepare_battle(&self, from: (u32, u32), to: (u32, u32)) -> Result<BattlePlan, Error> {
+    /// Shared by `attack`/`air_support` (which then persist results) and
+    /// `simulate` (which never does) — both obey the same rules, adjacency
+    /// and turn order included, so a simulation is always of a legal
+    /// attack. Future order logic that cares about the source hex or whose
+    /// turn it is (reserve activation etc.) belongs here too.
+    ///
+    /// `air_support`, if given, names one owned unit whose elements join the
+    /// attacker snapshot as extra firers without joining `attacker_names` —
+    /// see `BattlePlan.air_support_name` and `air_support` above.
+    fn prepare_battle(
+        &self,
+        from: (u32, u32),
+        to: (u32, u32),
+        air_support: Option<&str>,
+    ) -> Result<BattlePlan, Error> {
         let from_location = self.state.map.get_location(from.0, from.1)
             .ok_or_else(|| Error::new("Invalid attacking location."))?;
         let to_location = self.state.map.get_location(to.0, to.1)
@@ -152,8 +186,24 @@ impl Game {
             return Err(Error::new(format!("It is not {attacker_faction}'s turn.")));
         }
 
+        let mut attackers = combat::combat_elements(&attacker_units, &self.state.elements)?;
+        if let Some(name) = air_support {
+            if attacker_units.iter().any(|unit| unit.name == name) {
+                return Err(Error::new(format!(
+                    "'{name}' is already part of the ground attack at ({}, {}).",
+                    from.0, from.1,
+                )));
+            }
+            let air_unit = self.state.units.get(name)
+                .ok_or_else(|| Error::new(format!("No such unit '{name}' for air support.")))?;
+            if air_unit.faction != attacker_faction {
+                return Err(Error::new(format!("'{name}' does not belong to {attacker_faction}.")));
+            }
+            attackers.extend(combat::combat_elements(&[air_unit], &self.state.elements)?);
+        }
+
         Ok(BattlePlan {
-            attackers: combat::combat_elements(&attacker_units, &self.state.elements)?,
+            attackers,
             defenders: combat::combat_elements(&defender_units, &self.state.elements)?,
             defender_terrain: to_location.terrain,
             attacker_names: attacker_units.iter().map(|unit| unit.name.clone()).collect(),
@@ -363,6 +413,9 @@ struct BattlePlan {
     attackers: Vec<CombatElement>,
     defenders: Vec<CombatElement>,
     defender_terrain: Terrain,
+    /// Ground attacker names only — deliberately excludes any air-support
+    /// unit (see `prepare_battle`), so it never advances into a vacated hex
+    /// or shares in the post-battle morale shift.
     attacker_names: Vec<String>,
     defender_names: Vec<String>,
     defender_faction: String,
@@ -849,5 +902,98 @@ location = { x = 2, y = 1 }
         let error = game.attack((1, 1), (2, 1), &mut rng).unwrap_err();
 
         assert!(error.error_message.contains("same faction"));
+    }
+
+    #[test]
+    fn air_support_adds_the_air_units_elements_to_the_attack() {
+        let units = r#"
+[[units]]
+name = "Axis Division"
+toe = "test_toe"
+faction = "AX"
+location = { x = 1, y = 1 }
+morale = 100
+experience = 100
+
+[[units]]
+name = "3rd Stuka Wing"
+toe = "test_toe"
+faction = "AX"
+location = "GE Reserve"
+morale = 100
+experience = 100
+
+[[units]]
+name = "Soviet Division"
+toe = "test_toe"
+faction = "SU"
+location = { x = 2, y = 1 }
+morale = 100
+experience = 100
+"#;
+
+        // Ground alone: 2 elements against 10 is hopeless, the attack holds.
+        let mut baseline = Game::build(minimal_scenario(TWO_PLAYERS, units)).unwrap();
+        baseline.state.units.get_mut("Axis Division").unwrap().elements[0].ready = 2;
+        let holds = baseline.attack((1, 1), (2, 1), &mut StdRng::seed_from_u64(42)).unwrap();
+        assert_eq!(holds.battle.outcome, BattleOutcome::DefenderHolds);
+
+        // With the Stuka wing's 30 elements added in, the same odds flip.
+        let mut game = Game::build(minimal_scenario(TWO_PLAYERS, units)).unwrap();
+        game.state.units.get_mut("Axis Division").unwrap().elements[0].ready = 2;
+        game.state.units.get_mut("3rd Stuka Wing").unwrap().elements[0].ready = 30;
+        let mut rng = StdRng::seed_from_u64(42);
+
+        let report = game.air_support("3rd Stuka Wing", (1, 1), (2, 1), &mut rng).unwrap();
+
+        assert_eq!(report.battle.outcome, BattleOutcome::DefenderRetreats);
+        // Far more attacker CV than the 2-element ground stack alone could
+        // ever produce (max 2 × 4 × 3 = 24) — proof the wing's 30 elements
+        // are really in the snapshot, not just along for the ride.
+        assert!(report.battle.attacker_cv > 24.0);
+        // It joined the fight but never left base — it isn't part of the
+        // ground stack.
+        assert_eq!(
+            game.state.units["3rd Stuka Wing"].location,
+            UnitLocation::Offmap("GE Reserve".to_string()),
+        );
+        // The ground attackers, in contrast, advanced into the vacated hex.
+        assert_eq!(
+            game.state.units["Axis Division"].location,
+            UnitLocation::OnMap(LocationCoords { x: 2, y: 1 }),
+        );
+    }
+
+    #[test]
+    fn air_support_rejects_an_unknown_unit_name() {
+        let mut game = Game::build(minimal_scenario(TWO_PLAYERS, OPPOSING_UNITS)).unwrap();
+        let mut rng = StdRng::seed_from_u64(42);
+
+        let error = game.air_support("Ghost Wing", (1, 1), (2, 1), &mut rng).unwrap_err();
+
+        assert!(error.error_message.contains("No such unit"));
+    }
+
+    #[test]
+    fn air_support_rejects_a_unit_of_the_wrong_faction() {
+        let units = format!("{OPPOSING_UNITS}\n{OFFMAP_UNIT}");
+        let mut game = Game::build(minimal_scenario(TWO_PLAYERS, &units)).unwrap();
+        game.end_turn(); // Soviet Union now on turn.
+        let mut rng = StdRng::seed_from_u64(42);
+
+        // "Reserve Division" belongs to AX; SU is attacking.
+        let error = game.air_support("Reserve Division", (2, 1), (1, 1), &mut rng).unwrap_err();
+
+        assert!(error.error_message.contains("does not belong to"));
+    }
+
+    #[test]
+    fn air_support_rejects_a_unit_already_in_the_ground_stack() {
+        let mut game = Game::build(minimal_scenario(TWO_PLAYERS, OPPOSING_UNITS)).unwrap();
+        let mut rng = StdRng::seed_from_u64(42);
+
+        let error = game.air_support("Axis Division", (1, 1), (2, 1), &mut rng).unwrap_err();
+
+        assert!(error.error_message.contains("already part of"));
     }
 }

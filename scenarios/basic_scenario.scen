@@ -63,6 +63,19 @@ amount = 20
 name = "GE_pz_4"
 amount = 30
 
+# Air support (Phase 5, slice 1): joins a ground attack as extra firers for
+# that one battle (game::orders::attack::air_support), never moving from its
+# base. mp = 0 since it's never ordered onto the map.
+[[toe]]
+name = "GE_stuka_wing"
+size = "Regiment"
+mp = 0
+start_date = "1941-01-01"
+end_date = "1941-10-01"
+[[toe.elements]]
+name = "GE_stuka"
+amount = 20
+
 # An element fights with its devices: each in-range device fires
 # rate_of_fire shots per combat round. accuracy: chance a shot hits;
 # soft_attack/hard_attack: how devastating a hit is vs unarmored/armored
@@ -174,6 +187,23 @@ rate_of_fire = 6
 soft_attack = 40
 hard_attack = 0
 
+# A CAS aircraft: not armored, so ground return fire engages it with
+# soft_attack (standing in for flak). range is set above the highest range
+# band so it fires in every round of whatever battle it joins, the same
+# trick the long-range artillery elements above already use.
+[[elements]]
+name = "GE_stuka"
+class = "GroundAttack"
+cv = 5
+vulnerability = 50
+[[elements.devices]]
+name = "sc250_bombs"
+accuracy = 25
+range = 3000
+rate_of_fire = 1
+soft_attack = 80
+hard_attack = 40
+
 # Inherits the Soviet faction defaults (45/35), except the gun crews.
 [[units]]
 name = "101st Infantry division"
@@ -230,6 +260,16 @@ experience = 70
 [[units]]
 name = "10th Panzer Division"
 toe = "GE_pz_div_41"
+faction = "AX"
+location = "GE Reserve"
+morale = 80
+experience = 70
+
+# Air support: stays in GE Reserve permanently, flying missions (the
+# air_support command) without ever changing location.
+[[units]]
+name = "1st Stuka Wing"
+toe = "GE_stuka_wing"
 faction = "AX"
 location = "GE Reserve"
 morale = 80
