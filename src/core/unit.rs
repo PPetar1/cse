@@ -83,10 +83,18 @@ pub struct Toe {
     /// Movement points per turn for units on this TOE — leg formations low,
     /// motorized/armored high (era data, not code).
     pub mp: u32,
+    /// Hex-distance limit for air missions (`air_support`/`interdict`)
+    /// launched from a unit's current on-map location — the "airfields"
+    /// range limit. `None` = unlimited (every TOE before this field existed,
+    /// and every ground TOE, which never sets it). Meaningless for a unit
+    /// still parked in an offmap reserve box, since there's no coordinate to
+    /// measure a distance from — see `Game::check_mission_range`.
+    #[serde(default)]
+    pub range: Option<u32>,
     pub start_date: Date,
     pub end_date: Date,
     pub elements: Vec<ElementInToe>,// Tuple holds the name of the element in question,
-                                 // number of elements the toe prescribes 
+                                 // number of elements the toe prescribes
 }
 
 #[derive(serde::Deserialize, Debug, serde::Serialize)]

@@ -33,6 +33,7 @@ impl Game {
         if self.state.map.get_location(target.0, target.1).is_none() {
             return Err(Error::new("Invalid target location."));
         }
+        self.check_mission_range(fighter, target)?;
 
         let coverage = self.interdiction_coverage.entry(unit.to_string()).or_default();
         if coverage.contains(&target) {
@@ -91,6 +92,7 @@ impl Game {
 
 #[cfg(test)]
 mod tests {
+    use crate::core::unit::{LocationCoords, UnitLocation};
     use crate::game::Game;
     use crate::game::test_support::*;
 
@@ -196,5 +198,77 @@ location = "GE Reserve"
         // Axis's own turn starts again: their coverage resets.
         game.end_turn();
         assert_eq!(game.interdiction_summary(), "No units are currently covering any hexes.");
+    }
+
+    const RANGED_FIGHTER: &str = r#"
+[[toe]]
+name = "ranged_fighter_toe"
+size = "Regiment"
+mp = 0
+range = 1
+start_date = "1941-01-01"
+end_date = "1941-08-01"
+[[toe.elements]]
+name = "ranged_fighter_element"
+amount = 10
+
+[[elements]]
+name = "ranged_fighter_element"
+class = "Fighter"
+cv = 5
+vulnerability = 100
+[[elements.devices]]
+name = "cannon"
+accuracy = 0
+range = 3000
+rate_of_fire = 1
+soft_attack = 0
+hard_attack = 0
+air_attack = 0
+
+[[units]]
+name = "Ranged Fighter Wing"
+toe = "ranged_fighter_toe"
+faction = "AX"
+location = { x = 0, y = 0 }
+"#;
+
+    #[test]
+    fn interdict_succeeds_when_the_target_is_within_range() {
+        let units = format!("{ONMAP_UNIT}\n{RANGED_FIGHTER}");
+        let mut game = Game::build(minimal_scenario(ONE_PLAYER, &units)).unwrap();
+        // A neighbour of (1, 1) — distance 1, exactly the TOE's range.
+        let hex = game.state.map.get_location(1, 1).unwrap();
+        let (x, y) = hex.neighbour_coords().into_iter().next().unwrap();
+        game.state.units.get_mut("Ranged Fighter Wing").unwrap().location =
+            UnitLocation::OnMap(LocationCoords { x, y });
+
+        game.interdict("Ranged Fighter Wing", (1, 1)).unwrap();
+    }
+
+    #[test]
+    fn interdict_rejects_a_target_beyond_range() {
+        let units = format!("{ONMAP_UNIT}\n{RANGED_FIGHTER}");
+        let mut game = Game::build(minimal_scenario(ONE_PLAYER, &units)).unwrap();
+        // The far corner of the map — well beyond the TOE's range of 1.
+        game.state.units.get_mut("Ranged Fighter Wing").unwrap().location =
+            UnitLocation::OnMap(LocationCoords { x: 9, y: 7 });
+
+        let error = game.interdict("Ranged Fighter Wing", (1, 1)).unwrap_err();
+
+        assert!(error.error_message.contains("out of range"));
+    }
+
+    #[test]
+    fn interdict_ignores_range_for_an_offmap_unit() {
+        let units = format!(
+            "{ONMAP_UNIT}\n{}",
+            RANGED_FIGHTER.replace("location = { x = 0, y = 0 }", "location = \"GE Reserve\""),
+        );
+        let mut game = Game::build(minimal_scenario(ONE_PLAYER, &units)).unwrap();
+
+        // Range 1 would reject a target this far away for an on-map unit,
+        // but an offmap unit has no coordinate to measure a distance from.
+        game.interdict("Ranged Fighter Wing", (1, 1)).unwrap();
     }
 }

@@ -161,6 +161,28 @@ impl Game {
         units.sort_by(|a, b| a.name.cmp(&b.name));
         units
     }
+
+    /// Whether `unit` can reach `target` for an air mission
+    /// (`air_support`/`interdict`) — always fine for a unit still parked
+    /// offmap (no coordinate to measure from) or whose TOE sets no `range`;
+    /// otherwise the hex distance from its current location must fit.
+    pub(super) fn check_mission_range(&self, unit: &Unit, target: (u32, u32)) -> Result<(), Error> {
+        let UnitLocation::OnMap(coords) = &unit.location else { return Ok(()) };
+        let Some(range) = self.state.toe.get(&unit.toe).and_then(|toe| toe.range) else {
+            return Ok(());
+        };
+        let base = self.state.map.get_location(coords.x, coords.y)
+            .expect("unit's own hex vanished");
+        let target_location = self.state.map.get_location(target.0, target.1)
+            .ok_or_else(|| Error::new("Invalid target location."))?;
+        let distance = base.distance_to(target_location).expect("both hexes are on-map");
+        if distance > range {
+            return Err(Error::new(format!(
+                "'{}' is out of range: {distance} hexes away, {range} allowed.", unit.name,
+            )));
+        }
+        Ok(())
+    }
 }
 
 #[cfg(test)]

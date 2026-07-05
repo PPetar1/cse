@@ -200,6 +200,7 @@ impl Game {
             if air_unit.faction != attacker_faction {
                 return Err(Error::new(format!("'{name}' does not belong to {attacker_faction}.")));
             }
+            self.check_mission_range(air_unit, to)?;
             attackers.extend(combat::combat_elements(&[air_unit], &self.state.elements)?);
         }
 
@@ -1170,5 +1171,80 @@ location = "SU Reserve"
         game.attack((1, 1), (2, 1), &mut rng).unwrap();
 
         assert_eq!(game.state.units["Soviet Fighter Wing"].elements[0].experience, 50);
+    }
+
+    const RANGED_BOMBER_WING: &str = r#"
+[[toe]]
+name = "ranged_bomber_toe"
+size = "Regiment"
+mp = 0
+range = 1
+start_date = "1941-01-01"
+end_date = "1941-08-01"
+[[toe.elements]]
+name = "ranged_bomber_element"
+amount = 10
+
+[[elements]]
+name = "ranged_bomber_element"
+class = "GroundAttack"
+cv = 5
+vulnerability = 100
+[[elements.devices]]
+name = "bombs"
+accuracy = 0
+range = 3000
+rate_of_fire = 1
+soft_attack = 0
+hard_attack = 0
+
+[[units]]
+name = "Ranged Bomber Wing"
+toe = "ranged_bomber_toe"
+faction = "AX"
+location = { x = 0, y = 0 }
+"#;
+
+    #[test]
+    fn air_support_succeeds_when_the_target_is_within_range() {
+        let units = format!("{OPPOSING_UNITS}\n{RANGED_BOMBER_WING}");
+        let mut game = Game::build(minimal_scenario(TWO_PLAYERS, &units)).unwrap();
+        // Base the wing on a neighbour of the target other than the ground
+        // attacker's own hex — distance 1, exactly the TOE's range.
+        let target = game.state.map.get_location(2, 1).unwrap();
+        let (x, y) = target.neighbour_coords().into_iter().find(|&coords| coords != (1, 1)).unwrap();
+        game.state.units.get_mut("Ranged Bomber Wing").unwrap().location =
+            UnitLocation::OnMap(LocationCoords { x, y });
+        let mut rng = StdRng::seed_from_u64(42);
+
+        game.air_support("Ranged Bomber Wing", (1, 1), (2, 1), &mut rng).unwrap();
+    }
+
+    #[test]
+    fn air_support_rejects_a_target_beyond_range() {
+        let units = format!("{OPPOSING_UNITS}\n{RANGED_BOMBER_WING}");
+        let mut game = Game::build(minimal_scenario(TWO_PLAYERS, &units)).unwrap();
+        // The far corner of the map — well beyond the TOE's range of 1.
+        game.state.units.get_mut("Ranged Bomber Wing").unwrap().location =
+            UnitLocation::OnMap(LocationCoords { x: 9, y: 7 });
+        let mut rng = StdRng::seed_from_u64(42);
+
+        let error = game.air_support("Ranged Bomber Wing", (1, 1), (2, 1), &mut rng).unwrap_err();
+
+        assert!(error.error_message.contains("out of range"));
+    }
+
+    #[test]
+    fn air_support_ignores_range_for_an_offmap_unit() {
+        let units = format!(
+            "{OPPOSING_UNITS}\n{}",
+            RANGED_BOMBER_WING.replace("location = { x = 0, y = 0 }", "location = \"GE Reserve\""),
+        );
+        let mut game = Game::build(minimal_scenario(TWO_PLAYERS, &units)).unwrap();
+        let mut rng = StdRng::seed_from_u64(42);
+
+        // Range 1 would reject a target this far away for an on-map unit,
+        // but an offmap unit has no coordinate to measure a distance from.
+        game.air_support("Ranged Bomber Wing", (1, 1), (2, 1), &mut rng).unwrap();
     }
 }

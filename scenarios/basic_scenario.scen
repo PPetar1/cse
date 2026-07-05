@@ -64,25 +64,30 @@ name = "GE_pz_4"
 amount = 30
 
 # Air support (Phase 5, slice 1): joins a ground attack as extra firers for
-# that one battle (game::orders::attack::air_support), never moving from its
-# base. mp = 0 since it's never ordered onto the map.
+# that one battle (game::orders::attack::air_support). mp = 0 since it's
+# never ordered onto the map like a ground unit. range (Phase 5, slice 4,
+# "airfields"): the wing is based on-map now (see its [[units]] entry
+# below), and range caps how far in hexes air_support/interdict can reach
+# from wherever it currently sits.
 [[toe]]
 name = "GE_stuka_wing"
 size = "Regiment"
 mp = 0
+range = 9
 start_date = "1941-01-01"
 end_date = "1941-10-01"
 [[toe.elements]]
 name = "GE_stuka"
 amount = 20
 
-# Air superiority (Phase 5, slice 2): a Fighter-class unit automatically
-# contests any air_support mission the enemy flies against it — no order
-# needed, see game::orders::attack::faction_fighter_units.
+# Air superiority (Phase 5, slice 2) + interdiction (slice 3): a
+# Fighter-class unit must interdict a hex (up to 3 at a time) before it's
+# pulled into a battle there — see game::interdiction. range as above.
 [[toe]]
 name = "SU_fighter_regiment"
 size = "Regiment"
 mp = 0
+range = 9
 start_date = "1941-01-01"
 end_date = "1941-10-01"
 [[toe.elements]]
@@ -270,13 +275,13 @@ toe = "SU_inf_div_41a"
 faction = "SU"
 location = "SU Reserve"
 
-# Air superiority: stays in SU Reserve permanently, automatically contesting
-# any German air_support mission (no order needed to activate it).
+# Airfield: based on-map at the Soviet supply source, in range (9 hexes)
+# of the frontline. Must interdict a hex before it joins a battle there.
 [[units]]
 name = "1st Fighter Regiment"
 toe = "SU_fighter_regiment"
 faction = "SU"
-location = "SU Reserve"
+location = { x = 0, y = 0 }
 
 [[units]]
 name = "4th Panzer Division"
@@ -310,13 +315,13 @@ location = "GE Reserve"
 morale = 80
 experience = 70
 
-# Air support: stays in GE Reserve permanently, flying missions (the
-# air_support command) without ever changing location.
+# Airfield: based on-map at the German supply source, in range (9 hexes)
+# of the frontline. mp = 0, so it never moves on its own.
 [[units]]
 name = "1st Stuka Wing"
 toe = "GE_stuka_wing"
 faction = "AX"
-location = "GE Reserve"
+location = { x = 9, y = 7 }
 morale = 80
 experience = 70
 
