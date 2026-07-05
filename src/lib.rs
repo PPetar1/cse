@@ -74,8 +74,12 @@ pub fn run(input: &str, mut current_game: Option<&mut Game>) -> Result<Option<Ga
         Command::EndTurn => {
             let game = require_game(current_game.as_deref_mut())?;
             let victory = game.end_turn();
-            report_turn_transition(game, &victory);
-            play_pending_ai_turns(game, victory);
+            for line in report_turn_transition(game, &victory) {
+                println!("{line}");
+            }
+            for line in play_pending_ai_turns(game, victory) {
+                println!("{line}");
+            }
             None
         }
         Command::Status => {
@@ -113,7 +117,9 @@ pub fn run(input: &str, mut current_game: Option<&mut Game>) -> Result<Option<Ga
         // faction on turn — e.g. a scenario where the AI plays the first
         // faction listed — so it gets the same auto-play treatment `end_turn`
         // gives it mid-game, before anything else about the new game prints.
-        play_pending_ai_turns(game, None);
+        for line in play_pending_ai_turns(game, None) {
+            println!("{line}");
+        }
         // A freshly built game may already have fired turn-1 events (see
         // Game::parse_scen_from_toml); print those now, since nothing else
         // does. (Usually already drained by play_pending_ai_turns above if
@@ -136,33 +142,37 @@ fn require_game(game: Option<&mut Game>) -> Result<&mut Game, Error> {
     game.ok_or_else(|| Error::new("No game loaded."))
 }
 
-/// Print the aftermath of one `end_turn` call: status, any event messages,
-/// and the final score if the scenario just ended. Shared between the
-/// human's `end_turn` and each AI-controlled turn `end_turn` auto-plays
-/// afterward, so the two don't drift apart.
-fn report_turn_transition(game: &mut Game, victory: &Option<VictoryReport>) {
-    println!("{}", game.status());
-    for message in game.take_event_messages() {
-        println!("{message}");
-    }
+/// The aftermath of one `end_turn` call, one line per message: status, any
+/// event messages, and the final score if the scenario just ended. Shared
+/// between the human's `end_turn` and each AI-controlled turn `end_turn`
+/// auto-plays afterward, so the two don't drift apart — and between the
+/// terminal (which prints each line) and the GUI (`gui.rs`, which logs them
+/// instead).
+pub(crate) fn report_turn_transition(game: &mut Game, victory: &Option<VictoryReport>) -> Vec<String> {
+    let mut lines = vec![game.status()];
+    lines.extend(game.take_event_messages());
     if let Some(report) = victory {
-        println!("{report}");
+        lines.push(report.to_string());
     }
+    lines
 }
 
 /// Play out AI-controlled factions one after another — starting from
 /// whatever the last-known victory result was — until control reaches a
-/// human player or the game ends. Called both after a human's `end_turn`
-/// and right after a game is built/loaded, since either can leave an
+/// human player or the game ends, returning one line per message (see
+/// `report_turn_transition`). Called both after a human's `end_turn` and
+/// right after a game is built/loaded, since either can leave an
 /// AI-controlled faction on turn. (Known limitation, not guarded against: an
 /// all-AI scenario with no `last_turn` would spin here forever — every
 /// scenario so far assumes at least one human seat.)
-fn play_pending_ai_turns(game: &mut Game, mut victory: Option<VictoryReport>) {
+pub(crate) fn play_pending_ai_turns(game: &mut Game, mut victory: Option<VictoryReport>) -> Vec<String> {
+    let mut lines = Vec::new();
     while victory.is_none() && game.current_player_is_ai() {
-        println!("{}", ai::take_turn(game, &mut rand::rng()));
+        lines.push(ai::take_turn(game, &mut rand::rng()).to_string());
         victory = game.end_turn();
-        report_turn_transition(game, &victory);
+        lines.extend(report_turn_transition(game, &victory));
     }
+    lines
 }
 
 fn inspect(game: &Game, target: &InspectTarget) -> Result<(), Error> {
