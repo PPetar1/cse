@@ -211,11 +211,10 @@ system.
   a ground attacker must already be present at `from` (this mechanic only
   augments an existing ground battle — a stand-alone air strike is a later
   slice, along with air superiority, interdiction and airfields).
-- Ground defenders can shoot down supporting aircraft for free: defender
-  fire already targets any Ready element on the attacker side uniformly, no
-  special-casing needed. `GroundAttack` elements aren't flagged armored, so
-  that return fire uses `soft_attack` — standing in for flak/small-arms fire
-  at low altitude rather than a modeled AA mechanic.
+- Slice 1 let any Ready element on the attacker side be targeted uniformly,
+  so ordinary ground fire could shoot down supporting aircraft. Slice 2
+  (below) replaced that with domain-restricted targeting — ordinary ground
+  fire no longer can, only AA-flagged ground elements or enemy fighters can.
 - Two deliberate simplifications for this slice: the air unit never
   advances into a vacated hex (it stays at its home location, whatever that
   is — nothing yet requires it to be an on-map airfield, or even nearby),
@@ -227,6 +226,53 @@ system.
   mechanic gets played with.
 - `simulate` is untouched — no air-support preview yet; a natural follow-up
   once the mechanic is proven.
+
+### Air superiority (Phase 5, slice 2)
+
+Rather than a separate air-to-air "interception" phase, air and ground
+combat stay one unified battle with **domain-restricted targeting** — the
+shape you get when you take `docs/ideas.md`'s "more element classes,
+devices and mission procedures, not parallel engines" claim at face value.
+
+- Every element is either ground-domain or air-domain
+  (`ElementClass::is_air_domain`: true for `GroundAttack` and the new
+  `Fighter`). A firer's eligible targets depend on its own class plus an
+  `Element.anti_air` flag:
+  - **Fighter**: air-domain targets only — it can never touch a ground
+    target, no matter what's in range.
+  - **GroundAttack** (bomber): both domains — ground normally
+    (`soft_attack`/`hard_attack` as before), air weakly via a new
+    `air_attack` device stat (a rear gunner potshot at an intercepting
+    fighter, not its real job).
+  - **Ground elements**: ground only, unless `anti_air = true` (dual-purpose
+    flak), in which case they can also engage air-domain targets via
+    `air_attack` — while keeping their normal ground-fire capability.
+- `CombatElement` carries three fields computed once per snapshot
+  (`combat_elements`, not per shot): `air_domain` (is this element itself an
+  air target), `can_target_ground`, `can_target_air`. `fire_round` filters
+  each firer's target pool down to Ready-and-domain-compatible before
+  picking uniformly, and picks `air_attack` instead of `hard_attack`/
+  `soft_attack` when the chosen target is air-domain. When nothing air-domain
+  or `anti_air` is involved, a firer's eligible pool is exactly the old
+  shared Ready-target pool — a strict generalization, confirmed by the full
+  pre-existing test suite passing unchanged.
+- **Auto-contested air support**: AA-flagged ground elements need no extra
+  wiring — they're already part of the ordinary defender snapshot, and the
+  targeting rules above just let them shoot back at an incoming CAS
+  mission. Fighters are the one case needing new plumbing, since they're a
+  separate unit: `Game::faction_fighter_units` finds any unit of the
+  defending faction fielding a `Fighter`-class element, and `prepare_battle`
+  folds all of it into the defender snapshot whenever `air_support` is used
+  — never into `defender_names`, so fighters don't retreat with the ground
+  defenders and don't join the post-battle morale shift, mirroring the air
+  unit's own exclusion from slice 1. This is IGO-UGO-clean: the defender
+  issues no order, their fielded aircraft are simply part of what's already
+  there when the attacker's mission arrives. A plain ground `attack` (no air
+  support) is completely unaffected — fighters are never pulled in unless
+  there's an air element to intercept.
+- Not modeled yet: escort (an attacker-side fighter protecting its own CAS),
+  interdiction, and airfields (range/basing limits — an air unit can support
+  or contest a mission anywhere, still).
 
 ## Deliberate deviations from WitE2 (for now)
 

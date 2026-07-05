@@ -287,19 +287,37 @@ Key data model (all TOML-configurable, see `scenarios/basic_scenario.scen`):
   score fires. Known gap, not guarded against: an all-AI scenario with no
   `last_turn` would loop here forever — every scenario so far assumes at
   least one human seat.
-- **Air support** — the first Phase 5 mechanic: `ElementClass::GroundAttack`
-  (a CAS aircraft type, not armored so ground return fire engages it with
-  `soft_attack`) plus `Game::air_support` (`game/orders/attack.rs`), which
-  folds one owned unit's elements into an ongoing ground attack's attacker
-  snapshot for that battle only via a new `prepare_battle` parameter — same
-  validation as `attack` (adjacency, turn ownership, a ground stack must
-  already be present at the source hex), plus checks that the air unit
-  belongs to the attacking faction and isn't already part of that ground
-  stack. Deliberately: the air unit never advances into a vacated hex and
-  doesn't share in the post-battle morale shift (both use the ground-only
-  `attacker_names`/`defender_names`), but its element losses and experience
-  gain persist automatically, since those read the full `CombatElement`
-  snapshot directly. See "Air support" in docs/combat_design.md.
+- **Air support** — the first Phase 5 mechanic: `Game::air_support`
+  (`game/orders/attack.rs`) folds one owned unit's elements into an ongoing
+  ground attack's attacker snapshot for that battle only, via a
+  `prepare_battle` parameter — same validation as `attack` (adjacency, turn
+  ownership, a ground stack must already be present at the source hex),
+  plus checks that the air unit belongs to the attacking faction and isn't
+  already part of that ground stack. Deliberately: the air unit never
+  advances into a vacated hex and doesn't share in the post-battle morale
+  shift (both use the ground-only `attacker_names`/`defender_names`), but
+  its element losses and experience gain persist automatically, since those
+  read the full `CombatElement` snapshot directly.
+- **Air superiority** — domain-restricted targeting, not a separate
+  air-to-air phase: `ElementClass::GroundAttack`/`Fighter` are air-domain
+  (`is_air_domain`), `Element.anti_air` lets a *ground* element also engage
+  air, and `Device.air_attack` is the attack value used against an
+  air-domain target. `CombatElement` precomputes `air_domain`/
+  `can_target_ground`/`can_target_air` once per snapshot; `fire_round`
+  (`procedures/combat.rs`) filters each firer's target pool to
+  domain-compatible Ready targets before picking one — a strict
+  generalization, since that pool equals the old shared one whenever
+  nothing air-domain/anti-air is present. Fighters only ever hit air;
+  bombers hit both (weakly against air); ordinary ground elements hit
+  ground only unless flagged `anti_air`. `Game::faction_fighter_units`
+  finds any unit of a faction fielding a `Fighter`-class element;
+  `prepare_battle` folds them into the *defender* snapshot whenever
+  `air_support` is used (never into `defender_names` — same exclusions as
+  the attacker's air unit), so a defending faction's fighters automatically
+  contest an incoming CAS mission with no order needed — IGO-UGO-clean,
+  since nothing reactive is required from the defender. A plain `attack`
+  (no air support) is completely unaffected. See "Air support"/"Air
+  superiority" in docs/combat_design.md.
 - Hex coords: offset coordinates, `OffsetHexMode::Even`, `HexOrientation::Pointy`
   (conversion happens inside `Location`; the rest of the code speaks (x, y) u32)
 - Lookups by name: `State` keeps `HashMap<String, _>` registries for units/toe/elements
@@ -419,11 +437,18 @@ machine." The AI's decision-making is intentionally simple by design (the
 point was proving the seam, not strength); a stronger AI later replaces
 `take_turn`'s internals without touching how it's invoked.
 
-**Phase 5 — combined arms — slice 1 (ground support) landed.** The
+**Phase 5 — combined arms — slices 1 and 2 landed.** Ground support: the
 `air_support` command flies one owned unit's elements into an ongoing
 ground attack as extra firers for that battle (see "Air support" above);
 both shipped scenarios carry a small Stuka wing sitting in "GE Reserve" to
-exercise it. Still open, in the roadmap's own order: air superiority,
-interdiction, airfields (today an air unit has no on-map base or range
-limit — it can support any attack anywhere) — and the AI doesn't fly CAS
-missions yet, only ground orders.
+exercise it. Air superiority: domain-restricted targeting (see "Air
+superiority" above) means fighters only ever fight other air-domain
+elements, bombers fight both (weakly against air), and only `anti_air`-
+flagged ground elements (both scenarios' 45mm/37mm AT guns are now
+dual-purpose) can hit air-domain targets at all; both scenarios also carry
+a small Soviet fighter regiment in "SU Reserve" that automatically contests
+any German `air_support` mission, no order needed. Still open, in the roadmap's own order: interdiction, airfields (today an
+air unit has no on-map base or range limit — it can support or contest a
+mission anywhere) — and the AI still doesn't know `air_support` exists, so
+in `frontline_sector.scen` (Axis played by the AI) its Stuka wing currently
+never flies; only a human player can order one today.
