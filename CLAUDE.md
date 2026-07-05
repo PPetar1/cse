@@ -1,11 +1,3 @@
-## Approach
-- Read existing files before writing. Don't re-read unless changed.
-- Thorough in reasoning, concise in output.
-- Skip files over 100KB unless required.
-- No sycophantic openers or closing fluff.
-- No emojis or em-dashes.
-- Do not guess APIs, versions, flags, commit SHAs, or package names. Verify by reading code or docs before asserting.
-
 # CSE — Combat Simulation Engine
 
 An operational wargame engine in Rust, inspired by Gary Grigsby's *War in the East*;
@@ -21,6 +13,12 @@ scenario data. (`ElementClass` is the main code-side taxonomy to watch as eras
 multiply.)
 
 **Standing rules from the author:**
+- Read existing files before writing. Don't re-read unless changed.
+- Thorough in reasoning, concise in output.
+- Skip files over 100KB unless required.
+- No sycophantic openers or closing fluff.
+- No emojis or em-dashes.
+- Do not guess APIs, versions, flags, commit SHAs, or package names. Verify by reading code or docs before asserting.
 - After every code change, update README.md and this file in the same pass
   (commands/usage in README; architecture, conventions, gotchas, current focus here).
 - Prioritize clean, simple, reviewable code — the author reviews everything and may
