@@ -130,8 +130,8 @@ src/
                    FilenameCompleter, history) + `--view <snapshot>` subprocess entry +
                    `--gui <scenario.scen>` entry (Phase 6, opt-in alongside the terminal)
   lib.rs         — run(): command dispatch, save/load/inspect helpers, root re-exports;
-                   also plays out AI-controlled turns (play_pending_ai_turns) after a
-                   human's end_turn and after new/load
+                   report_turn_transition/play_pending_ai_turns (pub(crate), return
+                   Vec<String>) are shared with gui.rs, not just the terminal
   ai.rs          — the AI opponent: take_turn per faction, consuming Game's public API
                    the same way command.rs does (attack/move_unit/simulate, no new
                    pathfinding or combat logic)
@@ -350,7 +350,7 @@ Key data model (all TOML-configurable, see `scenarios/basic_scenario.scen`):
   `Location::distance_to` against the range, called from both
   `prepare_battle`'s `air_support` branch and `Game::interdict`. See
   "Airfields" in docs/combat_design.md.
-- **GUI** — `cse --gui <scenario.scen>` (`gui.rs`, Phase 6 slice 1) opens an
+- **GUI** — `cse --gui <scenario.scen>` (`gui.rs`, Phase 6) opens an
   eframe/egui window that owns a `Game` directly for the whole session — no
   snapshot file/subprocess like `view`/`visualiser.rs` need, since there's
   only ever one process and one window here. `MapView` (hex layout +
@@ -358,8 +358,17 @@ Key data model (all TOML-configurable, see `scenarios/basic_scenario.scen`):
   coordinates to `egui::Pos2` for drawing and back for click hit-testing
   (`hexx::HexLayout::world_pos_to_hex`); clicking a hex sets `selected_hex`,
   which drives a side panel listing that hex's units and rosters (the same
-  information `inspect` prints). Read-only for now — no orders issued from
-  the window; `view`/`visualiser.rs` stay as-is alongside it.
+  information `inspect` prints), plus Move/Attack buttons if the hex holds
+  a unit of `Game::current_faction()`. Clicking either arms
+  `GuiApp.pending_order`; the *next* map click resolves it
+  (`GuiApp::resolve_order`) via `move_unit`/`attack` instead of just
+  re-selecting, logging the result (or error) to `GuiApp.log`, shown in a
+  bottom panel. An "End Turn" button calls `Game::end_turn` and the same
+  `report_turn_transition`/`play_pending_ai_turns` (`lib.rs`, `pub(crate)`,
+  returning `Vec<String>` so both the terminal and the GUI can consume
+  them) the terminal's `end_turn` command uses. `air_support`/`interdict`/
+  save/load still need the terminal — no unit-picker widget yet for the
+  named-unit orders, and no in-app file dialogs.
 - Hex coords: offset coordinates, `OffsetHexMode::Even`, `HexOrientation::Pointy`
   (conversion happens inside `Location`; the rest of the code speaks (x, y) u32)
 - Lookups by name: `State` keeps `HashMap<String, _>` registries for units/toe/elements
@@ -507,15 +516,25 @@ so in `frontline_sector.scen` (Axis played by the AI) its Stuka wing
 currently never flies and its opponent's fighters never get declared —
 only a human player can order either today.
 
-**Phase 6 — the real interface — slice 1 landed.** `cse --gui
+**Phase 6 — the real interface — slices 1 and 2 landed.** `cse --gui
 <scenario.scen>` (see "GUI" above) opens a real egui/eframe window: the
 map (terrain-colored hexes, coordinate labels, faction-colored unit
-markers) plus a status header (`Game::status()`), click a hex to select it
-and see its units/rosters in a side panel. Read-only — no orders issued
-from the window yet, `view`/`visualiser.rs` untouched alongside it. Still
-open, in rough order: issuing orders (move/attack/air_support/interdict/
-end_turn) from the window, save/load and an in-app scenario picker
-(loading is scenario-path-only, via a CLI arg, for this slice), victory-hex
-flag markers and multi-unit stacking offsets (both already exist in
-`visualiser.rs`, not yet ported), pan/zoom, and eventually retiring
-`view`/`visualiser.rs` once the egui map view covers what they show.
+markers) plus a status header (`Game::status()`) with an End Turn button,
+click a hex to select it and see its units/rosters in a side panel. Slice
+2 added order issuing: the inspector's Move/Attack buttons arm a
+`PendingOrder`, resolved by the next map click
+(`GuiApp::resolve_order` — `move_unit`/`attack`, unit index 0 always,
+picking which unit in a multi-unit stack moves is a deferred nicety); a
+bottom log panel shows status/event/battle-report/error lines, the
+window's equivalent of the terminal's scrollback. `lib.rs`'s
+`report_turn_transition`/`play_pending_ai_turns` now return `Vec<String>`
+(`pub(crate)`) instead of `println!`ing directly, so the terminal and the
+GUI share the exact same AI-auto-play logic — `gui::run` calls it right
+after `Game::build` too, for a scenario whose first player is AI. Still
+open, in rough order: `air_support`/`interdict` orders (need picking a
+named unit, not just two hexes — a unit-picker widget doesn't exist yet),
+save/load and an in-app scenario picker (loading is scenario-path-only, via
+a CLI arg, for now), victory-hex flag markers and multi-unit stacking
+offsets (both already exist in `visualiser.rs`, not yet ported), pan/zoom,
+and eventually retiring `view`/`visualiser.rs` once the egui map view
+covers what they show.
