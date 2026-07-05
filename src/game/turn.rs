@@ -5,6 +5,7 @@
 //! order queue — the matches on that enum are the places it plugs in.
 
 use super::{Game, Player, VictoryReport};
+use super::scenario::PlayerController;
 
 /// At its faction's turn start every element bucket drifts toward the faction
 /// default morale by `ceil(|gap| / MORALE_RECOVERY_STEP)`: battered units
@@ -72,6 +73,18 @@ impl Game {
 
     pub(super) fn player_on_turn(&self) -> &Player {
         &self.players[self.phase.player_on_turn as usize]
+    }
+
+    /// The faction tag of the player currently on turn — the seam any
+    /// controller-aware logic outside `game` (the AI today) reads to know
+    /// whose move it is.
+    pub fn current_faction(&self) -> &str {
+        &self.player_on_turn().faction_tag
+    }
+
+    /// Whether the player currently on turn is AI-controlled.
+    pub fn current_player_is_ai(&self) -> bool {
+        self.player_on_turn().controller == PlayerController::Ai
     }
 }
 

@@ -174,11 +174,24 @@ pub struct Player {
     pub morale: u32,
     #[serde(default = "default_stat")]
     pub experience: u32,
+    /// Who plays this faction. Absent = `Human`, so every scenario shipped
+    /// before this field existed is unaffected.
+    #[serde(default)]
+    pub controller: PlayerController,
 }
 
 /// Factions that don't specify default morale/experience get an average rating.
 fn default_stat() -> u32 {
     50
+}
+
+/// Who plays a faction. A future networked mode would add a variant here,
+/// not change how this is read (see `Game::current_player_is_ai`).
+#[derive(Debug, Clone, Copy, PartialEq, Default, serde::Deserialize, serde::Serialize)]
+pub enum PlayerController {
+    #[default]
+    Human,
+    Ai,
 }
 
 #[derive(serde::Deserialize)]

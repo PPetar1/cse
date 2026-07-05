@@ -1,0 +1,370 @@
+//! A simple rule-based opponent, wired in wherever a scenario marks a
+//! player's `controller = "Ai"` (see `Command::EndTurn` in lib.rs). It
+//! consumes `Game` exactly the way `command.rs` does — no privileged access,
+//! no new pathfinding or combat logic — so a stronger AI can replace the
+//! decision-making here later without touching how it's invoked.
+//!
+//! Per faction stack: attack the best adjacent enemy if `simulate` predicts
+//! favorable odds; otherwise step toward the nearest unclaimed objective
+//! hex, or the nearest enemy unit if the scenario has none.
+
+use std::collections::BTreeMap;
+use std::fmt::Display;
+
+use rand::Rng;
+
+use crate::core::unit::UnitLocation;
+use crate::game::Game;
+
+/// A `simulate` prediction of at least this defender-retreat rate is
+/// "favorable enough" to attack. Conservative on purpose — a prototype AI
+/// that only takes clearly winning fights is easier to reason about (and to
+/// trust) than one that gambles.
+const ATTACK_RETREAT_THRESHOLD: f32 = 0.6;
+const SIMULATION_RUNS: u32 = 20;
+
+/// Play the on-turn faction's turn: decide and execute one action per stack
+/// of units, then hand back a report of what happened.
+pub(crate) fn take_turn(game: &mut Game, rng: &mut impl Rng) -> AiTurnReport {
+    let faction = game.current_faction().to_string();
+    let mut log = Vec::new();
+
+    for (from, unit_names) in faction_stacks(game, &faction) {
+        if let Some(to) = best_attack(game, from, &faction, rng) {
+            if let Ok(report) = game.attack(from, to, rng) {
+                log.push(format!("{:?} attacks {:?}:\n{}", from, to, indent(&report.to_string())));
+            }
+            continue;
+        }
+
+        let Some(target) = priority_target(game, &faction, from) else { continue };
+        for name in unit_names {
+            if let Some(to) = move_toward(game, from, target) {
+                log.push(format!("{name} moves {:?} -> {:?}", from, to));
+            }
+        }
+    }
+
+    AiTurnReport { faction, log }
+}
+
+/// The faction's on-map units grouped by hex. A `BTreeMap` keeps hex order
+/// deterministic, matching the project-wide rule against feeding an RNG from
+/// unordered iteration.
+fn faction_stacks(game: &Game, faction: &str) -> Vec<((u32, u32), Vec<String>)> {
+    let mut stacks: BTreeMap<(u32, u32), Vec<String>> = BTreeMap::new();
+    for unit in game.units_of_faction(faction) {
+        if let UnitLocation::OnMap(coords) = &unit.location {
+            stacks.entry((coords.x, coords.y)).or_default().push(unit.name.clone());
+        }
+    }
+    stacks.into_iter().collect()
+}
+
+/// The best adjacent enemy hex to attack from `from`, if any `simulate`
+/// prediction clears `ATTACK_RETREAT_THRESHOLD`.
+fn best_attack(game: &Game, from: (u32, u32), faction: &str, rng: &mut impl Rng) -> Option<(u32, u32)> {
+    let from_location = game.state.map.get_location(from.0, from.1)?;
+
+    let mut best: Option<((u32, u32), f32)> = None;
+    for (x, y) in from_location.neighbour_coords() {
+        let Some(location) = game.state.map.get_location(x, y) else { continue };
+        let defenders = game.units_at_location(location);
+        if defenders.is_empty() || defenders.iter().any(|unit| unit.faction == faction) {
+            continue;
+        }
+        let Ok(report) = game.simulate(from, (x, y), SIMULATION_RUNS, rng) else { continue };
+        let retreat_rate = report.retreats as f32 / report.runs as f32;
+        if retreat_rate < ATTACK_RETREAT_THRESHOLD {
+            continue;
+        }
+        let better = match best {
+            Some((_, best_rate)) => retreat_rate > best_rate,
+            None => true,
+        };
+        if better {
+            best = Some(((x, y), retreat_rate));
+        }
+    }
+    best.map(|(coords, _)| coords)
+}
+
+/// Where a stack at `from` should head: the nearest victory hex this faction
+/// doesn't already hold, or — absent any objectives (or with all of them
+/// already held) — the nearest enemy unit. None if neither exists (nothing
+/// left to do).
+fn priority_target(game: &Game, faction: &str, from: (u32, u32)) -> Option<(u32, u32)> {
+    let from_location = game.state.map.get_location(from.0, from.1)?;
+
+    let objective = game.victory_hexes().into_iter()
+        .filter(|hex| !controls(game, hex.x, hex.y, faction))
+        .filter_map(|hex| {
+            let location = game.state.map.get_location(hex.x, hex.y)?;
+            Some(((hex.x, hex.y), from_location.distance_to(location)?))
+        })
+        .min_by_key(|&(_, distance)| distance);
+    if let Some((coords, _)) = objective {
+        return Some(coords);
+    }
+
+    game.state.units.values()
+        .filter(|unit| unit.faction != faction)
+        .filter_map(|unit| match &unit.location {
+            UnitLocation::OnMap(coords) => {
+                let location = game.state.map.get_location(coords.x, coords.y)?;
+                Some(((coords.x, coords.y), from_location.distance_to(location)?))
+            }
+            UnitLocation::Offmap(_) => None,
+        })
+        .min_by_key(|&(_, distance)| distance)
+        .map(|(coords, _)| coords)
+}
+
+fn controls(game: &Game, x: u32, y: u32, faction: &str) -> bool {
+    game.state.map.get_location(x, y)
+        .is_some_and(|location| game.units_at_location(location).iter().any(|unit| unit.faction == faction))
+}
+
+/// Move the unit at index 0 of `from` toward `target`: straight there if
+/// reachable this turn (letting `move_unit`'s own cheapest-path costing
+/// decide), otherwise the single neighbouring hex that most closes the
+/// distance. Returns the hex actually reached, or None if the unit is stuck
+/// (no MP, nowhere passable). All validation — terrain, occupancy, MP — is
+/// `move_unit`'s; this only picks candidates and trusts its answer.
+fn move_toward(game: &mut Game, from: (u32, u32), target: (u32, u32)) -> Option<(u32, u32)> {
+    if game.move_unit(from.0, from.1, target.0, target.1, 0).is_ok() {
+        return Some(target);
+    }
+
+    let from_location = game.state.map.get_location(from.0, from.1)?;
+    let target_location = game.state.map.get_location(target.0, target.1)?;
+    let mut candidates = from_location.neighbour_coords();
+    candidates.sort_by_key(|&(x, y)| {
+        let distance = game.state.map.get_location(x, y)
+            .and_then(|location| location.distance_to(target_location));
+        (distance.unwrap_or(u32::MAX), x, y)
+    });
+
+    for (x, y) in candidates {
+        if game.move_unit(from.0, from.1, x, y, 0).is_ok() {
+            return Some((x, y));
+        }
+    }
+    None
+}
+
+fn indent(text: &str) -> String {
+    text.lines().map(|line| format!("  {line}")).collect::<Vec<_>>().join("\n")
+}
+
+/// What one faction's AI-controlled turn did — printed by `lib.rs` the same
+/// way a human's `attack`/`end_turn` output is, so the player can always see
+/// why the AI did what it did (transparency is a project pillar, not just a
+/// human-player nicety).
+pub(crate) struct AiTurnReport {
+    faction: String,
+    log: Vec<String>,
+}
+
+impl Display for AiTurnReport {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        writeln!(f, "=== {} AI turn ===", self.faction)?;
+        if self.log.is_empty() {
+            write!(f, "(no actions)")
+        } else {
+            write!(f, "{}", self.log.join("\n"))
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::core::unit::LocationCoords;
+    use crate::game::Game;
+    use rand::SeedableRng;
+    use rand::rngs::StdRng;
+
+    fn minimal_scenario(players: &str, units: &str, extra: &str) -> String {
+        let map_path = concat!(env!("CARGO_MANIFEST_DIR"), "/maps/basic_map.map");
+        format!(r#"
+name = "ai test scenario"
+game_version = "0.1.0"
+map = "{map_path}"
+start_date = "1941-06-22"
+turn_length = 7
+{players}
+
+[[toe]]
+name = "test_toe"
+size = "Division"
+mp = 16
+start_date = "1941-01-01"
+end_date = "1941-08-01"
+[[toe.elements]]
+name = "test_element"
+amount = 10
+
+[[elements]]
+name = "test_element"
+class = "Inf"
+cv = 4.0
+vulnerability = 100
+[[elements.devices]]
+name = "test_rifles"
+accuracy = 20
+range = 100
+rate_of_fire = 1
+soft_attack = 100
+hard_attack = 3
+
+{units}
+{extra}
+"#)
+    }
+
+    const AI_VS_HUMAN: &str = r#"
+[[players]]
+faction_name = "Axis"
+faction_tag = "AX"
+controller = "Ai"
+[[players]]
+faction_name = "Soviet Union"
+faction_tag = "SU"
+"#;
+
+    #[test]
+    fn current_player_is_ai_reads_the_controller_with_a_human_default() {
+        let units = r#"
+[[units]]
+name = "Axis Division"
+toe = "test_toe"
+faction = "AX"
+location = { x = 1, y = 1 }
+"#;
+        let mut game = Game::build(minimal_scenario(AI_VS_HUMAN, units, "")).unwrap();
+        assert!(game.current_player_is_ai());
+
+        game.end_turn();
+        assert!(!game.current_player_is_ai());
+    }
+
+    #[test]
+    fn an_ai_stack_attacks_a_weak_adjacent_enemy_at_favorable_odds() {
+        // Three Axis divisions (AI) stacked against one weak Soviet division:
+        // simulate should read this as heavily favorable and attack.
+        let units = r#"
+[[units]]
+name = "Axis First"
+toe = "test_toe"
+faction = "AX"
+location = { x = 1, y = 1 }
+
+[[units]]
+name = "Axis Second"
+toe = "test_toe"
+faction = "AX"
+location = { x = 1, y = 1 }
+
+[[units]]
+name = "Axis Third"
+toe = "test_toe"
+faction = "AX"
+location = { x = 1, y = 1 }
+
+[[units]]
+name = "Soviet Division"
+toe = "test_toe"
+faction = "SU"
+location = { x = 2, y = 1 }
+morale = 0
+"#;
+        let mut game = Game::build(minimal_scenario(AI_VS_HUMAN, units, "")).unwrap();
+        let mut rng = StdRng::seed_from_u64(1);
+
+        let report = take_turn(&mut game, &mut rng);
+
+        assert!(report.log.iter().any(|line| line.contains("attacks")));
+        // The Soviet stack lost the hex one way or another: retreated,
+        // routed, shattered or surrendered — either way it isn't standing
+        // at (2, 1) unmolested, and the winning Axis units hold ground.
+        let axis_locations: Vec<_> = game.units_of_faction("AX").iter()
+            .map(|unit| unit.location.clone())
+            .collect();
+        assert!(axis_locations.contains(&UnitLocation::OnMap(LocationCoords { x: 2, y: 1 })));
+    }
+
+    #[test]
+    fn an_ai_unit_moves_toward_the_nearest_unclaimed_objective() {
+        let units = r#"
+[[units]]
+name = "Axis Division"
+toe = "test_toe"
+faction = "AX"
+location = { x = 0, y = 0 }
+"#;
+        let victory = r#"
+[victory_conditions]
+[[victory_conditions.hexes]]
+x = 9
+y = 7
+points = 10
+"#;
+        let mut game = Game::build(minimal_scenario(AI_VS_HUMAN, units, victory)).unwrap();
+        let mut rng = StdRng::seed_from_u64(1);
+
+        let start_distance = {
+            let start = game.state.map.get_location(0, 0).unwrap();
+            let target = game.state.map.get_location(9, 7).unwrap();
+            start.distance_to(target).unwrap()
+        };
+
+        let report = take_turn(&mut game, &mut rng);
+
+        let unit = &game.state.units["Axis Division"];
+        let UnitLocation::OnMap(coords) = &unit.location else {
+            panic!("unit left the map");
+        };
+        let (x, y) = (coords.x, coords.y);
+        let new_location = game.state.map.get_location(x, y).unwrap();
+        let target = game.state.map.get_location(9, 7).unwrap();
+        assert!(new_location.distance_to(target).unwrap() < start_distance);
+        assert!(report.log.iter().any(|line| line.contains("moves")));
+    }
+
+    #[test]
+    fn an_ai_unit_moves_toward_the_nearest_enemy_without_objectives() {
+        let units = r#"
+[[units]]
+name = "Axis Division"
+toe = "test_toe"
+faction = "AX"
+location = { x = 0, y = 0 }
+
+[[units]]
+name = "Soviet Division"
+toe = "test_toe"
+faction = "SU"
+location = { x = 9, y = 7 }
+"#;
+        let mut game = Game::build(minimal_scenario(AI_VS_HUMAN, units, "")).unwrap();
+        let mut rng = StdRng::seed_from_u64(1);
+
+        let start_distance = {
+            let start = game.state.map.get_location(0, 0).unwrap();
+            let target = game.state.map.get_location(9, 7).unwrap();
+            start.distance_to(target).unwrap()
+        };
+
+        take_turn(&mut game, &mut rng);
+
+        let unit = &game.state.units["Axis Division"];
+        let UnitLocation::OnMap(coords) = &unit.location else {
+            panic!("unit left the map");
+        };
+        let (x, y) = (coords.x, coords.y);
+        let new_location = game.state.map.get_location(x, y).unwrap();
+        let target = game.state.map.get_location(9, 7).unwrap();
+        assert!(new_location.distance_to(target).unwrap() < start_distance);
+    }
+}

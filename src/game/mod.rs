@@ -125,6 +125,17 @@ impl Game {
         units
     }
     
+    /// All on-map units of a faction, sorted by name — the AI's view of
+    /// "my units" (offmap units, e.g. still-pending reinforcements, aren't
+    /// anything a controller can act on yet).
+    pub fn units_of_faction(&self, faction: &str) -> Vec<&Unit> {
+        let mut units: Vec<&Unit> = self.state.units.values()
+            .filter(|unit| unit.faction == faction && matches!(unit.location, UnitLocation::OnMap(_)))
+            .collect();
+        units.sort_by(|a, b| a.name.cmp(&b.name));
+        units
+    }
+
     /// Units at a location, sorted by name. Sorting matters: the unit index
     /// used by `move_unit` must be stable across calls (HashMap iteration
     /// order is not), and must match what `inspect` shows the player.

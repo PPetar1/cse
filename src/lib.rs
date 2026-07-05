@@ -1,3 +1,4 @@
+mod ai;
 mod command;
 mod core;
 mod error;
@@ -16,7 +17,7 @@ use postcard::{from_bytes, to_allocvec};
 use std::{fs::File, io::{Read, Write}};
 
 use command::{Command, HELP_TEXT, InspectTarget};
-use game::Game;
+use game::{Game, VictoryReport};
 use view::{refresh_view, view};
 
 pub fn run(input: &str, mut current_game: Option<&mut Game>) -> Result<Option<Game>, Error> {
@@ -57,13 +58,8 @@ pub fn run(input: &str, mut current_game: Option<&mut Game>) -> Result<Option<Ga
         Command::EndTurn => {
             let game = require_game(current_game.as_deref_mut())?;
             let victory = game.end_turn();
-            println!("{}", game.status());
-            for message in game.take_event_messages() {
-                println!("{message}");
-            }
-            if let Some(report) = victory {
-                println!("{report}");
-            }
+            report_turn_transition(game, &victory);
+            play_pending_ai_turns(game, victory);
             None
         }
         Command::Status => {
@@ -96,9 +92,16 @@ pub fn run(input: &str, mut current_game: Option<&mut Game>) -> Result<Option<Ga
         }
     };
 
-    // A freshly built game may already have fired turn-1 events (see
-    // Game::parse_scen_from_toml); print those now, since nothing else does.
     if let Some(game) = new_game.as_mut() {
+        // A freshly built (or loaded) game can already have an AI-controlled
+        // faction on turn — e.g. a scenario where the AI plays the first
+        // faction listed — so it gets the same auto-play treatment `end_turn`
+        // gives it mid-game, before anything else about the new game prints.
+        play_pending_ai_turns(game, None);
+        // A freshly built game may already have fired turn-1 events (see
+        // Game::parse_scen_from_toml); print those now, since nothing else
+        // does. (Usually already drained by play_pending_ai_turns above if
+        // it ran; harmless — and necessary — when it didn't.)
         for message in game.take_event_messages() {
             println!("{message}");
         }
@@ -115,6 +118,35 @@ pub fn run(input: &str, mut current_game: Option<&mut Game>) -> Result<Option<Ga
 
 fn require_game(game: Option<&mut Game>) -> Result<&mut Game, Error> {
     game.ok_or_else(|| Error::new("No game loaded."))
+}
+
+/// Print the aftermath of one `end_turn` call: status, any event messages,
+/// and the final score if the scenario just ended. Shared between the
+/// human's `end_turn` and each AI-controlled turn `end_turn` auto-plays
+/// afterward, so the two don't drift apart.
+fn report_turn_transition(game: &mut Game, victory: &Option<VictoryReport>) {
+    println!("{}", game.status());
+    for message in game.take_event_messages() {
+        println!("{message}");
+    }
+    if let Some(report) = victory {
+        println!("{report}");
+    }
+}
+
+/// Play out AI-controlled factions one after another — starting from
+/// whatever the last-known victory result was — until control reaches a
+/// human player or the game ends. Called both after a human's `end_turn`
+/// and right after a game is built/loaded, since either can leave an
+/// AI-controlled faction on turn. (Known limitation, not guarded against: an
+/// all-AI scenario with no `last_turn` would spin here forever — every
+/// scenario so far assumes at least one human seat.)
+fn play_pending_ai_turns(game: &mut Game, mut victory: Option<VictoryReport>) {
+    while victory.is_none() && game.current_player_is_ai() {
+        println!("{}", ai::take_turn(game, &mut rand::rng()));
+        victory = game.end_turn();
+        report_turn_transition(game, &victory);
+    }
 }
 
 fn inspect(game: &Game, target: &InspectTarget) -> Result<(), Error> {
@@ -164,4 +196,145 @@ fn save_game(save_path: &str, game: &Game) -> Result<(), Error> {
     file.write_all(&bin)?;
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn human_vs_ai_scenario() -> String {
+        let map_path = concat!(env!("CARGO_MANIFEST_DIR"), "/maps/basic_map.map");
+        format!(r#"
+name = "lib test scenario"
+game_version = "0.1.0"
+map = "{map_path}"
+start_date = "1941-06-22"
+turn_length = 7
+
+[[players]]
+faction_name = "Soviet Union"
+faction_tag = "SU"
+
+[[players]]
+faction_name = "Axis"
+faction_tag = "AX"
+controller = "Ai"
+
+[[toe]]
+name = "test_toe"
+size = "Division"
+mp = 16
+start_date = "1941-01-01"
+end_date = "1941-08-01"
+[[toe.elements]]
+name = "test_element"
+amount = 10
+
+[[elements]]
+name = "test_element"
+class = "Inf"
+cv = 4.0
+vulnerability = 100
+[[elements.devices]]
+name = "test_rifles"
+accuracy = 20
+range = 100
+rate_of_fire = 1
+soft_attack = 100
+hard_attack = 3
+
+[[units]]
+name = "Soviet Division"
+toe = "test_toe"
+faction = "SU"
+location = {{ x = 1, y = 1 }}
+
+[[units]]
+name = "Axis Division"
+toe = "test_toe"
+faction = "AX"
+location = {{ x = 5, y = 5 }}
+"#)
+    }
+
+    #[test]
+    fn end_turn_auto_plays_ai_factions_until_control_reaches_a_human() {
+        let mut game = Game::build(human_vs_ai_scenario()).unwrap();
+        assert_eq!(game.status(), "lib test scenario — turn 1, 1941-06-22. Soviet Union to move.");
+
+        // The human ends turn 1; the Axis AI then plays its own turn 1
+        // automatically, and control lands back on the human for turn 2 —
+        // all from a single "end_turn" command.
+        run("end_turn", Some(&mut game)).unwrap();
+
+        assert_eq!(game.status(), "lib test scenario — turn 2, 1941-06-29. Soviet Union to move.");
+    }
+
+    #[test]
+    fn new_auto_plays_an_ai_faction_that_is_first_on_turn() {
+        // Axis (AI) listed before Soviet Union (human): the fresh game opens
+        // on the AI's own turn, which "new" must play out immediately rather
+        // than leaving the human staring at an AI-controlled turn 1.
+        let map_path = concat!(env!("CARGO_MANIFEST_DIR"), "/maps/basic_map.map");
+        let scenario = format!(r#"
+name = "lib test scenario"
+game_version = "0.1.0"
+map = "{map_path}"
+start_date = "1941-06-22"
+turn_length = 7
+
+[[players]]
+faction_name = "Axis"
+faction_tag = "AX"
+controller = "Ai"
+
+[[players]]
+faction_name = "Soviet Union"
+faction_tag = "SU"
+
+[[toe]]
+name = "test_toe"
+size = "Division"
+mp = 16
+start_date = "1941-01-01"
+end_date = "1941-08-01"
+[[toe.elements]]
+name = "test_element"
+amount = 10
+
+[[elements]]
+name = "test_element"
+class = "Inf"
+cv = 4.0
+vulnerability = 100
+[[elements.devices]]
+name = "test_rifles"
+accuracy = 20
+range = 100
+rate_of_fire = 1
+soft_attack = 100
+hard_attack = 3
+
+[[units]]
+name = "Axis Division"
+toe = "test_toe"
+faction = "AX"
+location = {{ x = 5, y = 5 }}
+
+[[units]]
+name = "Soviet Division"
+toe = "test_toe"
+faction = "SU"
+location = {{ x = 1, y = 1 }}
+"#);
+        let path = std::env::temp_dir()
+            .join(format!("cse_test_scenario_{}.scen", std::process::id()));
+        std::fs::write(&path, scenario).unwrap();
+
+        let result = run(&format!("new {}", path.display()), None);
+        let _ = std::fs::remove_file(&path);
+        let game = result.unwrap().unwrap();
+
+        assert_eq!(game.status(), "lib test scenario — turn 1, 1941-06-22. Soviet Union to move.");
+    }
 }
