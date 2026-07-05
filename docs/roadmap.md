@@ -78,33 +78,26 @@ surrender. **Landmark (revised): repair/replacement stalls for a cut-off
 unit** — the original "a pocket starves and surrenders" won't be built;
 lethal encirclement, if it returns, belongs to Part 2's detailed logistics.
 
-### Phase 4 — An opponent
+### Phase 4 — An opponent ✅ (done)
 
 A first AI: move toward objectives, attack at favorable odds (`simulate` can
 literally power its judgment). Doesn't need to be good; needs to fight back.
 **Landmark: lose to the machine.**
 
-### Phase 5 — Proof of eras
-
-A second-era mini-scenario (Napoleonic or WW1) built purely from TOML — no code
-changes beyond, at most, new `ElementClass` variants. Flushes out every WW2
-assumption that leaked into code. Cheap insurance for pillar 1; can be pulled
-earlier as a spike. **Landmark: the same binary fights Borodino.**
-
-### Phase 6 — Combined arms
+### Phase 5 — Combined arms
 
 Air warfare as data + mission procedures: ground support first (extra firers in
 the existing battle), then air superiority, interdiction, airfields. Naval, if
 it happens, follows the pattern set here. **Landmark: the first air mission
 flies.**
 
-### Phase 7 — The real interface
+### Phase 6 — The real interface
 
 The egui (or Bevy-hybrid) UI from ideas.md: hex map, unit counters, panels,
 battle reports — the full game playable without a terminal. Cross-platform CI
 builds start here. **Landmark: a whole game played without typing a command.**
 
-### Phase 8 — Operational depth
+### Phase 7 — Operational depth
 
 The systems that make campaigns breathe: fog of war/detection, weather, ground
 conditions, entrenchment and fortification, leaders/command, deeper logistics,
@@ -112,7 +105,7 @@ the combat refinements from ideas.md (AP penetration, AoE fire). The WitE
 comparison becomes fair here. **Landmark: a full campaign scenario —
 Barbarossa '41 at division scale, start to finish.**
 
-### Phase 9 — The pillars, in miniature
+### Phase 8 — The pillars, in miniature
 
 Prototype-scale versions of the pillar features: in-game battle transparency
 tools, the low-randomness resolution mode, a first multiplayer mode
@@ -120,7 +113,7 @@ tools, the low-randomness resolution mode, a first multiplayer mode
 teaches the basics. **Landmark: a stranger learns the basics without the author
 in the room.**
 
-### Phase 10 — Prototype release
+### Phase 9 — Prototype release
 
 Polish, a handful of scenarios, written rules complete enough to be learnable,
 packaging for friends and fellow grognards. Explicitly not v1.0 — a working
@@ -129,14 +122,14 @@ someone else's hands, and their feedback in the backlog.**
 
 ### Open ordering questions (Part 1)
 
-- **Supply (3) vs AI (4):** supply-first because it changes the data model and
-  the AI doesn't — but an opponent makes supply testing far more interesting.
-  Swap if motivation demands it.
-- **Era proof (5):** could run right after Phase 2 as a spike, before the
-  codebase grows; catching era-leaks is cheaper early.
-- **UI (7):** deliberately after the game is playable end-to-end in the
+- **UI (6):** deliberately after the game is playable end-to-end in the
   terminal, per ideas.md — but nothing stops the debug visualiser accreting
   features the whole time.
+
+Dropped by author's call: a dedicated "Proof of eras" phase (a second-era
+mini-scenario built purely from TOML, flushing out WW2 assumptions that leaked
+into code) — not important right now. The idea isn't lost, just no longer a
+gated phase; see Part 2's "More eras and domains."
 
 ## Part 2 — from prototype to the game
 
@@ -168,4 +161,7 @@ us what the game needs — and deliberately unordered.
 - **AI and multiplayer maturity** — from "fights back" to "plays well"; from a
   working multiplayer mode to one people actually use.
 - **More eras and domains** — era packs as real content, naval warfare if it
-  earns its place.
+  earns its place. Includes the era-proofing spike once floated as a Part 1
+  phase (a second-era mini-scenario built purely from TOML, to flush out any
+  WW2 assumptions that leaked into code) — cheap insurance for pillar 1,
+  worth doing whenever it's motivated, just not a gate on the prototype.
