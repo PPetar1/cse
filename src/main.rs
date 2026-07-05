@@ -19,6 +19,15 @@ fn main() {
         return;
     }
 
+    // The real interface (Phase 6): runs in this same process for the whole
+    // session, opt-in for now alongside the terminal loop below.
+    if args.len() >= 3 && args[1] == "--gui" {
+        if let Err(error) = cse::run_gui(&args[2]) {
+            eprintln!("{}", error.error_message);
+        }
+        return;
+    }
+
     let config = Config::builder()
         .completion_type(CompletionType::List)
         .build();

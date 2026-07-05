@@ -3,6 +3,7 @@ mod command;
 mod core;
 mod error;
 mod game;
+mod gui;
 mod procedures;
 mod utils;
 mod view;
@@ -10,6 +11,7 @@ mod visualiser;
 
 pub use command::COMMAND_KEYWORDS;
 pub use error::Error;
+pub use gui::run as run_gui;
 pub use view::{cleanup_view, run_view_subprocess};
 
 use postcard::{from_bytes, to_allocvec};
