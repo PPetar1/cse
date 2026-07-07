@@ -384,15 +384,26 @@ Key data model (all TOML-configurable, see `scenarios/basic_scenario.scen`):
   information `inspect` prints), plus Move/Attack buttons if the hex holds
   a unit of `Game::current_faction()`. Clicking either arms
   `GuiApp.pending_order`; the *next* map click resolves it
-  (`GuiApp::resolve_order`) via `move_unit`/`attack` instead of just
-  re-selecting, logging the result (or error) to `GuiApp.log`, shown in a
-  bottom panel. An "End Turn" button calls `Game::end_turn` and the same
-  `report_turn_transition`/`play_pending_ai_turns` (`lib.rs`, `pub(crate)`,
-  returning `Vec<String>` so both the terminal and the GUI can consume
-  them) the terminal's `end_turn` command uses. `air_support`/`interdict`
-  orders and mid-game save/load still need the terminal — no unit-picker
-  widget yet for the named-unit orders, and no in-app file dialogs beyond
-  the main menu's New/Load.
+  (`GuiApp::resolve_order`) via `move_unit`/`attack`/`air_support` instead
+  of just re-selecting, logging the result (or error) to `GuiApp.log`,
+  shown in a bottom panel. The inspector's "Air operations" block (visible
+  regardless of who holds the inspected hex, since interdiction covers
+  hexes you don't occupy) is a unit combo box
+  (`game.units_of_faction(game.current_faction())`, into `GuiApp
+  .selected_air_unit` by name) plus two buttons: "Air Support" arms a
+  `PendingOrder::AirSupport { air_unit }` the same way Move/Attack do
+  (needs the inspected hex to hold your ground units, same as Attack);
+  "Interdict" needs no second click — the target hex is already the
+  inspected one — so it calls `Game::interdict` immediately. Each of that
+  method's hex/unit lookups is scoped tightly (see the `SharedGame` locking
+  gotcha below for the general pattern) so no shared borrow of `game`
+  is still alive when `interdict` needs `&mut Game` partway through
+  rendering the panel. An "End Turn" button calls `Game::end_turn` and the
+  same `report_turn_transition`/`play_pending_ai_turns` (`lib.rs`,
+  `pub(crate)`, returning `Vec<String>` so both the terminal and the GUI
+  can consume them) the terminal's `end_turn` command uses. Mid-game
+  save/load still needs the terminal — no in-app file dialogs beyond the
+  main menu's New/Load.
 - Hex coords: offset coordinates, `OffsetHexMode::Even`, `HexOrientation::Pointy`
   (conversion happens inside `Location`; the rest of the code speaks (x, y) u32)
 - Lookups by name: `State` keeps `HashMap<String, _>` registries for units/toe/elements
@@ -426,6 +437,14 @@ Key data model (all TOML-configurable, see `scenarios/basic_scenario.scen`):
   works around this by locking a clone of the `Arc` (`self.shared.clone()`),
   which doesn't borrow `self` at all. Keep new code that holds a guard
   across `&mut self` calls on this pattern.
+- **Same shape of problem inside one `&mut Game` call**: a `&Location`/
+  `Vec<&Unit>` read (`game.state.map.get_location`/`game.units_at_location`)
+  borrows `game` for as long as that binding is used, so holding one across
+  a later `game.interdict(...)` (needs `&mut Game`) in the same function
+  won't compile. `GuiApp::render_inspector` avoids this by re-fetching each
+  read in its own small scope right before it's needed, rather than binding
+  `location`/`units` once at the top and reusing them across the whole
+  function.
 - `.map`/`.scen`/`.sav` are all project file formats: TOML, TOML, postcard binary.
 - **`#[serde(untagged)]` breaks postcard** (it needs self-describing formats), so
   TOML-facing config types (`UnitLocationConfig`) are separate from runtime types
@@ -526,7 +545,7 @@ so in `frontline_sector.scen` (Axis played by the AI) its Stuka wing
 currently never flies and its opponent's fighters never get declared —
 only a human player can order either today.
 
-**Phase 6 — the real interface — three slices landed.** `cargo run` (see
+**Phase 6 — the real interface — four slices landed.** `cargo run` (see
 "Two interfaces, one game" above) opens a real egui/eframe window: the map
 (terrain-colored hexes, coordinate labels, faction-colored unit markers)
 plus a status header (`Game::status()`) with an End Turn button, click a
@@ -545,9 +564,12 @@ against one `SharedGame`, and the old Bevy-based `view` command/
 along with them — a much lighter build). `lib.rs`'s
 `report_turn_transition`/`play_pending_ai_turns` (`pub(crate)`, returning
 `Vec<String>`) are still what let the terminal and the GUI share the exact
-same AI-auto-play logic. Still open, in rough order: `air_support`/
-`interdict` orders (need picking a named unit, not just two hexes — a
-unit-picker widget doesn't exist yet), mid-game save/load and an in-app
-scenario picker (only available from the main menu so far), victory-hex
-flag markers and multi-unit stacking offsets (both existed in the old
-`visualiser.rs`, not yet ported), and pan/zoom.
+same AI-auto-play logic. Slice 4 added the named-unit orders: the
+inspector's "Air operations" block (see "GUI" above) picks a unit from a
+combo box and offers "Air Support" (arms a `PendingOrder`, resolved by the
+next map click, same as Move/Attack) and "Interdict" (applies immediately
+to the inspected hex, no second click needed). Still open, in rough order:
+mid-game save/load and an in-app scenario picker (only available from the
+main menu so far), victory-hex flag markers and multi-unit stacking
+offsets (both existed in the old `visualiser.rs`, not yet ported), and
+pan/zoom.
