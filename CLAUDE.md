@@ -31,13 +31,14 @@ multiply.)
 ## Build & run
 
 ```
-cargo build          # first build is slow (Bevy); incremental is fast
-cargo run            # starts the interactive command loop (reads stdin)
+cargo build          # first build is slow; incremental is fast
+cargo run            # opens the GUI (main thread) with a terminal (background
+                     # thread, reads stdin) alongside it — see "Two interfaces,
+                     # one game" below
 ```
 
 Dependencies build without debug info (`[profile.dev.package."*"] debug = false`
-in Cargo.toml) — keeps target/ at ~2 GB instead of >10 GB. Avoid `--release`
-builds on this machine; they compile a second full Bevy tree.
+in Cargo.toml) — keeps target/ small.
 
 ```
 cargo test           # run the test suite
@@ -50,10 +51,24 @@ live in `game/test_support.rs` — and a few tests load the real
 `concat!(env!("CARGO_MANIFEST_DIR"), ...)` so shipped-config drift breaks the build.
 There is no CI.
 
-## Command loop
+## Two interfaces, one game
 
-`main.rs` reads lines from stdin and passes them to `cse::run(command, current_game)`
-in `lib.rs`, which parses (via `command.rs`) and dispatches. Commands:
+`cargo run` starts both interfaces at once, sharing one game: `main.rs`'s
+`main` builds a `SharedGame` (`lib.rs`, `Arc<Mutex<Option<Game>>>` —
+`None` until a game is started or loaded, from either side), spawns a
+background thread running the terminal loop against it, and runs the GUI
+(`gui.rs`) on the main thread (winit event loops must run there). A command
+from either side is visible to the other immediately, since there's only
+ever one `Game` behind the mutex — see "GUI" under Architecture below for
+how the window picks up terminal-driven changes. Closing the GUI window or
+typing `exit`/Ctrl-D/Ctrl-C in the terminal ends the whole process (the
+terminal thread can't hand off control gracefully, so it calls
+`std::process::exit` directly rather than just returning).
+
+The terminal thread reads lines from stdin and passes them to
+`cse::run_shared(command, &shared)` (a thin lock-and-call wrapper around
+`cse::run(command, current_game)` in `lib.rs`, which parses via `command.rs`
+and dispatches). Commands:
 
 - `new <path.scen>` — start a game from a scenario file (e.g. `new scenarios/basic_scenario.scen`)
 - `load <path.sav>` / `save <path.sav>` — postcard (binary serde) save/load of the whole `Game`
@@ -85,19 +100,12 @@ in `lib.rs`, which parses (via `command.rs`) and dispatches. Commands:
   faction coming on turn gets turn-start effects (`Game::begin_turn`): MP
   refill + morale drift toward the faction default
 - `status` — scenario name, turn, date, faction to move
-- `view` — open the Bevy map window in a detached subprocess (terminal stays usable;
-  Esc closes the window; can be called repeatedly); the window auto-updates as
-  commands change the game (it polls the session's snapshot file, which `run`
-  rewrites after every successful command)
 - `help` — print the command list (HELP_TEXT in command.rs)
 - `exit`
 
 When adding a command, update all three of: `Command::parse`, `HELP_TEXT`, and
 `COMMAND_KEYWORDS` — all in command.rs (a test there guards keyword drift) —
 plus the dispatch match in `run` (lib.rs).
-
-Outside the command loop: `cse --gui <scenario.scen>` (Phase 6) opens the
-real interface instead — see "GUI" under Architecture below.
 
 ## Design docs
 
@@ -118,28 +126,31 @@ snapshots (no `Game`/`State` access), `game/` is the orchestration layer
 (turn flow, orders, scenario content — one module per concern; `Game` keeps
 its fields in `game/mod.rs`, submodules add `impl Game` blocks and mark
 what crosses module lines `pub(super)`), and the interface layer
-(`command.rs`/`view.rs`/`ai.rs`/`gui.rs`) talks to `Game`'s public API.
-Future systems follow the pattern: supply = `procedures/supply.rs` + a
-`game/` hook; the AI consumes `Game` like another front-end (this landed —
-`ai.rs` is that front-end, next to `command.rs`/`view.rs`, not a `game/`
-submodule); the real UI does too (`gui.rs`, Phase 6 — see "GUI" below).
+(`command.rs`/`ai.rs`/`gui.rs`) talks to `Game`'s public API. Future systems
+follow the pattern: supply = `procedures/supply.rs` + a `game/` hook; the AI
+consumes `Game` like another front-end (`ai.rs`, next to `command.rs`, not a
+`game/` submodule); the real UI does too (`gui.rs`, Phase 6 — see "GUI"
+below) — and now shares that one `Game` live with the terminal instead of
+each owning a separate one (see "Two interfaces, one game" above).
 
 ```
 src/
-  main.rs        — rustyline prompt loop (tab completion via COMMAND_KEYWORDS +
-                   FilenameCompleter, history) + `--view <snapshot>` subprocess entry +
-                   `--gui <scenario.scen>` entry (Phase 6, opt-in alongside the terminal)
-  lib.rs         — run(): command dispatch, save/load/inspect helpers, root re-exports;
-                   report_turn_transition/play_pending_ai_turns (pub(crate), return
-                   Vec<String>) are shared with gui.rs, not just the terminal
+  main.rs        — spawns the terminal thread (rustyline prompt loop: tab completion
+                   via COMMAND_KEYWORDS + FilenameCompleter, history) against a
+                   SharedGame, then runs the GUI on the main thread
+  lib.rs         — SharedGame/new_shared_game/run_shared (the terminal thread's
+                   entry point); run(): command dispatch, save/load/inspect helpers
+                   (new_game/load_game/save_game are pub(crate) — gui.rs's main menu
+                   calls them directly, see "GUI"); report_turn_transition/
+                   play_pending_ai_turns (pub(crate), return Vec<String>) are shared
+                   with gui.rs, not just the terminal
   ai.rs          — the AI opponent: take_turn per faction, consuming Game's public API
                    the same way command.rs does (attack/move_unit/simulate, no new
                    pathfinding or combat logic)
-  gui.rs         — the real interface (Phase 6): an eframe/egui window owning a Game
-                   directly, in-process, for the whole session (see "GUI" below)
+  gui.rs         — the real interface (Phase 6): an eframe/egui window over a
+                   SharedGame, main menu when it's empty, map/orders once it isn't
+                   (see "GUI" below)
   command.rs     — the command language: Command enum + parse, COMMAND_KEYWORDS, HELP_TEXT
-  view.rs        — view subprocess spawning (spawn_view_subprocess/run_view_subprocess)
-                   + live snapshot refresh (refresh_view/write_view_snapshot/cleanup_view)
   error.rs       — crate-wide Error type + From impls (io/toml/postcard)
   game/mod.rs    — Game (state + players + turn/phase/date), Game::build, unit queries,
                    check_mission_range (shared by air_support/interdict, see "Airfields")
@@ -168,8 +179,6 @@ src/
                    parsing; cheapest_path_cost (hexx a_star; start hex is free)
   core/location.rs — Location wraps Option<hexx::Hex> (None = offmap), Terrain enum
   core/unit.rs   — Unit, Toe (mp, range), Element, ElementClass, Size + config structs
-  visualiser.rs  — self-contained Bevy 0.15 debug map view (see below); superseded in
-                   spirit by gui.rs, kept for now — retiring it is a later cleanup
   procedures/combat.rs — pure fires-based battle engine: CombatElement snapshots in,
                    BattleReport out; never touches Game/State (see docs/combat_design.md)
   procedures/supply.rs — pure multi-source flood fill (reachable_hexes) over the
@@ -224,8 +233,9 @@ Key data model (all TOML-configurable, see `scenarios/basic_scenario.scen`):
   stops further commands afterward, so this is scoring/reporting only, not a
   hard game-over gate. The `victory` command (`Game::victory_conditions_summary`)
   shows the same conditions and each objective hex's current holder at any
-  time; `Game::victory_hexes` feeds the hexes to the map view as flag markers
-  (see visualiser gotcha below)
+  time; `Game::victory_hexes` exists for a map view to flag those hexes, but
+  no view does yet — the old Bevy visualiser did before it was retired
+  (Phase 6 slice 3), and porting flag markers to the egui GUI is still open
 - **Reinforcements/withdrawals** — `[[reinforcements]]` and `[[withdrawals]]`
   (each entry: `unit`, `turn`, `location` — reuses `UnitLocationConfig`, so a
   hex or an offmap box name both work either direction) are mechanically
@@ -350,12 +360,25 @@ Key data model (all TOML-configurable, see `scenarios/basic_scenario.scen`):
   `Location::distance_to` against the range, called from both
   `prepare_battle`'s `air_support` branch and `Game::interdict`. See
   "Airfields" in docs/combat_design.md.
-- **GUI** — `cse --gui <scenario.scen>` (`gui.rs`, Phase 6) opens an
-  eframe/egui window that owns a `Game` directly for the whole session — no
-  snapshot file/subprocess like `view`/`visualiser.rs` need, since there's
-  only ever one process and one window here. `MapView` (hex layout +
-  panel/map centering, ported from `visualiser.rs`'s `map_center`) maps hex
-  coordinates to `egui::Pos2` for drawing and back for click hit-testing
+- **GUI** — `gui.rs` (Phase 6, launched by `cargo run` — see "Two
+  interfaces, one game" above) opens an eframe/egui window over a
+  `SharedGame`. `GuiApp::ui` locks a clone of the `Arc` (not `self.shared`
+  directly — locking the field itself would borrow all of `self` for the
+  guard's lifetime and conflict with the `&mut self` render calls) and
+  polls it a few times a second (`request_repaint_after`) so terminal-driven
+  changes surface without needing a window event to trigger a redraw. `None`
+  renders a main menu (`GuiApp::render_main_menu`): a scenario-path field and
+  "New Game" button, a save-path field and "Load Game" button, and "Quit"
+  (`std::process::exit`). Both New/Load call `crate::new_game`/
+  `crate::load_game` directly (the same `pub(crate)` helpers `lib.rs::run`
+  uses for the terminal's `new`/`load`) rather than routing through `run`,
+  since there's nothing to lock yet; `GuiApp::adopt_game` then gives the
+  result the same auto-play-pending-AI-turns-and-drain-turn-1-events
+  treatment `run`'s post-build block gives a freshly built/loaded game,
+  before publishing it into `shared`.
+  `Some(game)` renders the map/orders (`GuiApp::render_playing`): `MapView`
+  (hex layout + panel/map centering) maps hex coordinates to `egui::Pos2`
+  for drawing and back for click hit-testing
   (`hexx::HexLayout::world_pos_to_hex`); clicking a hex sets `selected_hex`,
   which drives a side panel listing that hex's units and rosters (the same
   information `inspect` prints), plus Move/Attack buttons if the hex holds
@@ -366,9 +389,10 @@ Key data model (all TOML-configurable, see `scenarios/basic_scenario.scen`):
   bottom panel. An "End Turn" button calls `Game::end_turn` and the same
   `report_turn_transition`/`play_pending_ai_turns` (`lib.rs`, `pub(crate)`,
   returning `Vec<String>` so both the terminal and the GUI can consume
-  them) the terminal's `end_turn` command uses. `air_support`/`interdict`/
-  save/load still need the terminal — no unit-picker widget yet for the
-  named-unit orders, and no in-app file dialogs.
+  them) the terminal's `end_turn` command uses. `air_support`/`interdict`
+  orders and mid-game save/load still need the terminal — no unit-picker
+  widget yet for the named-unit orders, and no in-app file dialogs beyond
+  the main menu's New/Load.
 - Hex coords: offset coordinates, `OffsetHexMode::Even`, `HexOrientation::Pointy`
   (conversion happens inside `Location`; the rest of the code speaks (x, y) u32)
 - Lookups by name: `State` keeps `HashMap<String, _>` registries for units/toe/elements
@@ -390,37 +414,23 @@ Key data model (all TOML-configurable, see `scenarios/basic_scenario.scen`):
   `wgpu` without re-confirming rendering actually shows up, e.g. via a
   screenshot tool (`spectacle` worked in this environment; `grim` didn't —
   "compositor doesn't support the screen capture protocol").
-- **glam version split**: hexx 0.23 uses glam 0.30, Bevy 0.15 uses glam 0.29. Their
-  `Vec2`s are incompatible. In `visualiser.rs`, hexx's re-exported `Vec2` is aliased
-  as `HexVec2` for `HexLayout`; positions cross into Bevy as plain f32 x/y. Keep any
-  new hexx↔bevy math on this pattern (or unify versions when upgrading).
-- **winit event loops can only be created once per process**, so `view` re-invokes
-  the binary as `cse --view <snapshot-file>` (child stdout/stderr nulled; a reaper
-  thread `wait()`s the child to avoid zombies). Never call `visualiser::launch`
-  directly from the command loop — a second call would crash the process.
-- **The view snapshot file is a live channel**, not a one-shot handoff: one postcard
-  file per game session (`cse_view_<pid>.snapshot` in the temp dir), created by
-  `view`, rewritten by `run` after every successful command (write-to-.tmp +
-  rename so the child never sees a partial file), polled twice a second by the
-  view window (byte-compare, then despawn/respawn all `MapEntity` entities),
-  deleted by `main` on exit — the child must never delete it itself, but a
-  missing/unreadable file is its cue to close (`reload_on_change` sends
-  `AppExit`), so the view window doesn't outlive the process that opened it.
+- **winit event loops can only be created once per process** — `gui::run`
+  is the only call to `eframe::run_native` anywhere in the codebase, made
+  once from `main`'s main thread. Don't add a second one (e.g. a
+  respawned/child-process GUI); route any future need for "another window"
+  through the existing `GuiApp` instead.
+- **Locking `SharedGame` inside a method that also needs `&mut self`**:
+  `self.shared.lock()` borrows `self.shared` specifically (a field
+  projection), but a later `self.some_method(...)` call needs to borrow all
+  of `self` — the two conflict if the lock guard is still alive. `GuiApp::ui`
+  works around this by locking a clone of the `Arc` (`self.shared.clone()`),
+  which doesn't borrow `self` at all. Keep new code that holds a guard
+  across `&mut self` calls on this pattern.
 - `.map`/`.scen`/`.sav` are all project file formats: TOML, TOML, postcard binary.
 - **`#[serde(untagged)]` breaks postcard** (it needs self-describing formats), so
   TOML-facing config types (`UnitLocationConfig`) are separate from runtime types
   (`UnitLocation`, normally tagged). Keep any new untagged enums on the config side
   only, with a `From` impl to the runtime type.
-- The visualiser gets a `MapSnapshot` (plain serde data, no game references) — keep
-  it decoupled; don't hand it `&State`.
-- **The camera is centered on the map's bounding box at `Startup`** (`map_center`
-  in `visualiser.rs`), not left at world origin — hex (0, 0) sits near the
-  origin (`hex_layout`'s `origin` field), so an uncentered camera left most of
-  a map bigger than the window off screen. This only runs once, since the map
-  geometry never changes within a session (only unit positions do, which
-  `reload_on_change` already respawns); a `load` that swapped in a
-  differently-shaped map mid-session would need the camera recentered too,
-  but that isn't a case that occurs yet (`view` opens a fresh window per game).
 - Fields deserialized from config but not yet read (`Scenario.start_date`,
   `MapFile.width`…) carry `#[allow(dead_code)]`; remove the attribute when a
   system starts using them. The build is warning-free and `cargo clippy` is
@@ -516,25 +526,28 @@ so in `frontline_sector.scen` (Axis played by the AI) its Stuka wing
 currently never flies and its opponent's fighters never get declared —
 only a human player can order either today.
 
-**Phase 6 — the real interface — slices 1 and 2 landed.** `cse --gui
-<scenario.scen>` (see "GUI" above) opens a real egui/eframe window: the
-map (terrain-colored hexes, coordinate labels, faction-colored unit
-markers) plus a status header (`Game::status()`) with an End Turn button,
-click a hex to select it and see its units/rosters in a side panel. Slice
-2 added order issuing: the inspector's Move/Attack buttons arm a
-`PendingOrder`, resolved by the next map click
-(`GuiApp::resolve_order` — `move_unit`/`attack`, unit index 0 always,
-picking which unit in a multi-unit stack moves is a deferred nicety); a
-bottom log panel shows status/event/battle-report/error lines, the
-window's equivalent of the terminal's scrollback. `lib.rs`'s
-`report_turn_transition`/`play_pending_ai_turns` now return `Vec<String>`
-(`pub(crate)`) instead of `println!`ing directly, so the terminal and the
-GUI share the exact same AI-auto-play logic — `gui::run` calls it right
-after `Game::build` too, for a scenario whose first player is AI. Still
-open, in rough order: `air_support`/`interdict` orders (need picking a
-named unit, not just two hexes — a unit-picker widget doesn't exist yet),
-save/load and an in-app scenario picker (loading is scenario-path-only, via
-a CLI arg, for now), victory-hex flag markers and multi-unit stacking
-offsets (both already exist in `visualiser.rs`, not yet ported), pan/zoom,
-and eventually retiring `view`/`visualiser.rs` once the egui map view
-covers what they show.
+**Phase 6 — the real interface — three slices landed.** `cargo run` (see
+"Two interfaces, one game" above) opens a real egui/eframe window: the map
+(terrain-colored hexes, coordinate labels, faction-colored unit markers)
+plus a status header (`Game::status()`) with an End Turn button, click a
+hex to select it and see its units/rosters in a side panel. Slice 2 added
+order issuing: the inspector's Move/Attack buttons arm a `PendingOrder`,
+resolved by the next map click (`GuiApp::resolve_order` — `move_unit`/
+`attack`, unit index 0 always, picking which unit in a multi-unit stack
+moves is a deferred nicety); a bottom log panel shows status/event/battle-
+report/error lines, the window's equivalent of the terminal's scrollback.
+Slice 3 replaced the old `cse --gui <scenario.scen>`/`--view` split with a
+single `cargo run`: the window now opens on a main menu (New/Load/Quit,
+see "GUI" above) instead of requiring a scenario path up front, the
+terminal moved to a background thread so both interfaces run at once
+against one `SharedGame`, and the old Bevy-based `view` command/
+`visualiser.rs`/`view.rs` are gone entirely (dropping the `bevy` dependency
+along with them — a much lighter build). `lib.rs`'s
+`report_turn_transition`/`play_pending_ai_turns` (`pub(crate)`, returning
+`Vec<String>`) are still what let the terminal and the GUI share the exact
+same AI-auto-play logic. Still open, in rough order: `air_support`/
+`interdict` orders (need picking a named unit, not just two hexes — a
+unit-picker widget doesn't exist yet), mid-game save/load and an in-app
+scenario picker (only available from the main menu so far), victory-hex
+flag markers and multi-unit stacking offsets (both existed in the old
+`visualiser.rs`, not yet ported), and pan/zoom.

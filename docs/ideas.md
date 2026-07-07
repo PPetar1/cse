@@ -10,10 +10,13 @@ section of CLAUDE.md.
 - Chosen once the game was playable end-to-end in the terminal (Phase 5
   done): **egui/eframe**, not a Bevy + bevy_egui hybrid — a WitE-like is a
   data-dense panel/table UI around a 2D hex map, egui's sweet spot, and this
-  game has no real-time motion to animate. `src/gui.rs` (Phase 6 slice 1) is
-  the first slice: a real window, hex map + click-to-inspect, no orders yet.
-  `visualiser.rs`/`view.rs` (the old Bevy debug view) stay for now; retiring
-  them is a later cleanup once `gui.rs` covers what they show.
+  game has no real-time motion to animate. `src/gui.rs` landed in three
+  slices: a real window with hex map + click-to-inspect (slice 1), Move/
+  Attack/End Turn order issuing (slice 2), then a main menu (New/Load/Quit)
+  plus running alongside the terminal at once against one shared game
+  (slice 3) — retiring the old Bevy debug view (`visualiser.rs`/`view.rs`,
+  and the `bevy` dependency with it) once `gui.rs` covered everything it
+  showed.
 - Dev-environment gotcha hit while building slice 1: eframe's default `wgpu`
   backend opens a window but never presents a frame in this project's
   sandboxed dev VM (confirmed via debug logging that render calls fire

@@ -93,7 +93,7 @@ flies.**
 
 ### Phase 6 — The real interface
 
-The egui (or Bevy-hybrid) UI from ideas.md: hex map, unit counters, panels,
+The egui UI from ideas.md (decided 2026-07): hex map, unit counters, panels,
 battle reports — the full game playable without a terminal. Cross-platform CI
 builds start here. **Landmark: a whole game played without typing a command.**
 
@@ -123,8 +123,7 @@ someone else's hands, and their feedback in the backlog.**
 ### Open ordering questions (Part 1)
 
 - **UI (6):** deliberately after the game is playable end-to-end in the
-  terminal, per ideas.md — but nothing stops the debug visualiser accreting
-  features the whole time.
+  terminal, per ideas.md.
 
 Dropped by author's call: a dedicated "Proof of eras" phase (a second-era
 mini-scenario built purely from TOML, flushing out WW2 assumptions that leaked
