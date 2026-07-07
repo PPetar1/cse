@@ -368,42 +368,57 @@ Key data model (all TOML-configurable, see `scenarios/basic_scenario.scen`):
   polls it a few times a second (`request_repaint_after`) so terminal-driven
   changes surface without needing a window event to trigger a redraw. `None`
   renders a main menu (`GuiApp::render_main_menu`): a scenario-path field and
-  "New Game" button, a save-path field and "Load Game" button, and "Quit"
-  (`std::process::exit`). Both New/Load call `crate::new_game`/
-  `crate::load_game` directly (the same `pub(crate)` helpers `lib.rs::run`
-  uses for the terminal's `new`/`load`) rather than routing through `run`,
-  since there's nothing to lock yet; `GuiApp::adopt_game` then gives the
-  result the same auto-play-pending-AI-turns-and-drain-turn-1-events
-  treatment `run`'s post-build block gives a freshly built/loaded game,
-  before publishing it into `shared`.
-  `Some(game)` renders the map/orders (`GuiApp::render_playing`): `MapView`
-  (hex layout + panel/map centering) maps hex coordinates to `egui::Pos2`
-  for drawing and back for click hit-testing
-  (`hexx::HexLayout::world_pos_to_hex`); clicking a hex sets `selected_hex`,
-  which drives a side panel listing that hex's units and rosters (the same
-  information `inspect` prints), plus Move/Attack buttons if the hex holds
-  a unit of `Game::current_faction()`. Clicking either arms
-  `GuiApp.pending_order`; the *next* map click resolves it
-  (`GuiApp::resolve_order`) via `move_unit`/`attack`/`air_support` instead
-  of just re-selecting, logging the result (or error) to `GuiApp.log`,
-  shown in a bottom panel. The inspector's "Air operations" block (visible
-  regardless of who holds the inspected hex, since interdiction covers
-  hexes you don't occupy) is a unit combo box
-  (`game.units_of_faction(game.current_faction())`, into `GuiApp
-  .selected_air_unit` by name) plus two buttons: "Air Support" arms a
-  `PendingOrder::AirSupport { air_unit }` the same way Move/Attack do
+  "New Game" button, a save-path field and "Load Game" button, and "Quit".
+  `Some(game)` renders the map/orders (`GuiApp::render_playing`): a header
+  with `Game::status()`, "End Turn", Save/Load/New/Quit, and a "Reports" row
+  (Victory/Reinforcements/Events/Supply/Interdiction, each pushing that
+  summary method's `String` straight into `GuiApp.log` — the same summaries
+  the terminal's matching commands print); `MapView` (hex layout +
+  panel/map centering) maps hex coordinates to `egui::Pos2` for drawing and
+  back for click hit-testing (`hexx::HexLayout::world_pos_to_hex`); clicking
+  a hex sets `selected_hex`, which drives a side panel listing that hex's
+  units and rosters (the same information `inspect` prints), plus
+  Move/Attack buttons if the hex holds a unit of `Game::current_faction()`.
+  Clicking either arms `GuiApp.pending_order`; the *next* map click resolves
+  it (`GuiApp::resolve_order`) via `move_unit`/`attack`/`air_support`
+  instead of just re-selecting, logging the result (or error) to
+  `GuiApp.log`, shown in a bottom panel. The inspector's "Air operations"
+  block (visible regardless of who holds the inspected hex, since
+  interdiction covers hexes you don't occupy) is a unit combo box
+  (`game.units_of_faction(game.current_faction())`, into
+  `GuiApp.selected_air_unit` by name) plus two buttons: "Air Support" arms
+  a `PendingOrder::AirSupport { air_unit }` the same way Move/Attack do
   (needs the inspected hex to hold your ground units, same as Attack);
   "Interdict" needs no second click — the target hex is already the
   inspected one — so it calls `Game::interdict` immediately. Each of that
-  method's hex/unit lookups is scoped tightly (see the `SharedGame` locking
-  gotcha below for the general pattern) so no shared borrow of `game`
-  is still alive when `interdict` needs `&mut Game` partway through
-  rendering the panel. An "End Turn" button calls `Game::end_turn` and the
-  same `report_turn_transition`/`play_pending_ai_turns` (`lib.rs`,
-  `pub(crate)`, returning `Vec<String>` so both the terminal and the GUI
-  can consume them) the terminal's `end_turn` command uses. Mid-game
-  save/load still needs the terminal — no in-app file dialogs beyond the
-  main menu's New/Load.
+  method's hex/unit lookups is scoped tightly (see the second Gotchas entry
+  below) so no shared borrow of `game` is still alive when `interdict`
+  needs `&mut Game` partway through rendering the panel.
+
+  Save/Load/New/Quit (both on the main menu and mid-game) all go through
+  one `GuiApp.pending_menu_action: Option<MenuAction>`, applied by
+  `GuiApp::apply_pending_menu_action` only after `ui()` has dropped its
+  lock on `shared` (see the `SharedGame` locking gotcha below) — `Quit`
+  can call `std::process::exit` freely, but `Load`/`New` end up in
+  `GuiApp::adopt_game`, which locks `shared` itself, so running any of
+  these while `render_playing`/`render_main_menu` still held the guard
+  would deadlock. The main menu's New/Load buttons and mid-game's
+  Save/Load/New buttons (`GuiApp::render_dialog`, a small `egui::Window`
+  popup armed by `GuiApp.dialog: Option<DialogKind>`, reusing the same
+  `MainMenuState` path fields) both just arm `pending_menu_action` rather
+  than acting immediately, for this reason. `adopt_game` gives a
+  successful New/Load the same auto-play-pending-AI-turns-and-drain-
+  turn-1-events treatment `run`'s post-build block gives a freshly
+  built/loaded game, calling `crate::new_game`/`crate::load_game` (the
+  same `pub(crate)` helpers `lib.rs::run` uses for the terminal's
+  `new`/`load`) directly rather than routing through `run`, since there's
+  nothing to lock yet. `Save` calls `crate::save_game` directly the same
+  way. An "End Turn" button calls `Game::end_turn` and the same
+  `report_turn_transition`/`play_pending_ai_turns` (`lib.rs`, `pub(crate)`,
+  returning `Vec<String>` so both the terminal and the GUI can consume
+  them) the terminal's `end_turn` command uses. Still no in-app scenario/
+  save-file *picker* — paths are typed into the dialog's text field, not
+  browsed.
 - Hex coords: offset coordinates, `OffsetHexMode::Even`, `HexOrientation::Pointy`
   (conversion happens inside `Location`; the rest of the code speaks (x, y) u32)
 - Lookups by name: `State` keeps `HashMap<String, _>` registries for units/toe/elements
@@ -545,7 +560,7 @@ so in `frontline_sector.scen` (Axis played by the AI) its Stuka wing
 currently never flies and its opponent's fighters never get declared —
 only a human player can order either today.
 
-**Phase 6 — the real interface — four slices landed.** `cargo run` (see
+**Phase 6 — the real interface — five slices landed.** `cargo run` (see
 "Two interfaces, one game" above) opens a real egui/eframe window: the map
 (terrain-colored hexes, coordinate labels, faction-colored unit markers)
 plus a status header (`Game::status()`) with an End Turn button, click a
@@ -568,8 +583,15 @@ same AI-auto-play logic. Slice 4 added the named-unit orders: the
 inspector's "Air operations" block (see "GUI" above) picks a unit from a
 combo box and offers "Air Support" (arms a `PendingOrder`, resolved by the
 next map click, same as Move/Attack) and "Interdict" (applies immediately
-to the inspected hex, no second click needed). Still open, in rough order:
-mid-game save/load and an in-app scenario picker (only available from the
-main menu so far), victory-hex flag markers and multi-unit stacking
-offsets (both existed in the old `visualiser.rs`, not yet ported), and
-pan/zoom.
+to the inspected hex, no second click needed). Slice 5 added mid-game
+Save/Load/New/Quit (a header button opens a small path-entry popup, or
+none for Quit) and a "Reports" row (Victory/Reinforcements/Events/Supply/
+Interdiction, logging the same summaries their terminal commands print) —
+see "GUI" above for the `pending_menu_action`/`MenuAction` deferral this
+needed to avoid a `SharedGame` deadlock. Every terminal command's
+equivalent action is now clickable, so the roadmap's landmark ("a whole
+game played without typing a command") is reachable; still open, cosmetic
+rather than functional: an in-app scenario/save-file *picker* (paths are
+still typed, not browsed), victory-hex flag markers and multi-unit
+stacking offsets (both existed in the old `visualiser.rs`, not yet
+ported), and pan/zoom.
