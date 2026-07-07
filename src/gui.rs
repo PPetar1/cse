@@ -37,13 +37,17 @@ pub fn run(shared: SharedGame) -> Result<(), Error> {
                 pending_order: None,
                 log: Vec::new(),
                 menu: MainMenuState::default(),
+                selected_air_unit: String::new(),
             }))
         }),
     )
     .map_err(|error| Error::new(format!("Failed to start the GUI: {error:?}")))
 }
 
-/// A `Move` or `Attack` armed from `from`, awaiting a destination click.
+/// A `Move`/`Attack`/`AirSupport` armed from `from`, awaiting a destination
+/// click. `Interdict` isn't here: it only needs the already-inspected hex
+/// plus the picked air unit, so it applies immediately from a single button
+/// rather than arming a second click.
 struct PendingOrder {
     kind: OrderKind,
     from: (u32, u32),
@@ -52,6 +56,7 @@ struct PendingOrder {
 enum OrderKind {
     Move,
     Attack,
+    AirSupport { air_unit: String },
 }
 
 /// Text fields and any error from the last New/Load attempt on the main menu.
@@ -80,6 +85,10 @@ struct GuiApp {
     /// through this window; the terminal's own output stays in the terminal.
     log: Vec<String>,
     menu: MainMenuState,
+    /// The unit picked in the inspector's air-operations combo box, by name —
+    /// carried into an armed `AirSupport` order or an immediate `Interdict`
+    /// call. Empty means nothing picked yet.
+    selected_air_unit: String,
 }
 
 impl eframe::App for GuiApp {
@@ -179,7 +188,7 @@ impl GuiApp {
 
         if let Some((x, y)) = self.selected_hex {
             egui::Panel::right("inspector").min_size(240.0).show(ui, |ui| {
-                render_inspector(ui, game, x, y, &mut self.pending_order);
+                self.render_inspector(ui, game, x, y);
             });
         }
 
@@ -197,8 +206,9 @@ impl GuiApp {
     /// Resolve an armed order against the just-clicked destination hex:
     /// `Move` moves the destination hex's first unit (index 0 — picking
     /// which unit in a multi-unit stack moves is a deferred nicety, not
-    /// needed for a first cut), `Attack` fights it. Either way the result
-    /// (or the error) goes into the log.
+    /// needed for a first cut), `Attack` fights it, `AirSupport` folds the
+    /// picked air unit into the same attack without it ever moving. Either
+    /// way the result (or the error) goes into the log.
     fn resolve_order(&mut self, game: &mut Game, order: PendingOrder, to: (u32, u32)) {
         match order.kind {
             OrderKind::Move => match game.move_unit(order.from.0, order.from.1, to.0, to.1, 0) {
@@ -212,6 +222,15 @@ impl GuiApp {
                 }
                 Err(error) => self.log.push(error.error_message),
             },
+            OrderKind::AirSupport { air_unit } => {
+                match game.air_support(&air_unit, order.from, to, &mut rand::rng()) {
+                    Ok(report) => {
+                        self.log.push(report.to_string());
+                        self.selected_hex = Some(to);
+                    }
+                    Err(error) => self.log.push(error.error_message),
+                }
+            }
         }
     }
 
@@ -243,46 +262,91 @@ impl GuiApp {
                 }
             }
     }
-}
 
-fn render_inspector(ui: &mut egui::Ui, game: &Game, x: u32, y: u32, pending_order: &mut Option<PendingOrder>) {
-    let Some(location) = game.state.map.get_location(x, y) else {
-        ui.label("Invalid hex.");
-        return;
-    };
-    ui.heading(format!("({x}, {y}) — {:?}", location.terrain));
+    /// The side panel for an inspected hex: its terrain and units, Move/
+    /// Attack buttons if it holds a unit of the current faction, and an
+    /// air-operations block (a unit picker plus Air Support/Interdict)
+    /// available regardless of who holds the hex, since interdiction covers
+    /// hexes you don't occupy. Each hex/unit lookup is scoped tightly (and
+    /// repeated where needed) so no shared borrow of `game` is still alive
+    /// when `Interdict` needs a `&mut Game` call partway through.
+    fn render_inspector(&mut self, ui: &mut egui::Ui, game: &mut Game, x: u32, y: u32) {
+        let Some(terrain) = game.state.map.get_location(x, y).map(|location| location.terrain) else {
+            ui.label("Invalid hex.");
+            return;
+        };
+        ui.heading(format!("({x}, {y}) — {terrain:?}"));
 
-    let units = game.units_at_location(location);
+        let owns_hex = {
+            let location = game.state.map.get_location(x, y).unwrap();
+            game.units_at_location(location).iter().any(|unit| unit.faction == game.current_faction())
+        };
 
-    if pending_order.is_some() {
-        ui.label("Click a destination hex…");
-        if ui.button("Cancel").clicked() {
-            *pending_order = None;
+        if let Some(order) = &self.pending_order {
+            let prompt = match order.kind {
+                OrderKind::AirSupport { .. } => "Click the target hex…",
+                OrderKind::Move | OrderKind::Attack => "Click a destination hex…",
+            };
+            ui.label(prompt);
+            if ui.button("Cancel").clicked() {
+                self.pending_order = None;
+            }
+        } else {
+            if owns_hex {
+                ui.horizontal(|ui| {
+                    if ui.button("Move").clicked() {
+                        self.pending_order = Some(PendingOrder { kind: OrderKind::Move, from: (x, y) });
+                    }
+                    if ui.button("Attack").clicked() {
+                        self.pending_order = Some(PendingOrder { kind: OrderKind::Attack, from: (x, y) });
+                    }
+                });
+            }
+
+            ui.separator();
+            ui.label("Air operations:");
+            egui::ComboBox::from_label("Unit")
+                .selected_text(if self.selected_air_unit.is_empty() { "(choose a unit)" } else { &self.selected_air_unit })
+                .show_ui(ui, |ui| {
+                    for unit in game.units_of_faction(game.current_faction()) {
+                        ui.selectable_value(&mut self.selected_air_unit, unit.name.clone(), &unit.name);
+                    }
+                });
+
+            let have_air_unit = !self.selected_air_unit.is_empty();
+            ui.horizontal(|ui| {
+                if owns_hex
+                    && ui.add_enabled(have_air_unit, egui::Button::new("Air Support")).clicked() {
+                        self.pending_order = Some(PendingOrder {
+                            kind: OrderKind::AirSupport { air_unit: self.selected_air_unit.clone() },
+                            from: (x, y),
+                        });
+                    }
+                if ui.add_enabled(have_air_unit, egui::Button::new("Interdict")).clicked() {
+                    match game.interdict(&self.selected_air_unit, (x, y)) {
+                        Ok(()) => self.log.push(format!("{} now covers ({x}, {y}).", self.selected_air_unit)),
+                        Err(error) => self.log.push(error.error_message),
+                    }
+                }
+            });
         }
-    } else if units.iter().any(|unit| unit.faction == game.current_faction()) {
-        ui.horizontal(|ui| {
-            if ui.button("Move").clicked() {
-                *pending_order = Some(PendingOrder { kind: OrderKind::Move, from: (x, y) });
-            }
-            if ui.button("Attack").clicked() {
-                *pending_order = Some(PendingOrder { kind: OrderKind::Attack, from: (x, y) });
-            }
-        });
-    }
 
-    if units.is_empty() {
-        ui.label("No units here.");
-        return;
-    }
-    for unit in units {
-        ui.separator();
-        ui.label(egui::RichText::new(&unit.name).strong());
-        ui.label(format!("Faction: {}   TOE: {}", unit.faction, unit.toe));
-        for element in &unit.elements {
-            ui.label(format!(
-                "{}: {} ready, {} damaged — morale {}, experience {}",
-                element.name, element.ready, element.damaged, element.morale, element.experience,
-            ));
+        let location = game.state.map.get_location(x, y).unwrap();
+        let units = game.units_at_location(location);
+        if units.is_empty() {
+            ui.label("No units here.");
+            return;
+        }
+        for unit in units {
+            ui.separator();
+            ui.label(egui::RichText::new(&unit.name).strong());
+            ui.label(format!("Faction: {}   TOE: {}", unit.faction, unit.toe));
+            for element in &unit.elements {
+                ui.label(format!(
+                    "{}: {} ready, {} damaged — morale {}, experience {}",
+                    element.name, element.ready, element.damaged, element.morale, element.experience,
+                ));
+            }
         }
     }
 }
@@ -525,6 +589,7 @@ hard_attack = 3
             pending_order: None,
             log: Vec::new(),
             menu: MainMenuState::default(),
+            selected_air_unit: String::new(),
         }
     }
 
@@ -594,6 +659,45 @@ location = { x = 2, y = 1 }
         assert_eq!(app.log.len(), 1);
         assert!(app.log[0].contains("Outcome"));
         assert_eq!(app.selected_hex, Some((2, 1)));
+    }
+
+    #[test]
+    fn resolve_order_air_supports_and_logs_the_battle_report() {
+        let mut game = Game::build(minimal_scenario(r#"
+[[units]]
+name = "Axis Division"
+toe = "test_toe"
+faction = "AX"
+location = { x = 1, y = 1 }
+
+[[units]]
+name = "Soviet Division"
+toe = "test_toe"
+faction = "SU"
+location = { x = 2, y = 1 }
+
+[[units]]
+name = "Stuka Wing"
+toe = "test_toe"
+faction = "AX"
+location = { x = 0, y = 0 }
+"#)).unwrap();
+        let mut app = app();
+
+        app.resolve_order(
+            &mut game,
+            PendingOrder { kind: OrderKind::AirSupport { air_unit: "Stuka Wing".to_string() }, from: (1, 1) },
+            (2, 1),
+        );
+
+        assert_eq!(app.log.len(), 1);
+        assert!(app.log[0].contains("Outcome"));
+        assert_eq!(app.selected_hex, Some((2, 1)));
+        // The air unit never moves — see the "Air support" note in CLAUDE.md.
+        assert_eq!(
+            game.state.units["Stuka Wing"].location,
+            UnitLocation::OnMap(LocationCoords { x: 0, y: 0 }),
+        );
     }
 
     #[test]
