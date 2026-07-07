@@ -9,7 +9,6 @@ edition = "2024"
 debug = false
 
 [dependencies]
-bevy = "0.15"
 # default-features off: this drops the wgpu backend, which doesn't present
 # frames in our sandboxed dev VM (window opens, renders nothing — confirmed
 # with debug logging showing render calls firing correctly). glow (OpenGL,

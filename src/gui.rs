@@ -1,21 +1,23 @@
-//! The real interface (Phase 6): an eframe/egui window that renders the
-//! map, lets the player click a hex to inspect its units, and (slice 2)
-//! issue `move`/`attack` orders and end the turn. `air_support`/`interdict`/
-//! save/load still need the terminal (see docs/roadmap.md Phase 6).
+//! The real interface (Phase 6): an eframe/egui window that shows a main
+//! menu (New/Load/Quit) when no game is active, and once one is, renders the
+//! map, lets the player click a hex to inspect its units, issue `move`/
+//! `attack` orders and end the turn. `air_support`/`interdict` still need
+//! the terminal (see docs/roadmap.md Phase 6).
 //!
-//! Unlike the debug `view` window (`view.rs`/`visualiser.rs`: a Bevy
-//! subprocess built around a serialized snapshot, because winit can only
-//! ever create one event loop per process and `view` might be invoked
-//! repeatedly from a long-running terminal session), this window is
-//! launched once for the whole session as the primary way to play. So it
-//! owns the `Game` directly, in-process, and reads its public API fresh
-//! every frame — the same relationship `command.rs`/`ai.rs` already have
-//! with `Game` — with none of `view.rs`'s snapshot/subprocess machinery.
+//! This window owns the main thread for the whole process — winit event
+//! loops must run there — while the terminal command loop (`main.rs`) runs
+//! on a background thread. Both act on the same `SharedGame`
+//! (`Arc<Mutex<Option<Game>>>`, see lib.rs): a command from either side is
+//! immediately visible to the other, since there's only ever one `Game`.
+//! `ui()` polls it a few times a second (`request_repaint_after`) so
+//! terminal-driven changes show up without needing a window event to
+//! trigger a redraw.
 
 use eframe::egui;
 use hexx::{Hex, HexLayout, HexOrientation, OffsetHexMode, Vec2 as HexVec2};
 
 use crate::Error;
+use crate::SharedGame;
 use crate::core::location::Terrain;
 use crate::core::unit::UnitLocation;
 use crate::game::Game;
@@ -23,20 +25,20 @@ use crate::{play_pending_ai_turns, report_turn_transition};
 
 const HEX_SIZE: f32 = 40.0;
 
-/// Load `scenario_path` and open the window for the rest of the process's
-/// life. Blocks until the window is closed.
-pub fn run(scenario_path: &str) -> Result<(), Error> {
-    let contents = std::fs::read_to_string(scenario_path)?;
-    let mut game = Game::build(contents)?;
-    // A scenario whose first player is AI (e.g. frontline_sector.scen) needs
-    // that turn auto-played before the window ever shows control sitting
-    // with an AI faction — the same treatment new/load give it in lib.rs.
-    let log = play_pending_ai_turns(&mut game, None);
-
+/// Open the window for the rest of the process's life. Blocks until closed.
+pub fn run(shared: SharedGame) -> Result<(), Error> {
     eframe::run_native(
         "CSE",
         eframe::NativeOptions::default(),
-        Box::new(|_cc| Ok(Box::new(GuiApp { game, selected_hex: None, pending_order: None, log }))),
+        Box::new(|_cc| {
+            Ok(Box::new(GuiApp {
+                shared,
+                selected_hex: None,
+                pending_order: None,
+                log: Vec::new(),
+                menu: MainMenuState::default(),
+            }))
+        }),
     )
     .map_err(|error| Error::new(format!("Failed to start the GUI: {error:?}")))
 }
@@ -52,22 +54,117 @@ enum OrderKind {
     Attack,
 }
 
+/// Text fields and any error from the last New/Load attempt on the main menu.
+struct MainMenuState {
+    scenario_path: String,
+    load_path: String,
+    error: Option<String>,
+}
+
+impl Default for MainMenuState {
+    fn default() -> Self {
+        MainMenuState {
+            scenario_path: "scenarios/basic_scenario.scen".to_string(),
+            load_path: String::new(),
+            error: None,
+        }
+    }
+}
+
 struct GuiApp {
-    game: Game,
+    shared: SharedGame,
     selected_hex: Option<(u32, u32)>,
     pending_order: Option<PendingOrder>,
     /// Status/event/battle-report/error lines, oldest first — the window's
-    /// equivalent of the terminal's scrollback.
+    /// equivalent of the terminal's scrollback. Only covers actions taken
+    /// through this window; the terminal's own output stays in the terminal.
     log: Vec<String>,
+    menu: MainMenuState,
 }
 
 impl eframe::App for GuiApp {
     fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
+        // The shared game can change from the terminal thread at any time,
+        // with no window event to prompt a redraw here — poll for it.
+        ui.ctx().request_repaint_after(std::time::Duration::from_millis(200));
+
+        // Lock a clone of the Arc, not `self.shared` directly, so the guard
+        // doesn't borrow `self` and block the `&mut self` calls below.
+        let shared = self.shared.clone();
+        let mut guard = shared.lock().unwrap();
+        match guard.as_mut() {
+            Some(game) => self.render_playing(ui, game),
+            None => {
+                drop(guard);
+                self.render_main_menu(ui);
+            }
+        }
+    }
+}
+
+impl GuiApp {
+    fn render_main_menu(&mut self, ui: &mut egui::Ui) {
+        egui::CentralPanel::default().show(ui, |ui| {
+            ui.vertical_centered(|ui| {
+                ui.add_space(60.0);
+                ui.heading("CSE — Combat Simulation Engine");
+                ui.add_space(30.0);
+
+                ui.label("Scenario file:");
+                ui.add(egui::TextEdit::singleline(&mut self.menu.scenario_path).desired_width(320.0));
+                if ui.button("New Game").clicked() {
+                    let result = crate::new_game(&self.menu.scenario_path);
+                    self.adopt_game(result);
+                }
+
+                ui.add_space(20.0);
+
+                ui.label("Save file:");
+                ui.add(egui::TextEdit::singleline(&mut self.menu.load_path).desired_width(320.0));
+                if ui.button("Load Game").clicked() {
+                    let result = crate::load_game(&self.menu.load_path);
+                    self.adopt_game(result);
+                }
+
+                ui.add_space(20.0);
+                if ui.button("Quit").clicked() {
+                    std::process::exit(0);
+                }
+
+                if let Some(error) = &self.menu.error {
+                    ui.add_space(10.0);
+                    ui.colored_label(egui::Color32::from_rgb(200, 60, 60), error);
+                }
+            });
+        });
+    }
+
+    /// Adopt the result of a New/Load attempt: on success, auto-play any
+    /// AI-controlled faction already on turn and drain turn-1 event
+    /// messages — the same treatment `lib.rs`'s `run()` gives a freshly
+    /// built or loaded game — then publish it to `shared`. On failure,
+    /// leave the shared game untouched and show the error on the menu.
+    fn adopt_game(&mut self, result: Result<Game, Error>) {
+        match result {
+            Ok(mut game) => {
+                self.log.clear();
+                self.log.extend(play_pending_ai_turns(&mut game, None));
+                self.log.extend(game.take_event_messages());
+                self.selected_hex = None;
+                self.pending_order = None;
+                self.menu.error = None;
+                *self.shared.lock().unwrap() = Some(game);
+            }
+            Err(error) => self.menu.error = Some(error.error_message),
+        }
+    }
+
+    fn render_playing(&mut self, ui: &mut egui::Ui, game: &mut Game) {
         egui::Panel::top("status").show(ui, |ui| {
             ui.horizontal(|ui| {
-                ui.label(self.game.status());
+                ui.label(game.status());
                 if ui.button("End Turn").clicked() {
-                    self.end_turn();
+                    self.end_turn(game);
                 }
             });
         });
@@ -82,21 +179,19 @@ impl eframe::App for GuiApp {
 
         if let Some((x, y)) = self.selected_hex {
             egui::Panel::right("inspector").min_size(240.0).show(ui, |ui| {
-                render_inspector(ui, &self.game, x, y, &mut self.pending_order);
+                render_inspector(ui, game, x, y, &mut self.pending_order);
             });
         }
 
         egui::CentralPanel::default().show(ui, |ui| {
-            self.render_map(ui);
+            self.render_map(ui, game);
         });
     }
-}
 
-impl GuiApp {
-    fn end_turn(&mut self) {
-        let victory = self.game.end_turn();
-        self.log.extend(report_turn_transition(&mut self.game, &victory));
-        self.log.extend(play_pending_ai_turns(&mut self.game, victory));
+    fn end_turn(&mut self, game: &mut Game) {
+        let victory = game.end_turn();
+        self.log.extend(report_turn_transition(game, &victory));
+        self.log.extend(play_pending_ai_turns(game, victory));
     }
 
     /// Resolve an armed order against the just-clicked destination hex:
@@ -104,13 +199,13 @@ impl GuiApp {
     /// which unit in a multi-unit stack moves is a deferred nicety, not
     /// needed for a first cut), `Attack` fights it. Either way the result
     /// (or the error) goes into the log.
-    fn resolve_order(&mut self, order: PendingOrder, to: (u32, u32)) {
+    fn resolve_order(&mut self, game: &mut Game, order: PendingOrder, to: (u32, u32)) {
         match order.kind {
-            OrderKind::Move => match self.game.move_unit(order.from.0, order.from.1, to.0, to.1, 0) {
+            OrderKind::Move => match game.move_unit(order.from.0, order.from.1, to.0, to.1, 0) {
                 Ok(()) => self.selected_hex = Some(to),
                 Err(error) => self.log.push(error.error_message),
             },
-            OrderKind::Attack => match self.game.attack(order.from, to, &mut rand::rng()) {
+            OrderKind::Attack => match game.attack(order.from, to, &mut rand::rng()) {
                 Ok(report) => {
                     self.log.push(report.to_string());
                     self.selected_hex = Some(to);
@@ -120,8 +215,8 @@ impl GuiApp {
         }
     }
 
-    fn render_map(&mut self, ui: &mut egui::Ui) {
-        let hexes = self.game.state.map.all_locations();
+    fn render_map(&mut self, ui: &mut egui::Ui, game: &mut Game) {
+        let hexes = game.state.map.all_locations();
         let hex_set: std::collections::HashSet<(u32, u32)> =
             hexes.iter().map(|(coords, _)| *coords).collect();
 
@@ -133,7 +228,7 @@ impl GuiApp {
         for ((x, y), terrain) in &hexes {
             view.draw_hex(&painter, *x, *y, *terrain);
         }
-        for unit in self.game.state.units.values() {
+        for unit in game.state.units.values() {
             if let UnitLocation::OnMap(coords) = &unit.location {
                 view.draw_unit(&painter, coords.x, coords.y, &unit.name, &unit.faction);
             }
@@ -143,7 +238,7 @@ impl GuiApp {
             && let Some(pos) = response.interact_pointer_pos() {
                 let hex = view.hex_at(pos, &hex_set);
                 match (self.pending_order.take(), hex) {
-                    (Some(order), Some(target)) => self.resolve_order(order, target),
+                    (Some(order), Some(target)) => self.resolve_order(game, order, target),
                     _ => self.selected_hex = hex,
                 }
             }
@@ -290,8 +385,8 @@ impl MapView {
 }
 
 /// Center of the map's bounding box in hexx world space — same computation
-/// as `visualiser.rs`'s `map_center`, so both views agree on where "the
-/// middle of the map" is.
+/// as the old Bevy visualiser used, so both agreed on where "the middle of
+/// the map" is (retained now as this window's sole map view).
 fn map_center(layout: &HexLayout, hexes: &[((u32, u32), Terrain)]) -> HexVec2 {
     let positions = hexes.iter().map(|((x, y), _)| layout.hex_to_world_pos(to_hex(*x, *y)));
     let (mut min, mut max) = (HexVec2::splat(f32::MAX), HexVec2::splat(f32::MIN));
@@ -373,10 +468,10 @@ mod tests {
         assert_eq!(map_center(&hex_layout(), &[]), HexVec2::ZERO);
     }
 
-    // resolve_order/end_turn touch only game/selected_hex/log — no live
-    // egui::Context needed, so these are exercised directly rather than
-    // through simulated clicks (this sandbox has no input-injection tool
-    // to drive the real window with anyway).
+    // resolve_order/end_turn/adopt_game touch only plain data (game, log,
+    // selected_hex, shared, menu) — no live egui::Context needed, so these
+    // are exercised directly rather than through simulated clicks (this
+    // sandbox has no input-injection tool to drive the real window anyway).
 
     use crate::core::unit::LocationCoords;
 
@@ -423,34 +518,40 @@ hard_attack = 3
 "#)
     }
 
-    fn app(units: &str) -> GuiApp {
-        let game = Game::build(minimal_scenario(units)).unwrap();
-        GuiApp { game, selected_hex: None, pending_order: None, log: Vec::new() }
+    fn app() -> GuiApp {
+        GuiApp {
+            shared: crate::new_shared_game(),
+            selected_hex: None,
+            pending_order: None,
+            log: Vec::new(),
+            menu: MainMenuState::default(),
+        }
     }
 
     #[test]
     fn resolve_order_moves_a_unit_on_success() {
-        let mut app = app(r#"
+        let mut game = Game::build(minimal_scenario(r#"
 [[units]]
 name = "Axis Division"
 toe = "test_toe"
 faction = "AX"
 location = { x = 1, y = 1 }
-"#);
+"#)).unwrap();
+        let mut app = app();
 
-        app.resolve_order(PendingOrder { kind: OrderKind::Move, from: (1, 1) }, (2, 1));
+        app.resolve_order(&mut game, PendingOrder { kind: OrderKind::Move, from: (1, 1) }, (2, 1));
 
         assert!(app.log.is_empty());
         assert_eq!(app.selected_hex, Some((2, 1)));
         assert_eq!(
-            app.game.state.units["Axis Division"].location,
+            game.state.units["Axis Division"].location,
             UnitLocation::OnMap(LocationCoords { x: 2, y: 1 }),
         );
     }
 
     #[test]
     fn resolve_order_logs_an_error_on_a_failed_move() {
-        let mut app = app(r#"
+        let mut game = Game::build(minimal_scenario(r#"
 [[units]]
 name = "Axis Division"
 toe = "test_toe"
@@ -462,9 +563,10 @@ name = "Soviet Division"
 toe = "test_toe"
 faction = "SU"
 location = { x = 2, y = 1 }
-"#);
+"#)).unwrap();
+        let mut app = app();
 
-        app.resolve_order(PendingOrder { kind: OrderKind::Move, from: (1, 1) }, (2, 1));
+        app.resolve_order(&mut game, PendingOrder { kind: OrderKind::Move, from: (1, 1) }, (2, 1));
 
         assert_eq!(app.log.len(), 1);
         assert!(app.log[0].contains("enemy"));
@@ -472,7 +574,7 @@ location = { x = 2, y = 1 }
 
     #[test]
     fn resolve_order_attacks_and_logs_the_battle_report() {
-        let mut app = app(r#"
+        let mut game = Game::build(minimal_scenario(r#"
 [[units]]
 name = "Axis Division"
 toe = "test_toe"
@@ -484,9 +586,10 @@ name = "Soviet Division"
 toe = "test_toe"
 faction = "SU"
 location = { x = 2, y = 1 }
-"#);
+"#)).unwrap();
+        let mut app = app();
 
-        app.resolve_order(PendingOrder { kind: OrderKind::Attack, from: (1, 1) }, (2, 1));
+        app.resolve_order(&mut game, PendingOrder { kind: OrderKind::Attack, from: (1, 1) }, (2, 1));
 
         assert_eq!(app.log.len(), 1);
         assert!(app.log[0].contains("Outcome"));
@@ -495,17 +598,41 @@ location = { x = 2, y = 1 }
 
     #[test]
     fn end_turn_appends_status_to_the_log() {
-        let mut app = app(r#"
+        let mut game = Game::build(minimal_scenario(r#"
 [[units]]
 name = "Axis Division"
 toe = "test_toe"
 faction = "AX"
 location = { x = 1, y = 1 }
-"#);
+"#)).unwrap();
+        let mut app = app();
 
-        app.end_turn();
+        app.end_turn(&mut game);
 
         assert!(!app.log.is_empty());
         assert!(app.log[0].contains("to move"));
+    }
+
+    #[test]
+    fn adopt_game_populates_shared_state_on_success() {
+        let path = concat!(env!("CARGO_MANIFEST_DIR"), "/scenarios/basic_scenario.scen");
+        let mut app = app();
+
+        let result = crate::new_game(path);
+        app.adopt_game(result);
+
+        assert!(app.menu.error.is_none());
+        assert!(app.shared.lock().unwrap().is_some());
+    }
+
+    #[test]
+    fn adopt_game_records_an_error_on_failure_and_leaves_shared_state_untouched() {
+        let mut app = app();
+
+        let result = crate::new_game("does/not/exist.scen");
+        app.adopt_game(result);
+
+        assert!(app.menu.error.is_some());
+        assert!(app.shared.lock().unwrap().is_none());
     }
 }

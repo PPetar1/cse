@@ -1,5 +1,3 @@
-use std::env;
-
 use rustyline::completion::{Completer, FilenameCompleter, Pair};
 use rustyline::error::ReadlineError;
 use rustyline::highlight::Highlighter;
@@ -9,25 +7,21 @@ use rustyline::validate::Validator;
 use rustyline::{CompletionType, Config, Context, Editor, Helper};
 
 fn main() {
-    // Visualiser subprocess entry: winit event loops can only be created once
-    // per process, so each `view` command spawns a fresh process with this flag.
-    let args: Vec<String> = env::args().collect();
-    if args.len() >= 3 && args[1] == "--view" {
-        if let Err(error) = cse::run_view_subprocess(&args[2]) {
-            eprintln!("{}", error.error_message);
-        }
-        return;
-    }
+    let shared = cse::new_shared_game();
 
-    // The real interface (Phase 6): runs in this same process for the whole
-    // session, opt-in for now alongside the terminal loop below.
-    if args.len() >= 3 && args[1] == "--gui" {
-        if let Err(error) = cse::run_gui(&args[2]) {
-            eprintln!("{}", error.error_message);
-        }
-        return;
-    }
+    // The terminal loop runs on its own thread; the GUI (`run_gui`) owns the
+    // main thread, since winit event loops need to run there. Both act on
+    // the same shared game, so a command from either side is immediately
+    // visible to the other — see `SharedGame` in lib.rs.
+    let terminal_shared = shared.clone();
+    std::thread::spawn(move || run_terminal(terminal_shared));
 
+    if let Err(error) = cse::run_gui(shared) {
+        eprintln!("{}", error.error_message);
+    }
+}
+
+fn run_terminal(shared: cse::SharedGame) {
     let config = Config::builder()
         .completion_type(CompletionType::List)
         .build();
@@ -35,16 +29,16 @@ fn main() {
         Editor::with_config(config).expect("Failed to initialise the terminal line editor");
     editor.set_helper(Some(CommandHelper { file_completer: FilenameCompleter::new() }));
 
-    let mut current_game = None;
-
     loop {
         let input = match editor.readline("> ") {
             Ok(line) => line,
-            // Ctrl-C / Ctrl-D quit, same as `exit`.
-            Err(ReadlineError::Interrupted) | Err(ReadlineError::Eof) => break,
+            // Ctrl-C / Ctrl-D quit the whole process, same as `exit` — this
+            // thread can't gracefully hand off to the GUI on the main thread,
+            // so it ends the session outright rather than just itself.
+            Err(ReadlineError::Interrupted) | Err(ReadlineError::Eof) => std::process::exit(0),
             Err(error) => {
                 eprintln!("{error}");
-                break;
+                std::process::exit(0);
             }
         };
 
@@ -54,18 +48,13 @@ fn main() {
         let _ = editor.add_history_entry(&input);
 
         if input.trim() == "exit" {
-            break;
+            std::process::exit(0);
         }
 
-        match cse::run(&input, current_game.as_mut()) {
-            Ok(Some(game)) => current_game = Some(game),
-            Ok(None) => (),
-            Err(error) => println!("{}", error.error_message),
+        if let Err(error) = cse::run_shared(&input, &shared) {
+            println!("{}", error.error_message);
         }
     }
-
-    // Stop feeding any open view windows; they keep showing their last state.
-    cse::cleanup_view();
 }
 
 /// Tab completion: command keywords for the first word, file paths for the

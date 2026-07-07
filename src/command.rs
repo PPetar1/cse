@@ -10,7 +10,7 @@ use crate::Error;
 pub const COMMAND_KEYWORDS: &[&str] = &[
     "new", "load", "save", "inspect", "units", "move", "attack", "air_support", "interdict",
     "interdiction", "simulate", "end_turn", "status", "victory", "reinforcements", "events",
-    "supply", "view", "help", "exit",
+    "supply", "help", "exit",
 ];
 
 pub(crate) const HELP_TEXT: &str = "\
@@ -32,7 +32,6 @@ Commands:
   reinforcements                      show scheduled reinforcements/withdrawals and whether each has arrived
   events                              show scheduled scenario events and whether each has fired
   supply                              show whether each on-map unit is supplied or cut off
-  view                                open the map window
   help                                show this help
   exit                                quit";
 
@@ -56,7 +55,6 @@ pub(crate) enum Command<'a> {
     Reinforcements,
     Events,
     Supply,
-    View,
     Help,
 }
 
@@ -167,7 +165,6 @@ impl<'a> Command<'a> {
             "reinforcements" => Ok(Command::Reinforcements),
             "events" => Ok(Command::Events),
             "supply" => Ok(Command::Supply),
-            "view" => Ok(Command::View),
             "help" => Ok(Command::Help),
             _ => Err(Error::new("Unknown command. Type 'help' for a list of commands.")),
         }

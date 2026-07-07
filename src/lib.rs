@@ -6,21 +6,40 @@ mod game;
 mod gui;
 mod procedures;
 mod utils;
-mod view;
-mod visualiser;
 
 pub use command::COMMAND_KEYWORDS;
 pub use error::Error;
 pub use gui::run as run_gui;
-pub use view::{cleanup_view, run_view_subprocess};
 
 use postcard::{from_bytes, to_allocvec};
 
 use std::{fs::File, io::{Read, Write}};
+use std::sync::{Arc, Mutex};
 
 use command::{Command, HELP_TEXT, InspectTarget};
 use game::{Game, VictoryReport};
-use view::{refresh_view, view};
+
+/// A game shared between the terminal thread and the GUI's main thread: both
+/// read and mutate the same session, so a command from either side is
+/// immediately visible to the other. `None` until a game is started (`new`)
+/// or resumed (`load`), from either side.
+pub type SharedGame = Arc<Mutex<Option<Game>>>;
+
+pub fn new_shared_game() -> SharedGame {
+    Arc::new(Mutex::new(None))
+}
+
+/// Run one terminal command against a shared game: locks, runs it exactly
+/// like a single-threaded caller would via `run`, and stores the result back
+/// (a new/loaded game replaces whatever was there). Output still goes to
+/// stdout, matching `run`'s existing per-command printing.
+pub fn run_shared(input: &str, shared: &SharedGame) -> Result<(), Error> {
+    let mut guard = shared.lock().unwrap();
+    if let Some(game) = run(input, guard.as_mut())? {
+        *guard = Some(game);
+    }
+    Ok(())
+}
 
 pub fn run(input: &str, mut current_game: Option<&mut Game>) -> Result<Option<Game>, Error> {
     let mut new_game = match Command::parse(input)? {
@@ -99,11 +118,7 @@ pub fn run(input: &str, mut current_game: Option<&mut Game>) -> Result<Option<Ga
             None
         }
         Command::Supply => {
-            println!("{}", require_game(current_game.as_deref_mut())?.supply_status_summary());
-            None
-        }
-        Command::View => {
-            view(require_game(current_game.as_deref_mut())?)?;
+            println!("{}", require_game(current_game)?.supply_status_summary());
             None
         }
         Command::Help => {
@@ -127,12 +142,6 @@ pub fn run(input: &str, mut current_game: Option<&mut Game>) -> Result<Option<Ga
         for message in game.take_event_messages() {
             println!("{message}");
         }
-    }
-
-    // Any open view window watches the snapshot file, so keep it mirroring the
-    // game after every successful command (no-op until `view` has created it).
-    if let Some(game) = new_game.as_ref().or(current_game.as_deref()) {
-        refresh_view(game);
     }
 
     Ok(new_game)
@@ -198,14 +207,17 @@ fn inspect(game: &Game, target: &InspectTarget) -> Result<(), Error> {
     Ok(())
 }
 
-fn new_game(scenario_path: &str) -> Result<Game, Error> {
+/// `pub(crate)`, not just a `run()` internal: `gui.rs`'s main menu calls these
+/// directly for New/Load, since it builds/loads a game outside the shared
+/// mutex (there's nothing to lock yet) rather than routing through `run`.
+pub(crate) fn new_game(scenario_path: &str) -> Result<Game, Error> {
     let mut scen_file = File::open(scenario_path)?;
     let mut contents = String::new();
     scen_file.read_to_string(&mut contents)?;
     Game::build(contents)
 }
 
-fn load_game(save_path: &str) -> Result<Game, Error> {
+pub(crate) fn load_game(save_path: &str) -> Result<Game, Error> {
     let mut file = File::open(save_path)?;
     let mut contents = Vec::new();
     file.read_to_end(&mut contents)?;
@@ -214,7 +226,7 @@ fn load_game(save_path: &str) -> Result<Game, Error> {
     Ok(game)
 }
 
-fn save_game(save_path: &str, game: &Game) -> Result<(), Error> {
+pub(crate) fn save_game(save_path: &str, game: &Game) -> Result<(), Error> {
     let mut file = File::create(save_path)?;
 
     let bin: Vec<u8> = to_allocvec(game)?;
