@@ -1,8 +1,10 @@
 //! The real interface (Phase 6): an eframe/egui window that shows a main
 //! menu (New/Load/Quit) when no game is active, and once one is, renders the
 //! map, lets the player click a hex to inspect its units, issue `move`/
-//! `attack` orders and end the turn. `air_support`/`interdict` still need
-//! the terminal (see docs/roadmap.md Phase 6).
+//! `attack`/`air_support`/`interdict` orders, end the turn, and (from the
+//! same header) save/load/start a new game or quit mid-session. Only an
+//! in-app scenario/save-file picker is still terminal-only — paths are
+//! typed, not browsed (see docs/roadmap.md Phase 6).
 //!
 //! This window owns the main thread for the whole process — winit event
 //! loops must run there — while the terminal command loop (`main.rs`) runs
@@ -38,6 +40,8 @@ pub fn run(shared: SharedGame) -> Result<(), Error> {
                 log: Vec::new(),
                 menu: MainMenuState::default(),
                 selected_air_unit: String::new(),
+                dialog: None,
+                pending_menu_action: None,
             }))
         }),
     )
@@ -59,10 +63,13 @@ enum OrderKind {
     AirSupport { air_unit: String },
 }
 
-/// Text fields and any error from the last New/Load attempt on the main menu.
+/// Text fields and any error from the last New/Load attempt — shared between
+/// the main menu and the mid-game Save/Load/New dialogs (`DialogKind`),
+/// since both need the same three path fields.
 struct MainMenuState {
     scenario_path: String,
     load_path: String,
+    save_path: String,
     error: Option<String>,
 }
 
@@ -71,9 +78,30 @@ impl Default for MainMenuState {
         MainMenuState {
             scenario_path: "scenarios/basic_scenario.scen".to_string(),
             load_path: String::new(),
+            save_path: String::new(),
             error: None,
         }
     }
+}
+
+/// A mid-game Save/Load/New popup, awaiting a path and a Confirm/Cancel.
+#[derive(Clone, Copy, PartialEq)]
+enum DialogKind {
+    Save,
+    Load,
+    New,
+}
+
+/// A Save/Load/New/Quit action confirmed from a `DialogKind` popup, deferred
+/// until after `ui()` releases its lock on `shared` — `MenuAction::Load`/
+/// `New` end up calling `GuiApp::adopt_game`, which locks `shared` itself,
+/// and `std::sync::Mutex` isn't reentrant, so running these while
+/// `render_playing` still holds the guard would deadlock.
+enum MenuAction {
+    Save(String),
+    Load(String),
+    New(String),
+    Quit,
 }
 
 struct GuiApp {
@@ -89,6 +117,11 @@ struct GuiApp {
     /// carried into an armed `AirSupport` order or an immediate `Interdict`
     /// call. Empty means nothing picked yet.
     selected_air_unit: String,
+    /// An open mid-game Save/Load/New popup, if any.
+    dialog: Option<DialogKind>,
+    /// A confirmed dialog action, applied once `ui()` has released its lock
+    /// on `shared` — see `MenuAction`'s doc comment.
+    pending_menu_action: Option<MenuAction>,
 }
 
 impl eframe::App for GuiApp {
@@ -103,11 +136,12 @@ impl eframe::App for GuiApp {
         let mut guard = shared.lock().unwrap();
         match guard.as_mut() {
             Some(game) => self.render_playing(ui, game),
-            None => {
-                drop(guard);
-                self.render_main_menu(ui);
-            }
+            None => self.render_main_menu(ui),
         }
+        // Release the lock before acting on a confirmed Save/Load/New/Quit —
+        // see `MenuAction`'s doc comment.
+        drop(guard);
+        self.apply_pending_menu_action();
     }
 }
 
@@ -122,8 +156,7 @@ impl GuiApp {
                 ui.label("Scenario file:");
                 ui.add(egui::TextEdit::singleline(&mut self.menu.scenario_path).desired_width(320.0));
                 if ui.button("New Game").clicked() {
-                    let result = crate::new_game(&self.menu.scenario_path);
-                    self.adopt_game(result);
+                    self.pending_menu_action = Some(MenuAction::New(self.menu.scenario_path.clone()));
                 }
 
                 ui.add_space(20.0);
@@ -131,13 +164,12 @@ impl GuiApp {
                 ui.label("Save file:");
                 ui.add(egui::TextEdit::singleline(&mut self.menu.load_path).desired_width(320.0));
                 if ui.button("Load Game").clicked() {
-                    let result = crate::load_game(&self.menu.load_path);
-                    self.adopt_game(result);
+                    self.pending_menu_action = Some(MenuAction::Load(self.menu.load_path.clone()));
                 }
 
                 ui.add_space(20.0);
                 if ui.button("Quit").clicked() {
-                    std::process::exit(0);
+                    self.pending_menu_action = Some(MenuAction::Quit);
                 }
 
                 if let Some(error) = &self.menu.error {
@@ -168,6 +200,30 @@ impl GuiApp {
         }
     }
 
+    /// Apply a confirmed Save/Load/New/Quit action. Always runs after
+    /// `ui()` has dropped its lock on `shared` (see `MenuAction`'s doc
+    /// comment), so it's free to lock again here.
+    fn apply_pending_menu_action(&mut self) {
+        let Some(action) = self.pending_menu_action.take() else { return };
+        match action {
+            MenuAction::Quit => std::process::exit(0),
+            MenuAction::Save(path) => {
+                let guard = self.shared.lock().unwrap();
+                let result = match guard.as_ref() {
+                    Some(game) => crate::save_game(&path, game),
+                    None => Err(Error::new("No game loaded.")),
+                };
+                drop(guard);
+                match result {
+                    Ok(()) => self.log.push(format!("Saved to {path}.")),
+                    Err(error) => self.log.push(error.error_message),
+                }
+            }
+            MenuAction::Load(path) => self.adopt_game(crate::load_game(&path)),
+            MenuAction::New(path) => self.adopt_game(crate::new_game(&path)),
+        }
+    }
+
     fn render_playing(&mut self, ui: &mut egui::Ui, game: &mut Game) {
         egui::Panel::top("status").show(ui, |ui| {
             ui.horizontal(|ui| {
@@ -175,8 +231,41 @@ impl GuiApp {
                 if ui.button("End Turn").clicked() {
                     self.end_turn(game);
                 }
+                ui.separator();
+                if ui.button("Save").clicked() {
+                    self.dialog = Some(DialogKind::Save);
+                }
+                if ui.button("Load").clicked() {
+                    self.dialog = Some(DialogKind::Load);
+                }
+                if ui.button("New").clicked() {
+                    self.dialog = Some(DialogKind::New);
+                }
+                if ui.button("Quit").clicked() {
+                    self.pending_menu_action = Some(MenuAction::Quit);
+                }
+            });
+            ui.horizontal(|ui| {
+                ui.label("Reports:");
+                if ui.button("Victory").clicked() {
+                    self.log.push(game.victory_conditions_summary());
+                }
+                if ui.button("Reinforcements").clicked() {
+                    self.log.push(game.reinforcement_schedule_summary());
+                }
+                if ui.button("Events").clicked() {
+                    self.log.push(game.event_schedule_summary());
+                }
+                if ui.button("Supply").clicked() {
+                    self.log.push(game.supply_status_summary());
+                }
+                if ui.button("Interdiction").clicked() {
+                    self.log.push(game.interdiction_summary());
+                }
             });
         });
+
+        self.render_dialog(ui);
 
         egui::Panel::bottom("log").min_size(140.0).show(ui, |ui| {
             egui::ScrollArea::vertical().stick_to_bottom(true).show(ui, |ui| {
@@ -194,6 +283,41 @@ impl GuiApp {
 
         egui::CentralPanel::default().show(ui, |ui| {
             self.render_map(ui, game);
+        });
+    }
+
+    /// The Save/Load/New popup armed by the top panel's buttons: a path
+    /// field (reusing the same `MainMenuState` fields the main menu's own
+    /// New/Load use) plus Confirm/Cancel. Confirm only arms
+    /// `pending_menu_action` — see its doc comment for why it can't act
+    /// immediately here.
+    fn render_dialog(&mut self, ui: &mut egui::Ui) {
+        let Some(kind) = self.dialog else { return };
+        let title = match kind {
+            DialogKind::Save => "Save game",
+            DialogKind::Load => "Load game",
+            DialogKind::New => "New game",
+        };
+        egui::Window::new(title).collapsible(false).resizable(false).show(ui.ctx(), |ui| {
+            let path = match kind {
+                DialogKind::Save => &mut self.menu.save_path,
+                DialogKind::Load => &mut self.menu.load_path,
+                DialogKind::New => &mut self.menu.scenario_path,
+            };
+            ui.text_edit_singleline(path);
+            ui.horizontal(|ui| {
+                if ui.button("Confirm").clicked() {
+                    self.pending_menu_action = Some(match kind {
+                        DialogKind::Save => MenuAction::Save(self.menu.save_path.clone()),
+                        DialogKind::Load => MenuAction::Load(self.menu.load_path.clone()),
+                        DialogKind::New => MenuAction::New(self.menu.scenario_path.clone()),
+                    });
+                    self.dialog = None;
+                }
+                if ui.button("Cancel").clicked() {
+                    self.dialog = None;
+                }
+            });
         });
     }
 
@@ -590,6 +714,8 @@ hard_attack = 3
             log: Vec::new(),
             menu: MainMenuState::default(),
             selected_air_unit: String::new(),
+            dialog: None,
+            pending_menu_action: None,
         }
     }
 
@@ -738,5 +864,41 @@ location = { x = 1, y = 1 }
 
         assert!(app.menu.error.is_some());
         assert!(app.shared.lock().unwrap().is_none());
+    }
+
+    #[test]
+    fn apply_pending_menu_action_new_populates_shared_state() {
+        let mut app = app();
+        let path = concat!(env!("CARGO_MANIFEST_DIR"), "/scenarios/basic_scenario.scen");
+
+        app.pending_menu_action = Some(MenuAction::New(path.to_string()));
+        app.apply_pending_menu_action();
+
+        assert!(app.menu.error.is_none());
+        assert!(app.shared.lock().unwrap().is_some());
+    }
+
+    #[test]
+    fn apply_pending_menu_action_saves_then_loads_through_a_file() {
+        let mut app = app();
+        let scenario_path = concat!(env!("CARGO_MANIFEST_DIR"), "/scenarios/basic_scenario.scen");
+        app.pending_menu_action = Some(MenuAction::New(scenario_path.to_string()));
+        app.apply_pending_menu_action();
+
+        let save_path = std::env::temp_dir().join(format!("cse_gui_test_save_{}.sav", std::process::id()));
+        let save_path_str = save_path.display().to_string();
+
+        app.pending_menu_action = Some(MenuAction::Save(save_path_str.clone()));
+        app.apply_pending_menu_action();
+        assert!(save_path.exists());
+        assert!(app.log.last().unwrap().contains("Saved"));
+
+        // Clear the shared game, then confirm Load brings it back from the file.
+        *app.shared.lock().unwrap() = None;
+        app.pending_menu_action = Some(MenuAction::Load(save_path_str));
+        app.apply_pending_menu_action();
+
+        let _ = std::fs::remove_file(&save_path);
+        assert!(app.shared.lock().unwrap().is_some());
     }
 }
