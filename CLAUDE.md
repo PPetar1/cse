@@ -429,9 +429,16 @@ Key data model (all TOML-configurable, see `scenarios/basic_scenario.scen`):
   way. An "End Turn" button calls `Game::end_turn` and the same
   `report_turn_transition`/`play_pending_ai_turns` (`lib.rs`, `pub(crate)`,
   returning `Vec<String>` so both the terminal and the GUI can consume
-  them) the terminal's `end_turn` command uses. Still no in-app scenario/
-  save-file *picker* — paths are typed into the dialog's text field, not
-  browsed.
+  them) the terminal's `end_turn` command uses. Every path field (main menu
+  and dialog alike) also has a "Browse…" button opening a `FilePicker`
+  (`GuiApp.file_picker: Option<FilePicker>`, rendered once from `ui()` after
+  the main menu/playing match and the `shared` lock are both done with, so
+  it works from either screen): a small `egui::Window` over one directory
+  at a time (`std::fs::read_dir`), `..` to go up, subdirectories to
+  navigate in, a file to write its path into whichever `MainMenuState`
+  field the button was next to (`PickerField::Scenario`/`Load`/`Save`) and
+  close the popup — starting in `scenarios/`/`save/` when present, per
+  `PickerField`.
 - Hex coords: offset coordinates, `OffsetHexMode::Even`, `HexOrientation::Pointy`
   (conversion happens inside `Location`; the rest of the code speaks (x, y) u32)
 - Lookups by name: `State` keeps `HashMap<String, _>` registries for units/toe/elements
@@ -573,7 +580,7 @@ so in `frontline_sector.scen` (Axis played by the AI) its Stuka wing
 currently never flies and its opponent's fighters never get declared —
 only a human player can order either today.
 
-**Phase 6 — the real interface — six slices landed.** `cargo run` (see
+**Phase 6 — the real interface — seven slices landed.** `cargo run` (see
 "Two interfaces, one game" above) opens a real egui/eframe window: the map
 (terrain-colored hexes, coordinate labels, faction-colored unit markers)
 plus a status header (`Game::status()`) with an End Turn button, click a
@@ -621,6 +628,16 @@ clamped to 0.3-3.0, and `response.drag_delta()` accumulates into pan —
 its own on-screen sizes off `MapView.size` (`HEX_SIZE * zoom`) instead of
 the raw constant, so hexes/markers/flags/fonts all grow and shrink
 together). This slice also fixed a real bug it turned up while testing
-interdiction near a stacked hex — see "Interdiction" above. Still open,
-cosmetic: an in-app scenario/save-file *picker* (paths are still typed,
-not browsed).
+interdiction near a stacked hex — see "Interdiction" above. Slice 7 added
+the last open item, an in-app file picker: every scenario/save-path field
+(main menu and the mid-game `DialogKind` popups alike) now has a
+"Browse…" button next to it, opening a `FilePicker` — a small `egui::Window`
+listing one directory at a time (`std::fs::read_dir`, sorted directories
+first) with a `..` entry to go up; clicking a subdirectory navigates into
+it, clicking a file writes its path into whichever `MainMenuState` field
+the button was next to (`PickerField`) and closes the popup. Starts in
+`scenarios/` for a scenario path or `save/` for a save path (both exist in
+the repo) when present, else the current directory — no new dependency,
+just a directory listing, so it works the same everywhere `cargo run`
+does. This was the roadmap's last open Phase 6 item; every command now has
+a full GUI equivalent, paths included.
