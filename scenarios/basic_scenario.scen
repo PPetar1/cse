@@ -5,6 +5,12 @@ map = "maps/basic_map.map"
 start_date = "1941-06-22"
 turn_length = 7
 
+# Fog of war: a faction only sees a hex if one of its own on-map units is
+# within detection_range hexes of it. Absent entirely (as in
+# frontline_sector.scen), every faction sees the whole board.
+[fog_of_war]
+detection_range = 3
+
 # Movement points to enter a hex, per terrain; 0 = impassable. Terrains left
 # out fall back to engine defaults (these values restate them explicitly).
 [terrain_costs]

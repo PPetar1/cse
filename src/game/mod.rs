@@ -1,3 +1,4 @@
+mod detection;
 mod events;
 mod interdiction;
 mod orders;
@@ -55,6 +56,10 @@ pub struct Game {
     /// Declared via `interdict`; cleared for a faction's own units the
     /// moment their turn starts again (see `game::interdiction`).
     interdiction_coverage: HashMap<String, Vec<(u32, u32)>>,
+    /// This scenario's detection range in hexes, if fog of war is on
+    /// (`[fog_of_war]`); `None` means full visibility, the behavior of
+    /// every scenario shipped before `game::detection` existed.
+    fog_of_war: Option<u32>,
 }
 
 impl Game {
@@ -81,6 +86,7 @@ impl Game {
            .collect();
        let events = scenario.events.clone();
        let supply_sources = scenario.supply_sources.clone();
+       let fog_of_war = scenario.fog_of_war.as_ref().map(|config| config.detection_range);
 
        let state = State::build(scenario)?;
 
@@ -104,6 +110,7 @@ impl Game {
            pending_event_messages: Vec::new(),
            supply_sources,
            interdiction_coverage: HashMap::new(),
+           fog_of_war,
        };
        // begin_turn() only fires from end_turn, so the very first player's
        // turn-1 arrivals/events need an explicit first pass here.
@@ -125,10 +132,15 @@ impl Game {
         }
     }
 
-    /// All units sorted by name — HashMap iteration order would make the
-    /// listing shuffle between runs.
+    /// Units visible to the faction currently on turn, sorted by name (own
+    /// units always included; enemy ones only if `is_unit_visible_to` says
+    /// so — see `game::detection`) — HashMap iteration order would make the
+    /// listing shuffle between runs otherwise.
     fn units_by_name(&self) -> Vec<&Unit> {
-        let mut units: Vec<&Unit> = self.state.units.values().collect();
+        let viewer = self.current_faction();
+        let mut units: Vec<&Unit> = self.state.units.values()
+            .filter(|unit| self.is_unit_visible_to(unit, viewer))
+            .collect();
         units.sort_by(|a, b| a.name.cmp(&b.name));
         units
     }

@@ -161,6 +161,19 @@ pub struct Scenario {
     /// which of its units are connected back to them.
     #[serde(default)]
     pub(super) supply_sources: Vec<SupplySource>,
+
+    /// `[fog_of_war]` — absent means full visibility (every scenario's
+    /// behavior before this existed); present, it caps how far a faction
+    /// can see past its own units (see `game::detection`).
+    #[serde(default)]
+    pub(super) fog_of_war: Option<FogOfWarConfig>,
+}
+
+/// A scenario's detection range, in hexes, from any of a faction's own
+/// on-map units — see `game::detection`.
+#[derive(Debug, Clone, serde::Deserialize, serde::Serialize)]
+pub(super) struct FogOfWarConfig {
+    pub(super) detection_range: u32,
 }
 
 #[derive(Debug, Clone, serde::Deserialize, serde::Serialize)]

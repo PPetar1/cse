@@ -519,7 +519,9 @@ impl GuiApp {
             view.draw_victory_flag(&painter, hex.x, hex.y, hex.points);
         }
 
+        let viewer = game.current_faction();
         let onmap_units: Vec<((u32, u32), String, String)> = game.state.units.values()
+            .filter(|unit| game.is_unit_visible_to(unit, viewer))
             .filter_map(|unit| match &unit.location {
                 UnitLocation::OnMap(coords) => Some(((coords.x, coords.y), unit.name.clone(), unit.faction.clone())),
                 UnitLocation::Offmap(_) => None,
@@ -605,6 +607,11 @@ impl GuiApp {
                     }
                 }
             });
+        }
+
+        if !game.is_visible_to(game.current_faction(), x, y) {
+            ui.label("Unknown — outside detection range.");
+            return;
         }
 
         let location = game.state.map.get_location(x, y).unwrap();

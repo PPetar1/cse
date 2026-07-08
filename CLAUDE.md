@@ -172,6 +172,9 @@ src/
                    (missing -> ready), gated on supply, see "Refit" below
   game/interdiction.rs — interdict/interdiction_summary, covering_fighter_units (used by
                    game/orders/attack.rs), see "Interdiction" below
+  game/detection.rs — is_visible_to/is_unit_visible_to, the fog-of-war display gate
+                   used by inspect/units (lib.rs) and the GUI's map/inspector, see
+                   "Fog of war / detection" below
   game/test_support.rs — shared #[cfg(test)] scenario fixtures for the game test suites
   core/mod.rs    — State::build: resolves a Scenario into runtime State (units get
                    their element rosters instantiated from their TOE here)
@@ -366,6 +369,30 @@ Key data model (all TOML-configurable, see `scenarios/basic_scenario.scen`):
   `Location::distance_to` against the range, called from both
   `prepare_battle`'s `air_support` branch and `Game::interdict`. See
   "Airfields" in docs/combat_design.md.
+- **Fog of war / detection** — opt-in per scenario via an optional
+  `[fog_of_war]` table (`detection_range: u32`, `game/scenario.rs`);
+  absent (`Game.fog_of_war: None`) means full visibility, every
+  scenario's behavior before this existed. `Game::is_visible_to(viewer, x,
+  y)`/`Game::is_unit_visible_to(unit, viewer)` (`game/detection.rs`) are
+  the whole model: a hex is visible iff some on-map unit of `viewer`'s is
+  within `detection_range` hexes of it (`Location::distance_to`, no LOS/
+  terrain blocking); an enemy unit still offmap is never visible under fog
+  of war. Display-only — `units_at_location`/`units_of_faction` (move/
+  attack validation, `ai.rs`, the GUI's Move/Attack buttons) are
+  unchanged, so legality never depends on what you've spotted. What *is*
+  gated: `Game::list_units`/`list_units_detail`'s shared `units_by_name`
+  (so the terminal's `units`/`units detail` show the on-turn faction's own
+  units plus only currently-visible enemy ones), `inspect <x> <y>`
+  (`lib.rs`, prints "Unknown — outside detection range." instead of the
+  roster when the hex isn't visible), and the GUI's `render_map` (skips
+  drawing a marker for an enemy unit that isn't visible) and
+  `render_inspector` (same "Unknown" message in place of the roster
+  block). Victory-hex holders, reinforcement/event schedules and supply
+  status stay full-information (scoreboard/meta info, not battlefield
+  awareness); `ai.rs` stays omniscient too — deliberate scope calls, see
+  "Fog of war / detection" in docs/combat_design.md.
+  `scenarios/basic_scenario.scen` turns it on (`detection_range = 3`);
+  `frontline_sector.scen` is untouched.
 - **GUI** — `gui.rs` (Phase 6, launched by `cargo run` — see "Two
   interfaces, one game" above) opens an eframe/egui window over a
   `SharedGame`. `GuiApp::ui` locks a clone of the `Arc` (not `self.shared`
@@ -641,3 +668,20 @@ the repo) when present, else the current directory — no new dependency,
 just a directory listing, so it works the same everywhere `cargo run`
 does. This was the roadmap's last open Phase 6 item; every command now has
 a full GUI equivalent, paths included.
+
+**Phase 7 — Operational depth — one slice landed.** Fog of war /
+detection: an optional `[fog_of_war]` scenario table (`detection_range`)
+gates what a faction is told about the enemy — a hex is visible if one of
+the faction's own on-map units is within range of it, no line-of-sight or
+terrain blocking yet (see "Fog of war / detection" above and in
+docs/combat_design.md for the full model and its deliberate
+simplifications: no contact persistence, the AI stays omniscient,
+victory-hex holders stay full-information). Move/attack validation is
+untouched — this is display-only, gating `inspect`/`units` in the
+terminal and the map/inspector in the GUI. `basic_scenario.scen` (the
+dev/test sandbox) exercises it at `detection_range = 3`;
+`frontline_sector.scen` is untouched. Phase 7's remaining scope (weather,
+ground conditions, entrenchment/fortification, leaders/command, deeper
+logistics, the AP-penetration/AoE-fire combat refinements from
+docs/ideas.md) is intentionally unordered — each gets broken down here as
+it's picked up, per the roadmap's own convention.

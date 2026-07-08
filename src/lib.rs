@@ -186,8 +186,13 @@ pub(crate) fn play_pending_ai_turns(game: &mut Game, mut victory: Option<Victory
 
 fn inspect(game: &Game, target: &InspectTarget) -> Result<(), Error> {
     let location = match target {
-        InspectTarget::Hex { x, y } => game.state.map.get_location(*x, *y)
-            .ok_or_else(|| Error::new("Hex not in range."))?,
+        InspectTarget::Hex { x, y } => {
+            if !game.is_visible_to(game.current_faction(), *x, *y) {
+                println!("Unknown — outside detection range.");
+                return Ok(());
+            }
+            game.state.map.get_location(*x, *y).ok_or_else(|| Error::new("Hex not in range."))?
+        }
         InspectTarget::Offmap(name) => game.state.map.get_offmap_location(name)
             .ok_or_else(|| Error::new("Location not found."))?,
     };

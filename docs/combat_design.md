@@ -335,6 +335,54 @@ an air unit's "airfield" is just wherever it currently sits.
   `mp`. Not exercised yet; both shipped scenarios keep `mp = 0` (stationary
   bases), only adding `range` and an on-map location.
 
+### Fog of war / detection (Phase 7, slice 1)
+
+Phase 7's first slice: whether a faction can see an enemy unit at all now
+depends on how close its own units are. Deliberately narrow scope — this
+is a first cut, not the whole of "operational depth."
+
+- Opt-in per scenario via an optional `[fog_of_war]` table (`detection_range:
+  u32`), mirroring `[victory_conditions]`/`[[supply_sources]]`'s "absent =
+  feature off" pattern — every scenario shipped before this existed keeps
+  behaving exactly as before (full visibility), so nothing needed
+  retuning. `basic_scenario.scen` (the dev/test sandbox) turns it on at
+  `detection_range = 3`; `frontline_sector.scen` (the tuned AI-vs-human
+  landmark) is untouched, since its own AI wouldn't react to being seen or
+  unseen anyway (see below).
+- `Game::is_visible_to(viewer, x, y)`/`Game::is_unit_visible_to(unit,
+  viewer)` (`game/detection.rs`) are the whole model: a hex is visible to
+  `viewer` iff some on-map unit of `viewer`'s is within `detection_range`
+  hexes of it (`Location::distance_to`, the same query `check_mission_range`
+  already uses) — pure hex distance, no line-of-sight or terrain blocking.
+  A unit is visible if it's the viewer's own, or (without fog of war) always,
+  or its on-map hex is visible; an enemy unit still sitting offmap (a
+  reserve box) is never visible under fog of war — this first slice can't
+  reveal what's waiting in reserve at all.
+- **Display-only, not a mechanics change.** `units_at_location`/
+  `units_of_faction` — read by move/attack validation, `ai.rs`, and the
+  GUI's Move/Attack button logic — are untouched; you can still legally
+  attack a hex without full information about who's defending it, same as
+  before. Only the *telling* is gated: the terminal's `inspect`/`units`
+  (via `Game::list_units`/`list_units_detail`'s shared `units_by_name`) and
+  the GUI's map markers (`GuiApp::render_map`) and inspector roster
+  (`GuiApp::render_inspector`) now show the on-turn faction's own units
+  always, plus only enemy units/hexes `is_visible_to`/`is_unit_visible_to`
+  currently allows.
+- **Deliberately not gated in this slice**: victory-hex holders
+  (`victory_conditions_summary`, the map's flag markers) — treated as
+  scoreboard/meta information, the same category as the turn counter, not
+  battlefield awareness. Reinforcement/event schedules and supply status
+  are untouched too. `ai.rs` keeps its existing full-information queries —
+  the AI stays omniscient, a new instance of the same already-documented
+  category of simplification as "the AI doesn't know air_support/interdict
+  exist" (see Airfields above).
+- Open questions, in the same rough-order spirit as the list below: LOS/
+  terrain blocking (right now a unit sees straight through a mountain),
+  contact persistence (a WitE-style "last known position, fading over
+  turns" instead of a hard binary visible/not), recon-specific detection
+  ranges (one scenario-wide number today, not per-TOE), and eventually
+  teaching the AI to respect it at all.
+
 ## Deliberate deviations from WitE2 (for now)
 
 - Flat defender terrain CV multiplier instead of WitE2's per-class density
