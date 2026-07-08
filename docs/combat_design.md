@@ -295,6 +295,21 @@ using `air_support`.
   the MP refill), so a declaration made on your turn survives exactly
   through the opponent's next turn — the only window in which it can
   matter under IGO-UGO — and must be redeclared every time you act again.
+- **Bug fixed:** nothing stopped a unit from interdicting the very hex it's
+  already physically stacked on (e.g. an air unit based right on the front
+  line, defending alongside the ground troops there — a natural first
+  thing to try from the GUI's inspector, since its Interdict button works
+  on any hex, including the one you're looking at). `prepare_battle` used
+  to add `covering_fighter_units` to the defender snapshot unconditionally,
+  so that unit's elements were counted twice: once as an ordinary ground
+  defender (`units_at_location`), once again as a covering fighter. Against
+  an attacker that could actually hit it (an anti-air-flagged element, or
+  an air-domain attacker), `apply_battle_losses` could then try to charge
+  more losses against its `ready` bucket than it actually had — a `u32`
+  underflow, which panics in a debug build (`cargo run`'s default) and
+  takes down the whole process, GUI included. Fixed by excluding, from the
+  covering-units list, any unit whose name is already in the hex's
+  `defender_units` — see the `_is_not_double_counted_as_a_defender` test.
 
 ### Airfields (Phase 5, slice 4)
 

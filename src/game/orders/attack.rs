@@ -208,8 +208,16 @@ impl Game {
         // cover this hex (`Game::interdict`) automatically join the fight,
         // whether or not the attacker flew an air_support mission. Never
         // part of `defender_names` — they don't retreat with the ground
-        // defenders, they just fly back to base.
-        let covering_units = self.covering_fighter_units(&defender_faction, to);
+        // defenders, they just fly back to base. Excludes any unit already
+        // physically stacked at the defending hex (e.g. an airfield unit
+        // co-located with the ground defenders it also covers) — it's
+        // already in `defender_units` above, and double-counting its
+        // elements would let `apply_battle_losses` charge more losses
+        // against it than it actually has (see the "double counted" test).
+        let covering_units: Vec<_> = self.covering_fighter_units(&defender_faction, to)
+            .into_iter()
+            .filter(|unit| !defender_units.iter().any(|defender| defender.name == unit.name))
+            .collect();
         if !covering_units.is_empty() {
             defenders.extend(combat::combat_elements(&covering_units, &self.state.elements)?);
         }
@@ -1171,6 +1179,67 @@ location = "SU Reserve"
         game.attack((1, 1), (2, 1), &mut rng).unwrap();
 
         assert_eq!(game.state.units["Soviet Fighter Wing"].elements[0].experience, 50);
+    }
+
+    const ANTI_AIR_ATTACKER_TOE: &str = r#"
+[[toe]]
+name = "flak_toe"
+size = "Regiment"
+mp = 16
+start_date = "1941-01-01"
+end_date = "1941-08-01"
+[[toe.elements]]
+name = "flak_gun"
+amount = 30
+
+[[elements]]
+name = "flak_gun"
+class = "AtGun"
+cv = 4.0
+vulnerability = 100
+anti_air = true
+[[elements.devices]]
+name = "88mm"
+accuracy = 100
+range = 3000
+rate_of_fire = 20
+soft_attack = 100
+hard_attack = 100
+air_attack = 100
+"#;
+
+    /// A fighter wing that is both a ground defender at the attacked hex
+    /// (co-located with the rifle division there, e.g. an airfield right on
+    /// the front line) *and* declares interdiction on that same hex — a
+    /// player exploring the new Interdict button naturally does this since
+    /// nothing in the UI or `interdict` stops covering the hex a unit is
+    /// already standing on. `prepare_battle` must not then double-count that
+    /// unit's elements as both ground defender and covering fighter.
+    #[test]
+    fn a_fighter_interdicting_its_own_hex_is_not_double_counted_as_a_defender() {
+        let units = format!(
+            "{OPPOSING_UNITS}\n{ANTI_AIR_ATTACKER_TOE}\n[[units]]\nname = \"Axis Flak\"\ntoe = \"flak_toe\"\nfaction = \"AX\"\nlocation = {{ x = 1, y = 1 }}\n{}",
+            SOVIET_FIGHTER_WING.replace(
+                "location = \"SU Reserve\"",
+                "location = { x = 2, y = 1 }",
+            ),
+        );
+        let mut game = Game::build(minimal_scenario(TWO_PLAYERS, &units)).unwrap();
+        game.end_turn(); // Soviet Union's turn.
+        game.interdict("Soviet Fighter Wing", (2, 1)).unwrap();
+        game.end_turn(); // Back to Axis, still turn 1.
+        let mut rng = StdRng::seed_from_u64(42);
+
+        // Must not panic (integer underflow on a doubled-counted `ready`
+        // bucket, from being both a ground defender at the hex and its own
+        // covering unit). If it's still around afterwards (it may also
+        // legitimately retreat/shatter/surrender like any other defender),
+        // it must not have taken more losses than its 10 elements allow.
+        game.attack((1, 1), (2, 1), &mut rng).unwrap();
+
+        if let Some(fighter) = game.state.units.get("Soviet Fighter Wing") {
+            assert!(fighter.elements[0].ready + fighter.elements[0].damaged <= 10);
+        }
     }
 
     const RANGED_BOMBER_WING: &str = r#"
