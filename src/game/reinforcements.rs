@@ -38,6 +38,7 @@ impl Game {
             if let Some(unit) = self.state.units.get_mut(&arrival.unit)
                 && unit.faction == faction {
                     unit.location = arrival.location.clone();
+                    unit.fort_level = 0; // Stepping on or off the map is a relocation too.
                 }
         }
     }

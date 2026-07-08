@@ -1,4 +1,5 @@
 mod detection;
+mod entrenchment;
 mod events;
 mod interdiction;
 mod orders;

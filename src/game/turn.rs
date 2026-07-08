@@ -42,7 +42,8 @@ impl Game {
     /// reinforcements/withdrawals and scenario events land first (an event's
     /// morale/experience delta feeds straight into the same turn's drift
     /// target below), then refit (repair/replacements for units connected to
-    /// supply), then a fresh movement budget from the TOE, interdiction
+    /// supply), then entrenchment (a fort level for every unit still standing
+    /// where it was), then a fresh movement budget from the TOE, interdiction
     /// coverage resetting (it must be redeclared every time this faction
     /// acts), and morale drifting back toward the faction default (rest
     /// heals battered units, euphoria fades).
@@ -50,6 +51,7 @@ impl Game {
         self.apply_scheduled_arrivals();
         self.apply_scheduled_events();
         self.apply_refit();
+        self.apply_entrenchment();
 
         let player = self.player_on_turn();
         let faction = player.faction_tag.clone();

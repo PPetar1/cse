@@ -175,6 +175,8 @@ src/
   game/detection.rs — is_visible_to/is_unit_visible_to, the fog-of-war display gate
                    used by inspect/units (lib.rs) and the GUI's map/inspector, see
                    "Fog of war / detection" below
+  game/entrenchment.rs — apply_entrenchment (turn-start fort_level tick + cap), see
+                   "Entrenchment" below
   game/test_support.rs — shared #[cfg(test)] scenario fixtures for the game test suites
   core/mod.rs    — State::build: resolves a Scenario into runtime State (units get
                    their element rosters instantiated from their TOE here)
@@ -393,6 +395,26 @@ Key data model (all TOML-configurable, see `scenarios/basic_scenario.scen`):
   "Fog of war / detection" in docs/combat_design.md.
   `scenarios/basic_scenario.scen` turns it on (`detection_range = 3`);
   `frontline_sector.scen` is untouched.
+- **Entrenchment** — `Unit.fort_level: u32` (`core/unit.rs`, 0-5, capped at
+  `game::entrenchment::MAX_FORT_LEVEL`); `Game::apply_entrenchment`
+  (`game/entrenchment.rs`, called from `begin_turn`) adds one level to
+  every on-map unit of the faction coming on turn. Reset to 0 at every
+  relocation site: `move_unit`, the post-battle advance and a beaten
+  defender's retreat (both `game/orders/attack.rs`), and scheduled
+  reinforcements/withdrawals (`game/reinforcements.rs`) — holding a hex or
+  losing a fight without moving does *not* reset it. Purely defensive:
+  `CombatElement.fort_level` (`procedures/combat.rs`) carries the owning
+  unit's level into the battle snapshot, and `resolve_battle` multiplies
+  only `defender_cv` (never `attacker_cv`) by
+  `fort_defense_modifier(average_fort_level(defenders))` — stacks with
+  `terrain_defense` the same way morale/experience already stack into
+  `morexp_modifier`. Shown in `Unit`'s `Display` (the terminal's `inspect`/
+  `units`) and the GUI's inspector roster as "Entrenchment: level N", plus
+  small pips drawn under each unit's map marker
+  (`MapView::draw_unit`/`UnitMarker`). No scenario-config surface — the
+  bonus-per-level and cap are code constants, a universal combat rule, not
+  a per-scenario toggle like fog of war. See "Entrenchment" in
+  docs/combat_design.md.
 - **GUI** — `gui.rs` (Phase 6, launched by `cargo run` — see "Two
   interfaces, one game" above) opens an eframe/egui window over a
   `SharedGame`. `GuiApp::ui` locks a clone of the `Arc` (not `self.shared`
@@ -669,7 +691,7 @@ just a directory listing, so it works the same everywhere `cargo run`
 does. This was the roadmap's last open Phase 6 item; every command now has
 a full GUI equivalent, paths included.
 
-**Phase 7 — Operational depth — one slice landed.** Fog of war /
+**Phase 7 — Operational depth — two slices landed.** Fog of war /
 detection: an optional `[fog_of_war]` scenario table (`detection_range`)
 gates what a faction is told about the enemy — a hex is visible if one of
 the faction's own on-map units is within range of it, no line-of-sight or
@@ -680,8 +702,16 @@ victory-hex holders stay full-information). Move/attack validation is
 untouched — this is display-only, gating `inspect`/`units` in the
 terminal and the map/inspector in the GUI. `basic_scenario.scen` (the
 dev/test sandbox) exercises it at `detection_range = 3`;
-`frontline_sector.scen` is untouched. Phase 7's remaining scope (weather,
-ground conditions, entrenchment/fortification, leaders/command, deeper
+`frontline_sector.scen` is untouched. Entrenchment: a unit gains one fort
+level per turn spent stationary (capped at 5), reset to 0 the moment it
+relocates — moving, retreating, or advancing into a vacated hex, but not
+holding or losing in place (see "Entrenchment" above and in
+docs/combat_design.md). Unlike fog of war this isn't scenario-configurable
+— the bonus-per-level and cap are code constants, a universal combat rule.
+Purely defensive: it boosts a defending stack's final CV alongside
+terrain, never an attacker's own. Shown in `inspect`/`units`, the GUI's
+inspector, and as small pips under each unit's map marker. Phase 7's
+remaining scope (weather, ground conditions, leaders/command, deeper
 logistics, the AP-penetration/AoE-fire combat refinements from
 docs/ideas.md) is intentionally unordered — each gets broken down here as
 it's picked up, per the roadmap's own convention.

@@ -528,7 +528,10 @@ impl GuiApp {
             })
             .collect();
         for (coords, name, faction, slot) in assign_stack_slots(onmap_units) {
-            view.draw_unit(&painter, coords.0, coords.1, slot, &name, &faction);
+            // Re-looked-up rather than threaded through assign_stack_slots:
+            // fort_level doesn't affect sort order, only the drawing.
+            let fort_level = game.state.units.get(&name).map_or(0, |unit| unit.fort_level);
+            view.draw_unit(&painter, UnitMarker { x: coords.0, y: coords.1, slot, name: &name, faction: &faction, fort_level });
         }
 
         if response.clicked()
@@ -624,6 +627,7 @@ impl GuiApp {
             ui.separator();
             ui.label(egui::RichText::new(&unit.name).strong());
             ui.label(format!("Faction: {}   TOE: {}", unit.faction, unit.toe));
+            ui.label(format!("Entrenchment: level {}", unit.fort_level));
             for element in &unit.elements {
                 ui.label(format!(
                     "{}: {} ready, {} damaged — morale {}, experience {}",
@@ -644,6 +648,17 @@ fn hex_layout(zoom: f32) -> HexLayout {
 
 fn to_hex(x: u32, y: u32) -> Hex {
     Hex::from_offset_coordinates([x as i32, y as i32], OffsetHexMode::Even, HexOrientation::Pointy)
+}
+
+/// Everything `MapView::draw_unit` needs for one on-map unit marker, bundled
+/// to keep the method's argument count sane.
+struct UnitMarker<'a> {
+    x: u32,
+    y: u32,
+    slot: u32,
+    name: &'a str,
+    faction: &'a str,
+    fort_level: u32,
 }
 
 /// The hex-to-screen mapping for one frame's map render: the map's world-space
@@ -726,18 +741,34 @@ impl MapView {
     /// `slot` is this unit's 0-based position among others stacked on the
     /// same hex (see `assign_stack_slots`) — stacked units offset sideways
     /// instead of drawing on top of each other.
-    fn draw_unit(&self, painter: &egui::Painter, x: u32, y: u32, slot: u32, name: &str, faction: &str) {
-        let center = self.screen_pos(x, y);
-        let offset_x = slot as f32 * self.size * 0.28;
+    fn draw_unit(&self, painter: &egui::Painter, marker: UnitMarker) {
+        let center = self.screen_pos(marker.x, marker.y);
+        let offset_x = marker.slot as f32 * self.size * 0.28;
         let pos = egui::pos2(center.x + offset_x, center.y - self.size * 0.15);
-        painter.circle_filled(pos, self.size * 0.22, faction_color(faction));
+        painter.circle_filled(pos, self.size * 0.22, faction_color(marker.faction));
         painter.text(
             pos,
             egui::Align2::CENTER_CENTER,
-            short_name(name),
+            short_name(marker.name),
             egui::FontId::proportional(9.0 * (self.size / HEX_SIZE)),
             egui::Color32::WHITE,
         );
+
+        // Entrenchment: one small pip per fort level, in a row under the
+        // marker — a glance at how dug in this unit is without needing to
+        // inspect it.
+        let pip_radius = self.size * 0.035;
+        let pip_gap = self.size * 0.09;
+        let pip_y = pos.y + self.size * 0.22 + pip_radius * 1.5;
+        let first_pip_x = pos.x - pip_gap * (marker.fort_level.saturating_sub(1)) as f32 / 2.0;
+        for level in 0..marker.fort_level {
+            let pip_x = first_pip_x + pip_gap * level as f32;
+            painter.circle_filled(
+                egui::pos2(pip_x, pip_y),
+                pip_radius,
+                egui::Color32::from_rgb(230, 200, 60),
+            );
+        }
     }
 
     /// A small pennant flag in the hex's top-right quadrant, with its point

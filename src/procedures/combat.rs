@@ -28,6 +28,12 @@ const DAMAGE_CHANCE: f32 = 35.0;
 /// Final-CV odds ratio at which the defender is forced to retreat.
 const RETREAT_ODDS: f32 = 2.0;
 
+/// Defensive CV bonus per entrenchment level (see `game::entrenchment`):
+/// +15% at level 1, +75% at the max level 5. Purely defensive — entrenchment
+/// never scales an attacker's own CV, only what a defender's final CV is
+/// multiplied by, alongside `terrain_defense`.
+const FORT_CV_BONUS_PER_LEVEL: f32 = 0.15;
+
 /// One individual squad/gun/vehicle in a battle: a snapshot of everything
 /// resolution needs, decoupled from game state.
 #[derive(Debug, Clone)]
@@ -49,6 +55,11 @@ pub struct CombatElement {
     /// Whether this element may fire on air-domain targets.
     can_target_air: bool,
     devices: Vec<Device>,
+    /// The owning unit's entrenchment level at snapshot time (0 = none).
+    /// Only ever boosts the *defending* side's final CV (see
+    /// `fort_defense_modifier`) — a purely defensive bonus, unlike
+    /// morale/experience which scale both sides' CV identically.
+    fort_level: u32,
 }
 
 /// Variant order matters: later = worse, and a doubly-hit element keeps the
@@ -96,6 +107,7 @@ pub fn combat_elements(
                     can_target_ground: element_type.class.can_target_ground(),
                     can_target_air: air_domain || element_type.anti_air,
                     devices: element_type.devices.clone(),
+                    fort_level: unit.fort_level,
                 });
             }
         }
@@ -138,7 +150,9 @@ pub fn resolve_battle(
     }
 
     let attacker_cv = ready_cv(attackers);
-    let defender_cv = ready_cv(defenders) * terrain_defense(defender_terrain);
+    let defender_cv = ready_cv(defenders)
+        * terrain_defense(defender_terrain)
+        * fort_defense_modifier(average_fort_level(defenders));
     let outcome = if attacker_cv > 0.0
         && (defender_cv <= 0.0 || attacker_cv / defender_cv >= RETREAT_ODDS)
     {
@@ -392,6 +406,26 @@ fn terrain_defense(terrain: Terrain) -> f32 {
     }
 }
 
+/// The defending side's mean entrenchment level — a flat environmental
+/// property like terrain, so it's averaged over every defending instance
+/// (not just currently-Ready ones) rather than filtered like `ready_cv`.
+/// 0 for an empty side (battles are never fought with no defenders, but a
+/// literal average-of-zero avoids a division by zero regardless).
+fn average_fort_level(defenders: &[CombatElement]) -> f32 {
+    if defenders.is_empty() {
+        return 0.0;
+    }
+    let total: u32 = defenders.iter().map(|element| element.fort_level).sum();
+    total as f32 / defenders.len() as f32
+}
+
+/// Multiplier on the defender's final CV from entrenchment: ×1 at level 0,
+/// scaling up by `FORT_CV_BONUS_PER_LEVEL` per level. Purely defensive —
+/// applied only to `defender_cv` in `resolve_battle`, never to attackers.
+fn fort_defense_modifier(average_fort_level: f32) -> f32 {
+    1.0 + average_fort_level * FORT_CV_BONUS_PER_LEVEL
+}
+
 #[derive(Debug)]
 pub struct BattleReport {
     pub rounds: Vec<RoundReport>,
@@ -567,6 +601,7 @@ mod tests {
             location: UnitLocation::Offmap("irrelevant".to_string()),
             mp_left: 0,
             elements,
+            fort_level: 0,
         }
     }
 
@@ -810,6 +845,26 @@ mod tests {
 
         assert_eq!(report.attacker_cv, 120.0);
         assert_eq!(report.defender_cv, 360.0);
+    }
+
+    #[test]
+    fn entrenchment_boosts_only_the_defenders_final_cv() {
+        let mut attackers = side(10, 0, 3000, 4.0);
+        let mut defenders = side(10, 0, 3000, 4.0);
+        for element in &mut attackers {
+            element.fort_level = 5; // Should have zero effect — purely defensive.
+        }
+        for element in &mut defenders {
+            element.fort_level = 5;
+        }
+        let mut rng = StdRng::seed_from_u64(42);
+
+        let report = resolve_battle(&mut attackers, &mut defenders, Terrain::Plains, &mut rng);
+
+        // Plains terrain_defense is ×1, so the whole multiplier here is fort's:
+        // 1.0 + 5 * 0.15 = 1.75.
+        assert_eq!(report.attacker_cv, 120.0);
+        assert_eq!(report.defender_cv, 210.0);
     }
 
     #[test]

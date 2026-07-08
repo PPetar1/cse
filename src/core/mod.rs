@@ -106,6 +106,7 @@ impl State {
                 // it whenever the owning faction comes on turn.
                 mp_left: unit_toe.mp,
                 elements,
+                fort_level: 0,
             });
         }
 

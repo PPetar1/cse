@@ -67,6 +67,7 @@ impl Game {
 
         unit.mp_left -= cost;
         unit.location = UnitLocation::OnMap(LocationCoords { x: x_end, y: y_end });
+        unit.fort_level = 0; // Digging in is lost the moment a unit moves.
 
         Ok(())
     }

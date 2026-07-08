@@ -12,6 +12,12 @@ pub struct Unit {
     /// unit's faction comes on turn.
     pub mp_left: u32,
     pub elements: Vec<ElementInUnit>,
+    /// How dug in this unit is at its current hex, 0 (none) to
+    /// `game::entrenchment::MAX_FORT_LEVEL` — gains one level per turn spent
+    /// stationary, resets to 0 the moment it relocates (move, retreat, or
+    /// advance into a vacated hex). Boosts its defensive CV in combat; see
+    /// "Entrenchment" in docs/combat_design.md.
+    pub fort_level: u32,
 }
 
 impl Unit {
@@ -41,8 +47,8 @@ impl Display for Unit {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match &self.location {
             UnitLocation::OnMap(coords) => {
-                write!(f, "{}\nFaction: {}\nLocation: ({}, {})\nMovement points: {}",
-                    self.name, self.faction, coords.x, coords.y, self.mp_left)
+                write!(f, "{}\nFaction: {}\nLocation: ({}, {})\nMovement points: {}\nEntrenchment: level {}",
+                    self.name, self.faction, coords.x, coords.y, self.mp_left, self.fort_level)
             }
             UnitLocation::Offmap(name) => {
                 write!(f, "{}\nFaction: {}\nLocation: {}(offmap)", self.name, self.faction, name)
@@ -211,6 +217,7 @@ mod tests {
             location: UnitLocation::Offmap("irrelevant".to_string()),
             mp_left: 0,
             elements,
+            fort_level: 0,
         }
     }
 

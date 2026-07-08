@@ -104,6 +104,7 @@ impl Game {
                 let unit = self.state.units.get_mut(name)
                     .expect("attacking unit vanished mid-attack");
                 unit.location = UnitLocation::OnMap(LocationCoords { x: to.0, y: to.1 });
+                unit.fort_level = 0; // Advancing troops leave their dug-in position behind.
             }
             Some(to)
         } else {
@@ -273,6 +274,7 @@ impl Game {
                         lost += extra_lost;
                     }
                     unit.location = UnitLocation::OnMap(LocationCoords { x, y });
+                    unit.fort_level = 0; // A retreating unit isn't dug in anywhere anymore.
                     results.push(UnitRetreat::Retreated { unit: name.clone(), to: (x, y), damaged, lost, routed });
                 }
                 None => {

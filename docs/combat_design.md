@@ -383,6 +383,52 @@ is a first cut, not the whole of "operational depth."
   ranges (one scenario-wide number today, not per-TOE), and eventually
   teaching the AI to respect it at all.
 
+### Entrenchment (Phase 7, slice 2)
+
+A unit that stays put gains a defensive fort level over time; moving,
+retreating, or advancing throws it away. No scenario config here — unlike
+fog of war's `detection_range`, the numbers are code constants (like
+`RETREAT_ODDS`/`MORALE_SHIFT_STEP`), since this is a universal combat rule
+rather than a per-scenario toggle.
+
+- `Unit.fort_level: u32` (`core/unit.rs`), 0 by default, capped at
+  `game::entrenchment::MAX_FORT_LEVEL` (5). `Game::apply_entrenchment`
+  (`game/entrenchment.rs`) adds one level, at turn start, to every on-map
+  unit of the faction coming on turn — called from `begin_turn` alongside
+  refit, so a unit's dig-in tick lands the turn *after* it last relocated,
+  the same lag turn-start morale drift and refit already have.
+- Reset to 0 wherever a unit's `location` actually changes to a new hex:
+  `move_unit` (`game/orders/movement.rs`), the post-battle advance into a
+  vacated hex and a beaten defender's retreat (both in
+  `game/orders/attack.rs`), and a scheduled reinforcement/withdrawal
+  (`game/reinforcements.rs`). Attacking without moving (holding, or
+  advancing having *lost*) doesn't reset it — only an actual relocation
+  does.
+- **Purely defensive, like `terrain_defense`.** `CombatElement` carries the
+  owning unit's `fort_level` (set once in `combat_elements`, read-only
+  through the battle); `resolve_battle` multiplies `defender_cv` — never
+  `attacker_cv` — by `fort_defense_modifier(average_fort_level(defenders))`
+  (`procedures/combat.rs`): `1.0 + FORT_CV_BONUS_PER_LEVEL (0.15) *
+  average_fort_level`, so level 5 is a flat +75% defensive CV, stacking
+  multiplicatively with terrain the same way morale/experience stack
+  additively into `morexp_modifier`. The average is a simple mean over
+  every defending instance (not filtered to currently-Ready, mirroring how
+  `terrain_defense` itself isn't either) — a flat environmental property of
+  the defending stack, not a per-round combat outcome.
+- **Display**: the terminal's `inspect`/unit `Display` impl and `units
+  detail`'s `Debug` output show `Entrenchment: level N`; the GUI's
+  inspector roster shows the same line, and the map draws one small pip
+  per fort level under each unit's marker (`MapView::draw_unit`,
+  `UnitMarker.fort_level`) — a glance at who's dug in without opening the
+  inspector.
+- Open questions: no way for a scenario to start a unit pre-entrenched
+  (a historically dug-in defensive line at scenario start); no per-TOE
+  variation (engineers digging in faster, armor slower); attacking from
+  an entrenched position doesn't currently do anything special for the
+  *attacker's* own CV (deliberately — see "purely defensive" above) but a
+  future "prepared position" mechanic might want to let a defender fire
+  first from cover, which this doesn't attempt.
+
 ## Deliberate deviations from WitE2 (for now)
 
 - Flat defender terrain CV multiplier instead of WitE2's per-class density
