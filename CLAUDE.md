@@ -233,9 +233,10 @@ Key data model (all TOML-configurable, see `scenarios/basic_scenario.scen`):
   stops further commands afterward, so this is scoring/reporting only, not a
   hard game-over gate. The `victory` command (`Game::victory_conditions_summary`)
   shows the same conditions and each objective hex's current holder at any
-  time; `Game::victory_hexes` exists for a map view to flag those hexes, but
-  no view does yet — the old Bevy visualiser did before it was retired
-  (Phase 6 slice 3), and porting flag markers to the egui GUI is still open
+  time; `Game::victory_hexes` feeds the egui map view's flag markers (a
+  small pennant + point value in the hex's top-right quadrant,
+  `MapView::draw_victory_flag` in gui.rs, Phase 6 slice 6) — ported from the
+  old Bevy visualiser's equivalent before it was retired (slice 3)
 - **Reinforcements/withdrawals** — `[[reinforcements]]` and `[[withdrawals]]`
   (each entry: `unit`, `turn`, `location` — reuses `UnitLocationConfig`, so a
   hex or an offmap box name both work either direction) are mechanically
@@ -341,10 +342,15 @@ Key data model (all TOML-configurable, see `scenarios/basic_scenario.scen`):
   separation-of-concerns as `scheduled_arrivals`/`events`/
   `supply_sources`) tracks it. `prepare_battle` unconditionally extends the
   defender snapshot with `Game::covering_fighter_units(defender_faction,
-  to)` — whatever's covering the target hex, for *any* battle there, not
-  just `air_support` ones (this replaced slice 2's `air_support.is_some()`
-  gated, unconditional `faction_fighter_units`, now deleted). Coverage
-  clears at the covering faction's own next turn start
+  to)`, excluding any unit already present as an ordinary ground defender
+  at that hex — whatever's left is whatever's covering the target hex, for
+  *any* battle there, not just `air_support` ones (this replaced slice 2's
+  `air_support.is_some()` gated, unconditional `faction_fighter_units`, now
+  deleted). The exclusion fixes a real bug: a unit interdicting the hex
+  it's already stacked on used to be counted twice in the same battle
+  snapshot, which could underflow its `ready` count and panic — see
+  "Interdiction" in docs/combat_design.md. Coverage clears at the covering
+  faction's own next turn start
   (`reset_interdiction_coverage`, called from `Game::begin_turn`), so a
   declaration survives exactly through the opponent's next turn and must
   be redeclared every time the covering faction acts again. The
@@ -374,10 +380,17 @@ Key data model (all TOML-configurable, see `scenarios/basic_scenario.scen`):
   (Victory/Reinforcements/Events/Supply/Interdiction, each pushing that
   summary method's `String` straight into `GuiApp.log` — the same summaries
   the terminal's matching commands print); `MapView` (hex layout +
-  panel/map centering) maps hex coordinates to `egui::Pos2` for drawing and
-  back for click hit-testing (`hexx::HexLayout::world_pos_to_hex`); clicking
-  a hex sets `selected_hex`, which drives a side panel listing that hex's
-  units and rosters (the same information `inspect` prints), plus
+  panel/map centering, plus the current `GuiApp.map_zoom`/`map_pan` — see
+  "Current focus" Phase 6 slice 6) maps hex coordinates to `egui::Pos2` for
+  drawing and back for click hit-testing (`hexx::HexLayout::world_pos_to_hex`);
+  a hex's on-map units draw with `assign_stack_slots`-assigned offsets so a
+  stack doesn't draw on top of itself, and `Game::victory_hexes` draws a
+  flag marker on each objective hex. Scrolling while hovering the map
+  zooms (`egui::Sense::click_and_drag()`'s `smooth_scroll_delta`, clamped
+  0.3-3.0) and dragging pans (`drag_delta()`); egui doesn't count a drag as
+  a click, so a plain click still resolves to whatever hex is under the
+  cursor and sets `selected_hex`, which drives a side panel listing that
+  hex's units and rosters (the same information `inspect` prints), plus
   Move/Attack buttons if the hex holds a unit of `Game::current_faction()`.
   Clicking either arms `GuiApp.pending_order`; the *next* map click resolves
   it (`GuiApp::resolve_order`) via `move_unit`/`attack`/`air_support`
@@ -560,7 +573,7 @@ so in `frontline_sector.scen` (Axis played by the AI) its Stuka wing
 currently never flies and its opponent's fighters never get declared —
 only a human player can order either today.
 
-**Phase 6 — the real interface — five slices landed.** `cargo run` (see
+**Phase 6 — the real interface — six slices landed.** `cargo run` (see
 "Two interfaces, one game" above) opens a real egui/eframe window: the map
 (terrain-colored hexes, coordinate labels, faction-colored unit markers)
 plus a status header (`Game::status()`) with an End Turn button, click a
@@ -590,8 +603,24 @@ Interdiction, logging the same summaries their terminal commands print) —
 see "GUI" above for the `pending_menu_action`/`MenuAction` deferral this
 needed to avoid a `SharedGame` deadlock. Every terminal command's
 equivalent action is now clickable, so the roadmap's landmark ("a whole
-game played without typing a command") is reachable; still open, cosmetic
-rather than functional: an in-app scenario/save-file *picker* (paths are
-still typed, not browsed), victory-hex flag markers and multi-unit
-stacking offsets (both existed in the old `visualiser.rs`, not yet
-ported), and pan/zoom.
+game played without typing a command") is reachable. Slice 6 closed the
+three cosmetic gaps the old Bevy visualiser had covered before its slice-3
+retirement: victory-hex flag markers (see "Victory conditions" above),
+multi-unit stacking offsets (`GuiApp::render_map` groups on-map units by
+hex via the pure, unit-tested `assign_stack_slots` — sorted by name for
+determinism, same reasoning as the "never iterate a HashMap where order
+reaches the RNG" rule under Randomness below — and `MapView::draw_unit`
+takes the resulting 0-based slot to offset each stacked unit sideways
+instead of drawing on top of the last), and pan/zoom (`GuiApp.map_zoom`/
+`map_pan` persist across frames; the map panel senses
+`egui::Sense::click_and_drag()` instead of just `click()`, so
+`ui.input(|i| i.smooth_scroll_delta.y)` while hovering adjusts zoom,
+clamped to 0.3-3.0, and `response.drag_delta()` accumulates into pan —
+`MapView` folds zoom into the `HexLayout` scale it builds and pan into
+`screen_pos`/`hex_at`'s screen-space offset, and every draw method scales
+its own on-screen sizes off `MapView.size` (`HEX_SIZE * zoom`) instead of
+the raw constant, so hexes/markers/flags/fonts all grow and shrink
+together). This slice also fixed a real bug it turned up while testing
+interdiction near a stacked hex — see "Interdiction" above. Still open,
+cosmetic: an in-app scenario/save-file *picker* (paths are still typed,
+not browsed).
