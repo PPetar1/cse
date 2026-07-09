@@ -1,5 +1,5 @@
 //! Fires-based battle resolution. The model is documented in
-//! docs/combat_design.md — update that file when changing this one.
+//! docs/manual.md ("Combat") — update that file when changing this one.
 //!
 //! The engine is deliberately pure: it works on battle-local snapshots
 //! (`CombatElement`s) plus an RNG, and never touches `Game`/`State`. The game

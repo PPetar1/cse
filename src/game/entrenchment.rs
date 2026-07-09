@@ -2,7 +2,7 @@
 //! `Unit.fort_level` is the only state; this module just increments it at
 //! turn start and caps it. Resetting to 0 on relocation lives with whatever
 //! order actually moves the unit (`move_unit`, retreat, advance, scheduled
-//! arrivals) — see "Entrenchment" in docs/combat_design.md.
+//! arrivals) — see "Entrenchment" in docs/manual.md.
 
 use super::Game;
 

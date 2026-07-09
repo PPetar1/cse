@@ -51,7 +51,7 @@ impl Game {
 
     /// Fly one owned unit's elements into an attack as extra firers — ground
     /// support, folded into the same battle and resolved together with it
-    /// (see docs/combat_design.md). The unit never moves: it isn't part of
+    /// (see docs/manual.md). The unit never moves: it isn't part of
     /// the ground stack, doesn't advance into a vacated hex, and returns to
     /// base regardless of outcome.
     pub fn air_support(

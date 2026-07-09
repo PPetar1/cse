@@ -14,7 +14,7 @@ Currently implemented: scenario/map loading, unit inspection, simple movement, s
 
 Two scenarios ship: `scenarios/basic_scenario.scen` (a small dev/test sandbox) and `scenarios/frontline_sector.scen` (a division-scale slice of the front — a continuous 10-hex Soviet line under a German push, mixed infantry and Panzer divisions on the Axis side, reinforcements, a withdrawal, scenario events and victory conditions all exercised together).
 
-Design notes live in `docs/` (`roadmap.md` for the long-term plan, `combat_design.md` for the battle model, `ideas.md` for the idea backlog).
+Design notes live in `docs/` (`roadmap.md` for the long-term plan, `manual.md` for how the systems work, `architecture.md` for the technical reference, `ideas.md` for the idea backlog).
 
 ## Building and running
 
@@ -35,7 +35,7 @@ cargo test    # run the test suite
 | `inspect <name>` | inspect the offmap location with the given name |
 | `units` | list units visible to the faction on turn — your own always, enemy ones only within detection range if `[fog_of_war]` is on (`units detail` for more detail) |
 | `move <x1> <y1> <x2> <y2> <unit_index>` | move the unit with the given index to any reachable destination: the engine finds the cheapest path (terrain entry costs summed, impassable and enemy-occupied hexes routed around) and charges it against the unit's movement points (refilled each turn from the TOE's `mp`); only the player on turn can move their units; stacked units are indexed in alphabetical order, matching the order `inspect` lists them |
-| `attack <x1> <y1> <x2> <y2>` | all units at the first hex attack all units at the second (adjacent) hex; only the faction on turn can attack. Prints a battle report (rounds at closing range, losses, final CV odds, outcome). Losses and experience gain persist; beaten defenders retreat to an adjacent free hex with extra attrition — routing if morale breaks, shattering if also badly depleted — or surrender if surrounded; the attackers then advance into the vacated hex for free. See `docs/combat_design.md` |
+| `attack <x1> <y1> <x2> <y2>` | all units at the first hex attack all units at the second (adjacent) hex; only the faction on turn can attack. Prints a battle report (rounds at closing range, losses, final CV odds, outcome). Losses and experience gain persist; beaten defenders retreat to an adjacent free hex with extra attrition — routing if morale breaks, shattering if also badly depleted — or surrender if surrounded; the attackers then advance into the vacated hex for free. See `docs/manual.md` |
 | `air_support <x1> <y1> <x2> <y2> <unit name>` | fly one owned unit's elements into that attack as extra firers, for that battle only — same report as `attack`, but the unit never advances into a vacated hex and stays at its base regardless of outcome (it must belong to the attacking faction and not already be part of the ground stack, and within its TOE's mission range, if any, of an on-map unit's current hex). If the defending faction has fighters covering the target hex (`interdict`), they automatically join the fight |
 | `interdict <x> <y> <unit name>` | a fighter-capable unit declares coverage of that hex (up to 3 hexes per unit at a time, and within its TOE's mission range if it's based on the map); if the enemy later attacks that hex — `attack` or `air_support` — the covering unit automatically joins as an extra defender. Coverage lasts through the opponent's next turn and must be redeclared after that |
 | `interdiction` | list every unit currently covering hexes, and which ones |

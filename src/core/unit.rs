@@ -16,7 +16,7 @@ pub struct Unit {
     /// `game::entrenchment::MAX_FORT_LEVEL` — gains one level per turn spent
     /// stationary, resets to 0 the moment it relocates (move, retreat, or
     /// advance into a vacated hex). Boosts its defensive CV in combat; see
-    /// "Entrenchment" in docs/combat_design.md.
+    /// "Entrenchment" in docs/manual.md.
     pub fort_level: u32,
 }
 
@@ -130,7 +130,7 @@ pub struct Element {
     /// dual-purpose flak, historically. Meaningless (and harmless) on an
     /// already-air-domain element (`ElementClass::is_air_domain`), which can
     /// always engage air regardless of this flag. See
-    /// `ElementClass::can_target_air` and docs/combat_design.md.
+    /// `ElementClass::can_target_air` and docs/manual.md.
     #[serde(default)]
     pub anti_air: bool,
     /// The weapons this element fights with; every in-range device fires
@@ -171,7 +171,7 @@ pub enum ElementClass {
     LightArt,
     AtGun,
     /// A CAS aircraft ("bomber") — joins a ground attack as an extra firer
-    /// via `Game::air_support` (see docs/combat_design.md). Air-domain: can
+    /// via `Game::air_support` (see docs/manual.md). Air-domain: can
     /// engage ground targets normally and air targets via `air_attack`.
     GroundAttack,
     /// An air-superiority aircraft. Air-domain, but unlike `GroundAttack`

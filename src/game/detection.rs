@@ -4,7 +4,7 @@
 //! query, not a change to game mechanics. Opt-in per scenario via
 //! `[fog_of_war]` (absent = full visibility, every scenario's behavior
 //! before this module existed). See "Fog of war / detection" in
-//! docs/combat_design.md for the model and its deliberate simplifications.
+//! docs/manual.md ("Fog of war and detection") for the model and its deliberate simplifications.
 
 use crate::core::unit::{Unit, UnitLocation};
 

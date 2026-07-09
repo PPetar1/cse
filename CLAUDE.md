@@ -113,9 +113,11 @@ plus the dispatch match in `run` (lib.rs).
   playable prototype; Part 2 the (non-exhaustive) feature areas separating the
   prototype from the finished game; the "better than WitE" pillars are design
   tiebreakers. Update it when direction changes, not per-feature.
-- `docs/combat_design.md` — living combat design doc: WitE2 findings (rules readable at
-  dornshuld.com/rules/wite2), the current resolution model, deliberate deviations,
-  open questions. Update it whenever the combat engine changes.
+- `docs/manual.md` — how every system in the game behaves (non-technical; absorbs
+  the old combat_design.md, WitE2 findings and balance history included). Update it
+  whenever a system's behavior changes.
+- `docs/architecture.md` — the technical reference: layout, conventions,
+  per-system implementation notes, testing, gotchas. Update it with the code.
 - `docs/ideas.md` — parking lot for future game ideas; save new ideas there instead
   of losing them in conversation.
 
@@ -191,7 +193,7 @@ src/
   core/location.rs — Location wraps Option<hexx::Hex> (None = offmap), Terrain enum
   core/unit.rs   — Unit, Toe (mp, range), Element, ElementClass, Size + config structs
   procedures/combat.rs — pure fires-based battle engine: CombatElement snapshots in,
-                   BattleReport out; never touches Game/State (see docs/combat_design.md)
+                   BattleReport out; never touches Game/State (see docs/manual.md)
   procedures/supply.rs — pure multi-source flood fill (reachable_hexes) over the
                    map, blocked by enemy-occupied hexes and impassable terrain
 ```
@@ -359,13 +361,13 @@ Key data model (all TOML-configurable, see `scenarios/basic_scenario.scen`):
   deleted). The exclusion fixes a real bug: a unit interdicting the hex
   it's already stacked on used to be counted twice in the same battle
   snapshot, which could underflow its `ready` count and panic — see
-  "Interdiction" in docs/combat_design.md. Coverage clears at the covering
+  "Interdiction" in docs/manual.md. Coverage clears at the covering
   faction's own next turn start
   (`reset_interdiction_coverage`, called from `Game::begin_turn`), so a
   declaration survives exactly through the opponent's next turn and must
   be redeclared every time the covering faction acts again. The
   `interdiction` command shows current coverage. See "Air support"/"Air
-  superiority"/"Interdiction" in docs/combat_design.md.
+  superiority"/"Interdiction" in docs/manual.md.
 - **Airfields** — `Toe.range: Option<u32>` (`None` = unlimited, every TOE's
   behavior before this field existed) caps how many hexes
   `air_support`/`interdict` can reach from a unit's current on-map
@@ -375,7 +377,7 @@ Key data model (all TOML-configurable, see `scenarios/basic_scenario.scen`):
   distance from) or a TOE with no range set; otherwise it compares
   `Location::distance_to` against the range, called from both
   `prepare_battle`'s `air_support` branch and `Game::interdict`. See
-  "Airfields" in docs/combat_design.md.
+  "Airfields" in docs/manual.md.
 - **Fog of war / detection** — opt-in per scenario via an optional
   `[fog_of_war]` table (`detection_range: u32`, `game/scenario.rs`);
   absent (`Game.fog_of_war: None`) means full visibility, every
@@ -397,7 +399,7 @@ Key data model (all TOML-configurable, see `scenarios/basic_scenario.scen`):
   block). Victory-hex holders, reinforcement/event schedules and supply
   status stay full-information (scoreboard/meta info, not battlefield
   awareness); `ai.rs` stays omniscient too — deliberate scope calls, see
-  "Fog of war / detection" in docs/combat_design.md.
+  "Fog of war / detection" in docs/manual.md.
   `scenarios/basic_scenario.scen` turns it on (`detection_range = 3`);
   `frontline_sector.scen` is untouched.
 - **Entrenchment** — `Unit.fort_level: u32` (`core/unit.rs`, 0-5, capped at
@@ -419,7 +421,7 @@ Key data model (all TOML-configurable, see `scenarios/basic_scenario.scen`):
   (`MapView::draw_unit`/`UnitMarker`). No scenario-config surface — the
   bonus-per-level and cap are code constants, a universal combat rule, not
   a per-scenario toggle like fog of war. See "Entrenchment" in
-  docs/combat_design.md.
+  docs/manual.md.
 - **GUI** — `gui.rs` (Phase 6, launched by `cargo run` — see "Two
   interfaces, one game" above) opens an eframe/egui window over a
   `SharedGame`. `GuiApp::ui` locks a clone of the `Arc` (not `self.shared`
@@ -550,7 +552,7 @@ Key data model (all TOML-configurable, see `scenarios/basic_scenario.scen`):
 ## Current focus
 
 The full phased plan lives in `docs/roadmap.md`. Phase 0 (combat core) is done
-(`docs/combat_design.md` is the spec). Phase 1 (the game loop) is done: turn
+(`docs/manual.md` is the spec). Phase 1 (the game loop) is done: turn
 clock (`end_turn`/`status`, IGO-UGO, real dates, scenario-selectable
 `TurnSystem`), move/attack gated to the on-turn faction, adjacency-checked
 attacks, MP budgets with terrain costs, attacker advance after retreat, and
@@ -701,7 +703,7 @@ detection: an optional `[fog_of_war]` scenario table (`detection_range`)
 gates what a faction is told about the enemy — a hex is visible if one of
 the faction's own on-map units is within range of it, no line-of-sight or
 terrain blocking yet (see "Fog of war / detection" above and in
-docs/combat_design.md for the full model and its deliberate
+docs/manual.md for the full model and its deliberate
 simplifications: no contact persistence, the AI stays omniscient,
 victory-hex holders stay full-information). Move/attack validation is
 untouched — this is display-only, gating `inspect`/`units` in the
@@ -711,7 +713,7 @@ dev/test sandbox) exercises it at `detection_range = 3`;
 level per turn spent stationary (capped at 5), reset to 0 the moment it
 relocates — moving, retreating, or advancing into a vacated hex, but not
 holding or losing in place (see "Entrenchment" above and in
-docs/combat_design.md). Unlike fog of war this isn't scenario-configurable
+docs/manual.md). Unlike fog of war this isn't scenario-configurable
 — the bonus-per-level and cap are code constants, a universal combat rule.
 Purely defensive: it boosts a defending stack's final CV alongside
 terrain, never an attacker's own. Shown in `inspect`/`units`, the GUI's

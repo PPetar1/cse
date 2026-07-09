@@ -13,7 +13,7 @@ phases can capture, so this document works in two horizons:
 
 Timescale is deliberately ignored — years are fine. When a phase begins, it
 gets broken down into concrete work in CLAUDE.md ("Current focus") and the
-design docs (`combat_design.md`, `ideas.md`). When direction changes, change
+design docs (`manual.md`, `ideas.md`). When direction changes, change
 this file.
 
 ## What "better than WitE" means
