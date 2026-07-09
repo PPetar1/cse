@@ -99,8 +99,8 @@ pub struct Toe {
     pub range: Option<u32>,
     pub start_date: Date,
     pub end_date: Date,
-    pub elements: Vec<ElementInToe>,// Tuple holds the name of the element in question,
-                                 // number of elements the toe prescribes
+    /// The element types this TOE prescribes, and how many of each.
+    pub elements: Vec<ElementInToe>,
 }
 
 #[derive(serde::Deserialize, Debug, serde::Serialize)]

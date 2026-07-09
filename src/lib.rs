@@ -5,7 +5,6 @@ mod error;
 mod game;
 mod gui;
 mod procedures;
-mod utils;
 
 pub use command::COMMAND_KEYWORDS;
 pub use error::Error;

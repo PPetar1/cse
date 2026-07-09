@@ -188,7 +188,6 @@ src/
                    BattleReport out; never touches Game/State (see docs/combat_design.md)
   procedures/supply.rs — pure multi-source flood fill (reachable_hexes) over the
                    map, blocked by enemy-occupied hexes and impassable terrain
-  utils/         — empty
 ```
 
 Key data model (all TOML-configurable, see `scenarios/basic_scenario.scen`):

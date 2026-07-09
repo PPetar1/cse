@@ -81,20 +81,20 @@ struct MapFile {
     width: u32,
     #[allow(dead_code)]
     height: u32,
-    locations: Vec<Location_>,
-    offmap_locations: Vec<OffmapLocation_>,
+    locations: Vec<LocationConfig>,
+    offmap_locations: Vec<OffmapLocationConfig>,
 }
 
-#[derive(serde::Deserialize, serde::Serialize)]
-struct Location_ {
+#[derive(serde::Deserialize)]
+struct LocationConfig {
     x: u32,
     y: u32,
     terrain: Terrain,
     name: Option<String>,
 }
 
-#[derive(serde::Deserialize, serde::Serialize)]
-struct OffmapLocation_ {
+#[derive(serde::Deserialize)]
+struct OffmapLocationConfig {
     name: String,
     terrain: Terrain,
 }
