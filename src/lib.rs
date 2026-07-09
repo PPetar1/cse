@@ -53,12 +53,7 @@ pub fn run(input: &str, mut current_game: Option<&mut Game>) -> Result<Option<Ga
             None
         }
         Command::Units { detail } => {
-            let game = require_game(current_game.as_deref_mut())?;
-            if detail {
-                game.list_units_detail();
-            } else {
-                game.list_units();
-            }
+            println!("{}", require_game(current_game.as_deref_mut())?.units_summary(detail));
             None
         }
         Command::Move { from, to, unit_index } => {

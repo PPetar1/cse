@@ -121,16 +121,19 @@ impl Game {
        Ok(game)
     }
 
-    pub fn list_units(&self) {
-        for unit in self.units_by_name() {
-            println!("{}", unit);
+    /// Human-readable listing of every unit visible to the faction on turn
+    /// (see `units_by_name`); `detail` swaps the display form for the full
+    /// debug dump. Backs the `units` command — returns the text instead of
+    /// printing it, like every other summary, so any interface can show it.
+    pub fn units_summary(&self, detail: bool) -> String {
+        let units = self.units_by_name();
+        if units.is_empty() {
+            return "No units.".to_string();
         }
-    }
-
-    pub fn list_units_detail(&self) {
-        for unit in self.units_by_name() {
-            println!("{:?}", unit);
-        }
+        units.iter()
+            .map(|unit| if detail { format!("{unit:?}") } else { unit.to_string() })
+            .collect::<Vec<_>>()
+            .join("\n")
     }
 
     /// Units visible to the faction currently on turn, sorted by name (own
