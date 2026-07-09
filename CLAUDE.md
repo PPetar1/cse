@@ -147,9 +147,15 @@ src/
   ai.rs          — the AI opponent: take_turn per faction, consuming Game's public API
                    the same way command.rs does (attack/move_unit/simulate, no new
                    pathfinding or combat logic)
-  gui.rs         — the real interface (Phase 6): an eframe/egui window over a
+  gui/           — the real interface (Phase 6): an eframe/egui window over a
                    SharedGame, main menu when it's empty, map/orders once it isn't
-                   (see "GUI" below)
+                   (see "GUI" below). Mirrors game/'s layout: GuiApp's fields in
+                   gui/mod.rs (plus render_playing/end_turn/resolve_order),
+                   submodules add impl GuiApp blocks — menu.rs (main menu,
+                   Save/Load/New dialogs, MenuAction), map_view.rs (MapView,
+                   render_map, markers/flags/pips), inspector.rs (the hex side
+                   panel), file_picker.rs (the Browse popup), test_support.rs
+                   (shared test fixtures)
   command.rs     — the command language: Command enum + parse, COMMAND_KEYWORDS, HELP_TEXT
   error.rs       — crate-wide Error type + From impls (io/toml/postcard)
   game/mod.rs    — Game (state + players + turn/phase/date), Game::build, unit queries,
