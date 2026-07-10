@@ -59,7 +59,7 @@ and the agent does focused, completion-oriented implementation:
 - Changes with a GUI surface get verified live, not just by unit tests —
   see "Manual GUI QA" in docs/architecture.md.
 
-`tasks/README.md` documents the task file format and this contract in full.
+`tasks/README.md` covers the task file format and queue mechanics.
 
 ## Standing rules
 
