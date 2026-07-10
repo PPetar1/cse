@@ -1,20 +1,14 @@
-# CSE roadmap — from engine to finished game
+# CSE roadmap — from prototype to finished game
 
 The destination is a **finished game that is a real improvement over Gary
-Grigsby's *War in the East***. That road is longer than any honest list of
-phases can capture, so this document works in two horizons:
+Grigsby's *War in the East***. Development runs in five stages. Stage 1 —
+the prototype — is done; the rest are intent, not schedule (timescale is
+deliberately ignored — years are fine).
 
-- **Part 1 — the prototype.** Concrete and phased, landmark by landmark. The
-  result is a playable game that clearly shows the game's spirit — not at the
-  complexity level of the final product.
-- **Part 2 — the game.** Abstract and non-exhaustive: the major feature areas
-  that separate the prototype from a finished product. Unordered, no landmarks;
-  each gets its own plan when its time comes.
-
-Timescale is deliberately ignored — years are fine. When a phase begins, it
-gets broken down into concrete work in CLAUDE.md ("Current focus") and the
-design docs (`manual.md`, `ideas.md`). When direction changes, change
-this file.
+From Stage 2 on, work is authored as task files in `tasks/` (the author
+writes detailed specs, the agent implements them — see CLAUDE.md,
+"Development workflow"). This file records direction only: update it when
+direction changes, not per task.
 
 ## What "better than WitE" means
 
@@ -37,130 +31,94 @@ unclear:
    is where mastery deepens, not the toll booth at the entrance.
 4. **Moddability.** Everything is data: scenarios, maps, TOEs, elements,
    devices are TOML a motivated player can edit. The scenario editor is a text
-   editor on day one; validation (`State::build`) is the safety net.
+   editor on day one; validation at scenario load is the safety net.
 5. **Modern multiplayer.** Beyond hot-seat/PBEM — a server-mediated or
    simultaneous-turn mode designed in once the turn structure is proven, with
    multiple players per faction (see ideas.md, faction/player separation).
 
-## Part 1 — the prototype
+## Stage 1 — the prototype (done)
 
-Each phase ends at a **landmark** — a moment the project is visibly more of a
-game. Cross-cutting work (combat knob retuning, AP penetration, AoE fire,
-refactors) threads through whichever phase strains it first. Systems built here
-are prototype-grade on purpose: good enough to play and to learn from, with the
-real versions coming in Part 2.
+Built fast, with the AI designing freely under loose direction; every system
+deliberately simple and shallow. The point was structure and a playable
+basis for the real work, and it delivered one. What it contains:
 
-### Phase 0 — Combat core ✅ (done)
+- **Combat core** — fires-based battle engine: rounds at closing range
+  bands, device-level weapons, morale/experience with battle feedback,
+  retreats/routs/shatters/surrenders, the `simulate` tuning tool.
+- **Game loop** — IGO-UGO turns with real dates, MP budgets and terrain
+  costs, adjacency-gated attacks, attacker advance after retreat,
+  turn-start morale recovery.
+- **Scenario machinery** — victory conditions (objective hexes plus
+  strength destroyed/lost, scored at a final turn), scheduled
+  reinforcements/withdrawals, scripted events. Two scenarios ship: a dev
+  sandbox and `frontline_sector.scen`, a division-scale slice of the front.
+- **Supply and refit** — connectivity traced from per-faction supply
+  sources; supplied units repair and receive replacements each turn,
+  cut-off units get neither.
+- **AI opponent** — rule-based: attacks when simulated odds look good,
+  otherwise advances on objectives; plays whole turns automatically.
+- **Air war** — ground support flown into ongoing battles, domain-restricted
+  air-to-air targeting, interdiction coverage, airfield range limits.
+- **Interface** — an egui/eframe window and a terminal driving one shared
+  game; every command has a clickable equivalent (map with zoom/pan,
+  inspector, order buttons, reports, save/load with a file browser).
+- **Operational depth, started** — fog of war (detection ranges) and
+  entrenchment.
 
-Fires-based battle engine: range bands, device-level weapons, morale/experience
-with battle feedback, routs/shatters/surrenders, `simulate` tuning tool.
+Deliberately *not* built, by author's call — record these so they aren't
+mistaken for gaps: pocket starvation/surrender (encirclement only stalls
+refit; lethal encirclement belongs with Stage 2's deeper logistics if it
+returns), and the era-proofing spike (a second-era mini-scenario to flush
+out WW2 assumptions — folded into Stage 4's content work, cheap insurance
+for pillar 1 whenever it's motivated).
 
-### Phase 1 — The game loop
+Known prototype gaps are seeded as backlog task files in `tasks/` (the AI
+never uses air missions, victory scoring doesn't stop the game, the GUI's
+Move order can't pick a unit within a stack, no CI, and so on) for the
+author to triage into the priorities list.
 
-Turn/phase system fused with movement rules: `end_turn`, alternating players,
-date advancement, MP budgets, terrain costs, adjacency-gated attacks. Mops up
-everything waiting on the turn clock: morale recovery, attacker advance after
-retreat, real dates. **Landmark: sit down and play a full turn.**
+## Stage 2 — systems building and polish (current)
 
-### Phase 2 — The first winnable scenario
+The working mode changes here: the author does the design, the agent does
+the implementation. Each system gets specified in detail as a task file —
+mechanics, acceptance criteria — and rebuilt or deepened from its
+prototype version. Less AI design, more AI coding.
 
-Victory conditions (hold these hexes by turn N), scheduled reinforcements and
-withdrawals from offmap boxes, first scenario events. A small historical
-scenario at division scale. **Landmark: win — or lose — a game of CSE.**
+The pool this stage draws from (unordered — `tasks/task_priorities.md`
+decides order, not this list):
 
-### Phase 3 — The living army
+- The prototype systems, each revisited to its real design: combat
+  (AP penetration, AoE fire, possibly a deep rework), supply and logistics
+  (depots, rail conversion and capacity, truck/horse pools, ports),
+  refit/replacements, air war, fog of war and detection.
+- The systems the prototype never had: weather and ground conditions,
+  leaders/staffs/command, industry and production (factories, resources,
+  production queues, evacuation), faction-level state (manpower, national
+  will, politics, doctrine), a low-randomness resolution mode, a first
+  multiplayer mode (faction/player separation).
+- AI improvement as the systems it plays with deepen.
+- The prototype gap backlog above.
 
-Supply traced through the hex grid, replacements and repair during turn
-changeover (refit) gated on it. Scope call: unit degradation/surrender for
-units cut off from supply is dropped from the prototype — repair/replacement
-stalling is encirclement's whole consequence here, not attrition toward
-surrender. **Landmark (revised): repair/replacement stalls for a cut-off
-unit** — the original "a pocket starves and surrenders" won't be built;
-lethal encirclement, if it returns, belongs to Part 2's detailed logistics.
+## Stage 3 — GUI
 
-### Phase 4 — An opponent ✅ (done)
+Same task-driven mode, aimed at the interface: from "every command has a
+clickable equivalent" to an interface that is actually good to play.
+Panels and information density, battle-report browsing, in-game
+transparency tooling (pillar 2), map and counter presentation, usability
+polish. Cross-platform CI builds and packaging naturally start here.
 
-A first AI: move toward objectives, attack at favorable odds (`simulate` can
-literally power its judgment). Doesn't need to be good; needs to fight back.
-**Landmark: lose to the machine.**
+## Stage 4 — the scenario
 
-### Phase 5 — Combined arms ✅ (done)
+The big one: scenario complexity is a major part of what makes the genre —
+and this game — worth playing. Historical research (orders of battle,
+TOEs, maps), campaign-scale scenario construction, editor tooling beyond a
+text editor, systematic balance and tuning campaigns with real play, and a
+starter scenario that teaches the basics. Era packs beyond WW2 are content
+work of the same kind, whenever they earn their place.
 
-Air warfare as data + mission procedures: ground support first (extra firers in
-the existing battle), then air superiority, interdiction, airfields. Naval, if
-it happens, follows the pattern set here. **Landmark: the first air mission
-flies.**
+## Stage 5 — testing and final polish
 
-### Phase 6 — The real interface
-
-The egui UI from ideas.md (decided 2026-07): hex map, unit counters, panels,
-battle reports — the full game playable without a terminal. Cross-platform CI
-builds start here. **Landmark: a whole game played without typing a command.**
-
-### Phase 7 — Operational depth
-
-The systems that make campaigns breathe: fog of war/detection, weather, ground
-conditions, entrenchment and fortification, leaders/command, deeper logistics,
-the combat refinements from ideas.md (AP penetration, AoE fire). The WitE
-comparison becomes fair here. **Landmark: a full campaign scenario —
-Barbarossa '41 at division scale, start to finish.**
-
-### Phase 8 — The pillars, in miniature
-
-Prototype-scale versions of the pillar features: in-game battle transparency
-tools, the low-randomness resolution mode, a first multiplayer mode
-(faction/player separation lands here at the latest), a starter scenario that
-teaches the basics. **Landmark: a stranger learns the basics without the author
-in the room.**
-
-### Phase 9 — Prototype release
-
-Polish, a handful of scenarios, written rules complete enough to be learnable,
-packaging for friends and fellow grognards. Explicitly not v1.0 — a working
-game that shows the spirit and generates feedback. **Landmark: the prototype in
-someone else's hands, and their feedback in the backlog.**
-
-### Open ordering questions (Part 1)
-
-- **UI (6):** deliberately after the game is playable end-to-end in the
-  terminal, per ideas.md.
-
-Dropped by author's call: a dedicated "Proof of eras" phase (a second-era
-mini-scenario built purely from TOML, flushing out WW2 assumptions that leaked
-into code) — not important right now. The idea isn't lost, just no longer a
-gated phase; see Part 2's "More eras and domains."
-
-## Part 2 — from prototype to the game
-
-The distance between the prototype and a finished product, in feature areas.
-**Non-exhaustive by design** — this list grows as playing the prototype teaches
-us what the game needs — and deliberately unordered.
-
-- **Industry and production** — factories, resources, production queues,
-  factory evacuation; equipment pools fed by a modeled economy instead of
-  scenario scripts.
-- **Faction state as a whole** — the faction as a modeled entity: manpower,
-  national will, politics, doctrine (see ideas.md), theater-level decisions.
-- **Detailed logistics** — the prototype supply system is a sketch; the real
-  one has WitE-style depth: depots, rail conversion and capacity, truck/horse
-  pools, ports.
-- **Leaders, staffs and command** — command chains, leader checks, staff
-  quality feeding recovery and logistics, doctrine drift (see ideas.md).
-- **Combat engine refinement and rework** — prototype play will expose what the
-  battle model gets wrong; expect at least one deep rework (AP penetration,
-  AoE fire, possibly the 2D tactical battlefield experiment from ideas.md).
-- **Scenario building at scale** — historical OOB and unit research is a huge
-  topic in its own right; real campaign scenarios are archival projects and
-  need editor tooling beyond a text editor.
-- **Balance campaigns** — systematic tuning passes with real players over real
-  campaigns, not just `simulate` runs.
-- **Rules formalized into a manual** — the design docs graduate into a
-  player-facing manual: reference-grade, versioned together with the rules it
-  describes.
-- **AI and multiplayer maturity** — from "fights back" to "plays well"; from a
-  working multiplayer mode to one people actually use.
-- **More eras and domains** — era packs as real content, naval warfare if it
-  earns its place. Includes the era-proofing spike once floated as a Part 1
-  phase (a second-era mini-scenario built purely from TOML, to flush out any
-  WW2 assumptions that leaked into code) — cheap insurance for pillar 1,
-  worth doing whenever it's motivated, just not a gate on the prototype.
+The design docs graduate into a reference-grade, player-facing manual
+versioned with the rules it describes; systematic testing; release
+packaging; feedback rounds with real players. From "works for the author"
+to "works in a stranger's hands."

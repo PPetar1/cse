@@ -1,4 +1,4 @@
-//! The real interface (Phase 6): an eframe/egui window that shows a main
+//! The graphical interface: an eframe/egui window that shows a main
 //! menu (New/Load/Quit) when no game is active, and once one is, renders the
 //! map, lets the player click a hex to inspect its units, issue `move`/
 //! `attack`/`air_support`/`interdict` orders, end the turn, and (from the
@@ -336,7 +336,7 @@ location = { x = 0, y = 0 }
         assert_eq!(app.log.len(), 1);
         assert!(app.log[0].contains("Outcome"));
         assert_eq!(app.selected_hex, Some((2, 1)));
-        // The air unit never moves — see the "Air support" note in CLAUDE.md.
+        // The air unit never moves — see "Air support" in docs/manual.md.
         assert_eq!(
             game.state.units["Stuka Wing"].location,
             UnitLocation::OnMap(LocationCoords { x: 0, y: 0 }),

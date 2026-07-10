@@ -206,8 +206,8 @@ impl MapView {
     }
 
     /// A small pennant flag in the hex's top-right quadrant, with its point
-    /// value beneath — mirrors the old Bevy visualiser's victory-hex marker
-    /// (see docs/roadmap.md Phase 6), just never ported to egui until now.
+    /// value beneath — mirrors the old Bevy visualiser's victory-hex marker,
+    /// just never ported to egui until now.
     fn draw_victory_flag(&self, painter: &egui::Painter, x: u32, y: u32, points: f32) {
         let center = self.screen_pos(x, y);
         let pole_x = center.x + self.size * 0.35;

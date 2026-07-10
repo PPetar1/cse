@@ -3,8 +3,8 @@
 //! `game::supply`). Damaged elements slowly return to ready; destroyed ones
 //! slowly regrow, up to the unit's TOE-prescribed strength. Cut-off units
 //! get neither — the non-lethal consequence of encirclement for this
-//! prototype (see docs/roadmap.md Phase 3; full degradation/surrender was
-//! deliberately dropped).
+//! prototype (full degradation/surrender was deliberately dropped; see
+//! "Stage 1" in docs/roadmap.md).
 
 use crate::core::unit::UnitLocation;
 

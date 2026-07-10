@@ -2,10 +2,10 @@
 
 A parking lot for game design ideas we want to keep but aren't building yet.
 Add freely; nothing here is a commitment. When an idea graduates into real work,
-fold it into the relevant phase in docs/roadmap.md and the "Current focus"
-section of CLAUDE.md.
+it becomes a task file in tasks/ (and, if it changes direction, a note in
+docs/roadmap.md).
 
-## UI / platform direction (decided 2026-07: egui/eframe, Phase 6 underway)
+## UI / platform direction (decided 2026-07: egui/eframe, since delivered)
 
 - Chosen once the game was playable end-to-end in the terminal (Phase 5
   done): **egui/eframe**, not a Bevy + bevy_egui hybrid — a WitE-like is a
