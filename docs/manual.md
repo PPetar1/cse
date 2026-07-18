@@ -46,6 +46,23 @@ create one with a text editor.
   sprays MG fire at infantry while taking aimed cannon shots at a gun line
   because those are different devices on one element.
 
+### Leaders
+
+A **leader** is a named commander, defined per faction in the scenario with
+the same seven ratings *War in the East 2* uses (rules at
+<https://dornshuld.com/rules/wite2/15-0.html>, chapter 15): Political,
+Morale, Initiative, Administration, Mechanized, Infantry and Air, each 1-9.
+A leader can be assigned to any one unit at a time — the scenario can start
+one there, and the `reassign_leader` command can move one between units
+later, unassigning it from wherever it was. A unit can go without a leader
+entirely.
+
+For now leaders are purely informational: their stats have no gameplay
+effect. They're groundwork for a future command/effectiveness system, and
+today's blanket "leaders can command any unit" will narrow once unit types
+and HQs exist — a Corps or Army leader restricted to the HQ level they fit,
+the way WitE2 does it.
+
 ## The turn system
 
 Play alternates player by player ("IGO-UGO"): each moves and fights with

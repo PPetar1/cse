@@ -8,6 +8,7 @@ use time::Date;
 
 use crate::Error;
 use crate::core::State;
+use crate::core::leader::Leader;
 use crate::core::location::Terrain;
 use crate::core::unit::{Element, LocationCoords, Toe, UnitLocation};
 
@@ -137,6 +138,12 @@ pub struct Scenario {
 
     pub units: Vec<UnitConfig>,
 
+    /// `[[leaders]]` — commanders available to assign to units, per
+    /// faction. Deserialized straight into the domain type, same as `toe`/
+    /// `elements` above.
+    #[serde(default)]
+    pub leaders: Vec<Leader>,
+
     /// `[victory_conditions]` — optional; a scenario with none never scores
     /// or ends on its own.
     #[serde(default)]
@@ -221,6 +228,9 @@ pub struct UnitConfig {
     /// setting. Names must exist in the unit's TOE.
     #[serde(default)]
     pub elements: Vec<ElementStatsConfig>,
+    /// The name of a `[[leaders]]` entry to command this unit from the
+    /// start, if any. Must belong to the unit's faction.
+    pub leader: Option<String>,
 }
 
 #[derive(serde::Deserialize)]

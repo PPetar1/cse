@@ -43,7 +43,7 @@ System behavior behind these commands — battle resolution, retreats, supply, f
 | Command | Description |
 |---|---|
 | `new <path.scen>` | start a new game from a scenario file, e.g. `new scenarios/basic_scenario.scen` |
-| `inspect <x> <y>` | show the hex's terrain and each unit there with its TOE, entrenchment level, and per-element ready/damaged counts and morale/experience; prints "Unknown" if fog of war hides the hex |
+| `inspect <x> <y>` | show the hex's terrain and each unit there with its TOE, leader, entrenchment level, and per-element ready/damaged counts and morale/experience; prints "Unknown" if fog of war hides the hex |
 | `inspect <name>` | inspect the offmap location with the given name |
 | `units` | list units visible to the faction on turn (`units detail` for full rosters) |
 | `move <x1> <y1> <x2> <y2> <unit_index>` | move a unit to any reachable destination; the cheapest path's cost is charged against its movement points. Stacked units are indexed in alphabetical order, matching `inspect`'s listing |
@@ -58,6 +58,9 @@ System behavior behind these commands — battle resolution, retreats, supply, f
 | `reinforcements` | list every scheduled reinforcement/withdrawal and whether it has arrived |
 | `events` | list every scheduled scenario event and whether it has fired |
 | `supply` | list every on-map unit as supplied or cut off |
+| `leaders <faction>` | list that faction's leaders and which unit (if any) each commands |
+| `leader <name>` | show one leader's stats and current assignment |
+| `reassign_leader <unit name>` | assign a leader to that unit; prompts for the leader's name (tab-completed) on a second line |
 | `help` | list all commands |
 | `save <path>` | save the game state to a file |
 | `load <path>` | load a game state from a file |

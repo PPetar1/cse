@@ -92,6 +92,7 @@ impl GuiApp {
             ui.label(egui::RichText::new(&unit.name).strong());
             ui.label(format!("Faction: {}   TOE: {}", unit.faction, unit.toe));
             ui.label(format!("Entrenchment: level {}", unit.fort_level));
+            ui.label(format!("Leader: {}", unit.leader.as_deref().unwrap_or("none")));
             for element in &unit.elements {
                 ui.label(format!(
                     "{}: {} ready, {} damaged — morale {}, experience {}",

@@ -602,6 +602,7 @@ mod tests {
             mp_left: 0,
             elements,
             fort_level: 0,
+            leader: None,
         }
     }
 

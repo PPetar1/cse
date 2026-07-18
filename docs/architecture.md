@@ -54,6 +54,14 @@ Update all three of `Command::parse`, `HELP_TEXT` and `COMMAND_KEYWORDS`
 in command.rs (a test there guards keyword drift), the dispatch match in
 `run` (lib.rs), and the README command table.
 
+A command needing more than one line of input (`reassign_leader`: unit name,
+then a second prompt for the leader's name) can't go through `Command`/`run`
+at all — that path is one shared string in, one `Result` out, with no room
+for a follow-up prompt. It's special-cased in `main.rs`'s loop instead,
+ahead of the `cse::run_shared` call, and stays out of the `Command` enum;
+it's still in `COMMAND_KEYWORDS` for tab completion, and the keyword-drift
+test in command.rs excludes it by name (same as `exit`).
+
 ## Layering and file map
 
 `core/` is the data model; `procedures/` are pure algorithms on snapshots
@@ -115,6 +123,9 @@ src/
   game/refit.rs  — turn-start repair/replacements, gated on supply
   game/interdiction.rs — interdict/interdiction_summary,
                    covering_fighter_units
+  game/leaders.rs — leaders_of_faction/leaders_summary/leader_detail/
+                   reassign_leader; assignment lives on Unit.leader, not on
+                   Leader (see below)
   game/detection.rs — is_visible_to/is_unit_visible_to, the fog-of-war
                    display gate
   game/entrenchment.rs — apply_entrenchment (turn-start fort_level tick +
@@ -129,8 +140,11 @@ src/
   core/location.rs — Location wraps Option<hexx::Hex> (None = offmap),
                    Terrain, TerrainCosts (scenario overrides over code
                    defaults; 0 = impassable)
-  core/unit.rs   — Unit (mp_left, fort_level, elements), Toe (mp, range),
-                   Element/Device/ElementClass, Size + config structs
+  core/unit.rs   — Unit (mp_left, fort_level, elements, leader), Toe (mp,
+                   range), Element/Device/ElementClass, Size + config structs
+  core/leader.rs — Leader (name, faction, stats), LeaderStats (the seven
+                   WitE2 ratings); deserialized straight from TOML like
+                   Toe/Element, no config/runtime split
   procedures/combat.rs — the pure battle engine: CombatElement snapshots in,
                    BattleReport out; never touches Game/State
   procedures/supply.rs — pure multi-source flood fill (reachable_hexes)
@@ -156,11 +170,11 @@ src/
   `HexOrientation::Pointy`. Conversion happens inside `Location` (and
   `gui/map_view.rs` for drawing); the rest of the code speaks (x, y) u32.
 - **Name registries**: `State` keeps `HashMap<String, _>` for
-  units/toe/elements; units are addressed by name everywhere past the
-  index-based `move` command.
+  units/toe/elements/leaders; units are addressed by name everywhere past
+  the index-based `move` command.
 - **Summaries return Strings**: every report (`victory`, `supply`,
-  `units`, schedules...) is a `Game` method returning `String`; interfaces
-  print or log it. The game layer does no I/O.
+  `units`, schedules, `leaders`/`leader`...) is a `Game` method returning
+  `String`; interfaces print or log it. The game layer does no I/O.
 - **Dead config fields**: fields deserialized but not yet read
   (`Scenario.game_version`, `MapFile.width/height`, `VictoryHex.name`)
   carry
@@ -183,8 +197,10 @@ manual.
   supply-source factions known, arrival units/destinations real).
   `State::build` (`core/mod.rs`) validates element/TOE referential
   integrity (non-empty devices, TOEs reference defined elements, units
-  reference defined TOEs/factions, stat overrides name TOE members) and
-  computes `starting_strength` per faction (the victory baseline).
+  reference defined TOEs/factions, stat overrides name TOE members, leader
+  factions are known, unit leader assignments name a real same-faction
+  leader with no leader claimed twice) and computes `starting_strength`
+  per faction (the victory baseline).
   Morale/experience inheritance (element override → unit → faction
   default → 50) resolves here, at build time.
 - **Turn flow**: `Game::end_turn` advances `TurnPhase`/turn/date and
@@ -226,6 +242,16 @@ manual.
   exclusion, a unit interdicting its own hex was double-counted and could
   underflow its `ready` bucket in `apply_battle_losses` (a debug-build
   panic; see the `_is_not_double_counted_as_a_defender` test).
+- **Leaders**: the opposite split from interdiction — assignment lives on
+  `Unit.leader: Option<String>` (the leader's name), not on `Leader`, so
+  `State`'s leader roster (`leaders: HashMap<String, Leader>`) carries no
+  back-reference; `Game::unit_led_by` does the reverse lookup by scanning
+  units. `State::build` enforces the invariants a scenario can violate that
+  `reassign_leader` can't (it always clears the old unit first): a unit's
+  `leader` must name a real `[[leaders]]` entry of its own faction, and no
+  two units may claim the same leader. Stats (`LeaderStats`, the seven
+  WitE2 ratings) are read-only for now — no combat or command-radius effect
+  yet.
 - **Airfields**: `Toe.range: Option<u32>` (`None` = unlimited, every
   pre-existing TOE's behavior). `Game::check_mission_range` is a no-op
   for an offmap unit or a range-less TOE; otherwise compares

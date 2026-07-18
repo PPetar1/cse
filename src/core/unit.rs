@@ -18,6 +18,10 @@ pub struct Unit {
     /// advance into a vacated hex). Boosts its defensive CV in combat; see
     /// "Entrenchment" in docs/manual.md.
     pub fort_level: u32,
+    /// The name of the leader currently commanding this unit, if any — see
+    /// `core::leader::Leader`. `None` until assigned, either by the
+    /// scenario or the `reassign_leader` command.
+    pub leader: Option<String>,
 }
 
 impl Unit {
@@ -218,6 +222,7 @@ mod tests {
             mp_left: 0,
             elements,
             fort_level: 0,
+            leader: None,
         }
     }
 

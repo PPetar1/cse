@@ -1,3 +1,5 @@
+use std::cell::RefCell;
+
 use rustyline::completion::{Completer, FilenameCompleter, Pair};
 use rustyline::error::ReadlineError;
 use rustyline::highlight::Highlighter;
@@ -27,7 +29,10 @@ fn run_terminal(shared: cse::SharedGame) {
         .build();
     let mut editor: Editor<CommandHelper, DefaultHistory> =
         Editor::with_config(config).expect("Failed to initialise the terminal line editor");
-    editor.set_helper(Some(CommandHelper { file_completer: FilenameCompleter::new() }));
+    editor.set_helper(Some(CommandHelper {
+        file_completer: FilenameCompleter::new(),
+        leader_names: RefCell::new(Vec::new()),
+    }));
 
     loop {
         let input = match editor.readline("> ") {
@@ -51,16 +56,82 @@ fn run_terminal(shared: cse::SharedGame) {
             std::process::exit(0);
         }
 
+        // A two-step order rather than a single line: the command names the
+        // unit, then a second prompt (with leader-name completion) asks
+        // which leader to assign — see `command::HELP_TEXT`'s entry for why
+        // this bypasses the single-line command parser.
+        let trimmed = input.trim();
+        if trimmed.split_whitespace().next() == Some("reassign_leader") {
+            let unit_name = trimmed["reassign_leader".len()..].trim();
+            run_reassign_leader(unit_name, &mut editor, &shared);
+            continue;
+        }
+
         if let Err(error) = cse::run_shared(&input, &shared) {
             println!("{}", error.error_message);
         }
     }
 }
 
+/// The `reassign_leader` two-step prompt: validate `unit_name`, arm the
+/// helper's completer with its faction's leader names, read the leader name
+/// on a second line, then apply it.
+fn run_reassign_leader(unit_name: &str, editor: &mut Editor<CommandHelper, DefaultHistory>, shared: &cse::SharedGame) {
+    if unit_name.is_empty() {
+        println!("Missing unit name. Usage: reassign_leader <unit name>");
+        return;
+    }
+    let (faction, leader_names) = match cse::unit_leader_context(unit_name, shared) {
+        Ok(context) => context,
+        Err(error) => {
+            println!("{}", error.error_message);
+            return;
+        }
+    };
+    if leader_names.is_empty() {
+        println!("Faction '{faction}' has no leaders to assign.");
+        return;
+    }
+
+    if let Some(helper) = editor.helper_mut() {
+        helper.leader_names.replace(leader_names);
+    }
+    let prompt_result = editor.readline("Leader name> ");
+    if let Some(helper) = editor.helper_mut() {
+        helper.leader_names.replace(Vec::new());
+    }
+
+    let leader_name = match prompt_result {
+        Ok(line) => line,
+        // Same policy as the main loop's readline: this thread can't hand
+        // off gracefully, so an interrupt here ends the whole process too.
+        Err(ReadlineError::Interrupted) | Err(ReadlineError::Eof) => std::process::exit(0),
+        Err(error) => {
+            eprintln!("{error}");
+            std::process::exit(0);
+        }
+    };
+    let leader_name = leader_name.trim();
+    if leader_name.is_empty() {
+        println!("Cancelled.");
+        return;
+    }
+    let _ = editor.add_history_entry(leader_name);
+
+    match cse::reassign_leader_shared(unit_name, leader_name, shared) {
+        Ok(()) => println!("'{leader_name}' now leads '{unit_name}'."),
+        Err(error) => println!("{}", error.error_message),
+    }
+}
+
 /// Tab completion: command keywords for the first word, file paths for the
-/// commands that take one. History (arrow keys) comes with the editor.
+/// commands that take one, leader names for the `reassign_leader` prompt.
+/// History (arrow keys) comes with the editor.
 struct CommandHelper {
     file_completer: FilenameCompleter,
+    /// Non-empty only while `run_reassign_leader`'s second prompt is live —
+    /// completion falls back to keyword/file matching otherwise.
+    leader_names: RefCell<Vec<String>>,
 }
 
 impl Completer for CommandHelper {
@@ -72,6 +143,17 @@ impl Completer for CommandHelper {
         pos: usize,
         ctx: &Context<'_>,
     ) -> rustyline::Result<(usize, Vec<Pair>)> {
+        let leader_names = self.leader_names.borrow();
+        if !leader_names.is_empty() {
+            let word = &line[..pos];
+            let candidates = leader_names.iter()
+                .filter(|name| name.starts_with(word))
+                .map(|name| Pair { display: name.clone(), replacement: name.clone() })
+                .collect();
+            return Ok((0, candidates));
+        }
+        drop(leader_names);
+
         let before_cursor = &line[..pos];
 
         // Still typing the first word: complete command keywords.

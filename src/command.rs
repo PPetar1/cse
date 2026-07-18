@@ -10,7 +10,7 @@ use crate::Error;
 pub const COMMAND_KEYWORDS: &[&str] = &[
     "new", "load", "save", "inspect", "units", "move", "attack", "air_support", "interdict",
     "interdiction", "simulate", "end_turn", "status", "victory", "reinforcements", "events",
-    "supply", "help", "exit",
+    "supply", "leaders", "leader", "reassign_leader", "help", "exit",
 ];
 
 pub(crate) const HELP_TEXT: &str = "\
@@ -32,6 +32,9 @@ Commands:
   reinforcements                      show scheduled reinforcements/withdrawals and whether each has arrived
   events                              show scheduled scenario events and whether each has fired
   supply                              show whether each on-map unit is supplied or cut off
+  leaders <faction>                   list that faction's leaders and which unit (if any) each commands
+  leader <name>                       show one leader's stats and current assignment
+  reassign_leader <unit>              assign a leader to <unit>; prompts for the leader's name
   help                                show this help
   exit                                quit";
 
@@ -55,6 +58,8 @@ pub(crate) enum Command<'a> {
     Reinforcements,
     Events,
     Supply,
+    Leaders { faction: String },
+    Leader { name: String },
     Help,
 }
 
@@ -165,6 +170,17 @@ impl<'a> Command<'a> {
             "reinforcements" => Ok(Command::Reinforcements),
             "events" => Ok(Command::Events),
             "supply" => Ok(Command::Supply),
+            "leaders" => {
+                let faction = args.first()
+                    .ok_or_else(|| Error::new("Need a faction tag for leaders."))?;
+                Ok(Command::Leaders { faction: faction.to_string() })
+            }
+            "leader" => {
+                if args.is_empty() {
+                    return Err(Error::new("Need a leader's name for leader."));
+                }
+                Ok(Command::Leader { name: args.join(" ") })
+            }
             "help" => Ok(Command::Help),
             _ => Err(Error::new("Unknown command. Type 'help' for a list of commands.")),
         }
@@ -316,11 +332,41 @@ mod tests {
     }
 
     #[test]
+    fn parses_a_leaders_command() {
+        let command = Command::parse("leaders AX").unwrap();
+
+        assert_eq!(command, Command::Leaders { faction: "AX".to_string() });
+    }
+
+    #[test]
+    fn rejects_leaders_without_a_faction() {
+        let error = Command::parse("leaders").unwrap_err();
+
+        assert!(error.error_message.contains("faction tag"));
+    }
+
+    #[test]
+    fn parses_a_leader_command_with_a_multi_word_name() {
+        let command = Command::parse("leader Erwin Rommel").unwrap();
+
+        assert_eq!(command, Command::Leader { name: "Erwin Rommel".to_string() });
+    }
+
+    #[test]
+    fn rejects_leader_without_a_name() {
+        let error = Command::parse("leader").unwrap_err();
+
+        assert!(error.error_message.contains("leader's name"));
+    }
+
+    #[test]
     fn every_command_keyword_parses_or_is_exit() {
         // Guards COMMAND_KEYWORDS (used by tab completion) against drifting
-        // from the parser. "exit" is handled by the main loop, not the parser.
+        // from the parser. "exit" and "reassign_leader" are handled by the
+        // main loop (the latter needs its own interactive prompt for the
+        // leader name), not the parser.
         for keyword in COMMAND_KEYWORDS {
-            if *keyword == "exit" {
+            if *keyword == "exit" || *keyword == "reassign_leader" {
                 continue;
             }
             // Parsing with dummy arguments must never hit "Unknown command".

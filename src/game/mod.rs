@@ -2,6 +2,7 @@ mod detection;
 mod entrenchment;
 mod events;
 mod interdiction;
+mod leaders;
 mod orders;
 mod refit;
 mod reinforcements;

@@ -112,7 +112,15 @@ pub fn run(input: &str, mut current_game: Option<&mut Game>) -> Result<Option<Ga
             None
         }
         Command::Supply => {
-            println!("{}", require_game(current_game)?.supply_status_summary());
+            println!("{}", require_game(current_game.as_deref_mut())?.supply_status_summary());
+            None
+        }
+        Command::Leaders { faction } => {
+            println!("{}", require_game(current_game.as_deref_mut())?.leaders_summary(&faction)?);
+            None
+        }
+        Command::Leader { name } => {
+            println!("{}", require_game(current_game)?.leader_detail(&name)?);
             None
         }
         Command::Help => {
@@ -143,6 +151,27 @@ pub fn run(input: &str, mut current_game: Option<&mut Game>) -> Result<Option<Ga
 
 fn require_game(game: Option<&mut Game>) -> Result<&mut Game, Error> {
     game.ok_or_else(|| Error::new("No game loaded."))
+}
+
+/// `unit`'s faction and that faction's leader names, sorted — what
+/// `main.rs`'s `reassign_leader` prompt needs before it can validate the
+/// unit and build the leader-name completer, ahead of asking for a name.
+pub fn unit_leader_context(unit: &str, shared: &SharedGame) -> Result<(String, Vec<String>), Error> {
+    let guard = shared.lock().unwrap();
+    let game = guard.as_ref().ok_or_else(|| Error::new("No game loaded."))?;
+    let faction = game.state.units.get(unit)
+        .ok_or_else(|| Error::new(format!("No such unit '{unit}'.")))?
+        .faction.clone();
+    let names = game.leaders_of_faction(&faction).iter().map(|leader| leader.name.clone()).collect();
+    Ok((faction, names))
+}
+
+/// Assign `leader` to `unit` against the shared game — the second half of
+/// `main.rs`'s `reassign_leader` prompt, once the leader's name has been
+/// read.
+pub fn reassign_leader_shared(unit: &str, leader: &str, shared: &SharedGame) -> Result<(), Error> {
+    let mut guard = shared.lock().unwrap();
+    require_game(guard.as_mut())?.reassign_leader(leader, unit)
 }
 
 /// The aftermath of one `end_turn` call, one line per message: status, any
@@ -195,6 +224,7 @@ fn inspect(game: &Game, target: &InspectTarget) -> Result<(), Error> {
     for unit in game.units_at_location(location) {
         println!("{}", unit);
         println!("TOE: {}", unit.toe);
+        println!("Leader: {}", unit.leader.as_deref().unwrap_or("none"));
         println!("Morale: {}  Experience: {} (unit average)", unit.average_morale(), unit.average_experience());
         for element in &unit.elements {
             println!(

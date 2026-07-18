@@ -1,3 +1,4 @@
+pub mod leader;
 pub mod location;
 pub mod map;
 pub mod unit;
@@ -17,6 +18,7 @@ pub struct State {
     pub units: HashMap<String, Unit>,
     pub toe: HashMap<String, Toe>,
     pub elements: HashMap<String, Element>,
+    pub leaders: HashMap<String, leader::Leader>,
     /// Total element instances (ready + damaged, onmap and offmap) each
     /// faction fielded at scenario start — the baseline victory scoring
     /// measures losses against.
@@ -34,7 +36,24 @@ impl State {
         let mut units = HashMap::new();
         let mut toe = HashMap::new();
         let mut elements = HashMap::new();
-       
+        let mut leaders = HashMap::new();
+
+        let players_by_tag: HashMap<&str, &Player> = scenario.players.iter()
+            .map(|player| (player.faction_tag.as_str(), player))
+            .collect();
+
+        for leader in scenario.leaders {
+            if !players_by_tag.contains_key(leader.faction.as_str()) {
+                return Err(Error {
+                    error_message: format!(
+                        "Leader '{}' belongs to faction '{}' which has no player.",
+                        leader.name, leader.faction
+                    ),
+                });
+            }
+            leaders.insert(leader.name.clone(), leader);
+        }
+
         for element in scenario.elements {
             if element.devices.is_empty() {
                 return Err(Error {
@@ -58,9 +77,7 @@ impl State {
             toe.insert(toe_.name.clone(), toe_);
         }
 
-        let players_by_tag: HashMap<&str, &Player> = scenario.players.iter()
-            .map(|player| (player.faction_tag.as_str(), player))
-            .collect();
+        let mut assigned_leaders: HashMap<String, String> = HashMap::new();
 
         for unit in scenario.units {
             let player = players_by_tag.get(unit.faction.as_str()).ok_or_else(|| Error {
@@ -78,6 +95,30 @@ impl State {
                         error_message: format!(
                             "Unit '{}' overrides stats of element '{}' which is not in its toe '{}'.",
                             unit.name, stats.name, unit.toe
+                        ),
+                    });
+                }
+            }
+            if let Some(leader_name) = &unit.leader {
+                let leader = leaders.get(leader_name).ok_or_else(|| Error {
+                    error_message: format!(
+                        "Unit '{}' assigns leader '{}' which is not defined in the scenario.",
+                        unit.name, leader_name
+                    ),
+                })?;
+                if leader.faction != unit.faction {
+                    return Err(Error {
+                        error_message: format!(
+                            "Unit '{}' assigns leader '{}' who belongs to faction '{}', not '{}'.",
+                            unit.name, leader_name, leader.faction, unit.faction
+                        ),
+                    });
+                }
+                if let Some(other_unit) = assigned_leaders.insert(leader_name.clone(), unit.name.clone()) {
+                    return Err(Error {
+                        error_message: format!(
+                            "Leader '{}' is assigned to multiple units ('{}' and '{}').",
+                            leader_name, other_unit, unit.name
                         ),
                     });
                 }
@@ -107,6 +148,7 @@ impl State {
                 mp_left: unit_toe.mp,
                 elements,
                 fort_level: 0,
+                leader: unit.leader,
             });
         }
 
@@ -122,6 +164,7 @@ impl State {
             units,
             toe,
             elements,
+            leaders,
             starting_strength,
         })
     }
