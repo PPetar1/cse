@@ -14,3 +14,9 @@ Format: one line per task, checked off when done, e.g.
 ## Queue
 
 - [x] leaders.md
+- [ ] arch-1-core-leaf.md
+- [ ] arch-2-inspect-into-game.md
+- [ ] arch-3-session-and-terminal.md
+- [ ] arch-4-seal-state.md
+- [ ] arch-5-pathfinding-procedure.md
+- [ ] arch-6-gui-rule-leaks.md
