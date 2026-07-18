@@ -16,7 +16,7 @@ mod test_support;
 pub use scenario::Player;
 pub use victory::VictoryReport;
 use reinforcements::ScheduledArrival;
-use scenario::{ScenarioEvent, SupplySource, VictoryConditions};
+use scenario::{ScenarioEvent, VictoryConditions};
 use turn::{TurnPhase, TurnSystem};
 
 use std::collections::HashMap;
@@ -50,9 +50,6 @@ pub struct Game {
     /// `take_event_messages` — transient, so it starts empty on load too.
     #[serde(skip)]
     pending_event_messages: Vec<String>,
-    /// Each faction's supply-source hexes, for tracing which of its units
-    /// are connected back to them (see `game::supply`).
-    supply_sources: Vec<SupplySource>,
     /// Hexes each fighter-capable unit is currently covering (up to
     /// `interdiction::INTERDICTION_HEX_LIMIT` each), keyed by unit name.
     /// Declared via `interdict`; cleared for a faction's own units the
@@ -97,7 +94,6 @@ impl Game {
            .map(ScheduledArrival::from)
            .collect();
        let events = scenario.events.clone();
-       let supply_sources = scenario.supply_sources.clone();
        let fog_of_war = scenario.fog_of_war.as_ref().map(|config| config.detection_range);
 
        let state = scenario::build_state(scenario)?;
@@ -105,7 +101,6 @@ impl Game {
        scenario::validate_victory_hexes(&victory_conditions, &state)?;
        scenario::validate_events(&events, &players)?;
        scenario::validate_arrivals(&scheduled_arrivals, &state)?;
-       scenario::validate_supply_sources(&supply_sources, &state, &players)?;
 
        let mut game = Game {
            state,
@@ -120,7 +115,6 @@ impl Game {
            scheduled_arrivals,
            events,
            pending_event_messages: Vec::new(),
-           supply_sources,
            interdiction_coverage: HashMap::new(),
            fog_of_war,
        };

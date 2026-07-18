@@ -153,8 +153,9 @@ src/
                    MAX_FORT_LEVEL cap)
   game/test_support.rs — shared #[cfg(test)] scenario fixtures
   core/mod.rs    — State: the runtime data model (map, units, toe, elements,
-                   leaders, starting_strength); a true leaf, no game:: or
-                   file I/O — assembly lives in game/scenario.rs::build_state
+                   leaders, supply_sources, starting_strength); a true leaf,
+                   no game:: or file I/O — assembly lives in
+                   game/scenario.rs::build_state
   core/map.rs    — Map: HashMap<(u32,u32), Location> + offmap locations;
                    TOML map parsing (pathfinding lives in
                    procedures/pathfinding.rs)
@@ -166,6 +167,9 @@ src/
   core/leader.rs — Leader (name, faction, stats), LeaderStats (the seven
                    WitE2 ratings); deserialized straight from TOML like
                    Toe/Element, no config/runtime split
+  core/supply.rs — SupplySource (faction, x, y): a faction's supply-source
+                   hexes; deserialized straight from TOML, same reasoning
+                   as Leader
   procedures/combat.rs — the pure battle engine: CombatElement snapshots in,
                    BattleReport out; never touches Game/State
   procedures/pathfinding.rs — cheapest_path_cost (hexx a_star over a Map;
@@ -234,14 +238,14 @@ What's non-obvious per system, beyond the file map. Behavior lives in the
 manual.
 
 - **Scenario loading**: `game/scenario.rs` owns schema and validation
-  (players non-empty, victory hexes/supply sources on the map, event and
-  supply-source factions known, arrival units/destinations real).
-  `build_state` (`game/scenario.rs`) validates element/TOE referential
-  integrity (non-empty devices, TOEs reference defined elements, units
-  reference defined TOEs/factions, stat overrides name TOE members, leader
-  factions are known, unit leader assignments name a real same-faction
-  leader with no leader claimed twice) and computes `starting_strength`
-  per faction (the victory baseline).
+  (players non-empty, victory hexes on the map, event factions known,
+  arrival units/destinations real). `build_state` (`game/scenario.rs`)
+  validates element/TOE referential integrity (non-empty devices, TOEs
+  reference defined elements, units reference defined TOEs/factions, stat
+  overrides name TOE members, leader factions are known, unit leader
+  assignments name a real same-faction leader with no leader claimed
+  twice), supply sources sit on the map and name a known faction, and
+  computes `starting_strength` per faction (the victory baseline).
   Morale/experience inheritance (element override → unit → faction
   default → 50) resolves here, at build time.
 - **Turn flow**: `Game::end_turn` advances `TurnPhase`/turn/date and
@@ -276,10 +280,9 @@ manual.
   function to swap for a different stat curve.
 - **Interdiction**: coverage lives on `Game` (`interdiction_coverage:
   HashMap<unit name, Vec<hex>>`), not on `Unit` — same separation as
-  `scheduled_arrivals`/`events`/`supply_sources`. `prepare_battle`
-  extends the defender snapshot with
-  `covering_fighter_units(defender_faction, to)`, *excluding any unit
-  already present as a ground defender at that hex* — without the
+  `scheduled_arrivals`/`events`. `prepare_battle` extends the defender
+  snapshot with `covering_fighter_units(defender_faction, to)`, *excluding
+  any unit already present as a ground defender at that hex* — without the
   exclusion, a unit interdicting its own hex was double-counted and could
   underflow its `ready` bucket in `apply_battle_losses` (a debug-build
   panic; see the `_is_not_double_counted_as_a_defender` test).
@@ -305,11 +308,14 @@ manual.
   map markers/inspector roster — never
   `units_at_location`/`units_of_faction`, which order validation, the AI
   and the GUI's buttons rely on.
-- **Supply**: `procedures::supply::reachable_hexes` is a pure
-  multi-source flood fill (`Location::neighbour_coords` frontier,
+- **Supply**: `State::supply_sources` (`core::supply::SupplySource`,
+  resolved by `build_state` like units/toe/elements/leaders) is each
+  faction's supply-source hexes. `procedures::supply::reachable_hexes` is
+  a pure multi-source flood fill (`Location::neighbour_coords` frontier,
   `TerrainCosts::cost` stops at impassable, a caller-supplied blocked set
-  stops at enemy hexes). `game/supply.rs` assembles the inputs; nothing
-  persists; `game/refit.rs` is the one consumer with gameplay effect.
+  stops at enemy hexes). `game/supply.rs` assembles the inputs from
+  `self.state.supply_sources`; nothing persists beyond that; `game/refit.rs`
+  is the one consumer with gameplay effect.
 - **Victory**: `end_turn` returns `Some(VictoryReport)` once `last_turn`
   completes; `run`/the GUI print it. Scoring only — nothing gates further
   commands afterwards.

@@ -15,6 +15,7 @@ use crate::core::State;
 use crate::core::leader::Leader;
 use crate::core::location::{Terrain, TerrainCosts};
 use crate::core::map::Map;
+use crate::core::supply::SupplySource;
 use crate::core::unit::{Element, ElementInUnit, LocationCoords, Toe, Unit, UnitLocation};
 
 use super::reinforcements::ScheduledArrival;
@@ -62,6 +63,21 @@ pub(super) fn build_state(scenario: Scenario) -> Result<State, Error> {
         }
         leaders.insert(leader.name.clone(), leader);
     }
+
+    for source in &scenario.supply_sources {
+        if map.get_location(source.x, source.y).is_none() {
+            return Err(Error::new(format!(
+                "Supply source ({}, {}) is not on the map.", source.x, source.y,
+            )));
+        }
+        if !players_by_tag.contains_key(source.faction.as_str()) {
+            return Err(Error::new(format!(
+                "Supply source ({}, {}) references unknown faction '{}'.",
+                source.x, source.y, source.faction,
+            )));
+        }
+    }
+    let supply_sources = scenario.supply_sources;
 
     for element in scenario.elements {
         if element.devices.is_empty() {
@@ -174,6 +190,7 @@ pub(super) fn build_state(scenario: Scenario) -> Result<State, Error> {
         toe,
         elements,
         leaders,
+        supply_sources,
         starting_strength,
     })
 }
@@ -236,29 +253,6 @@ pub(super) fn validate_events(
         if !players.iter().any(|player| player.faction_tag == event.faction) {
             return Err(Error::new(format!(
                 "Event at turn {} references unknown faction '{}'.", event.turn, event.faction,
-            )));
-        }
-    }
-    Ok(())
-}
-
-/// Every supply source must sit on the map and belong to a faction that has
-/// a player.
-pub(super) fn validate_supply_sources(
-    sources: &[SupplySource],
-    state: &State,
-    players: &[Player],
-) -> Result<(), Error> {
-    for source in sources {
-        if state.map.get_location(source.x, source.y).is_none() {
-            return Err(Error::new(format!(
-                "Supply source ({}, {}) is not on the map.", source.x, source.y,
-            )));
-        }
-        if !players.iter().any(|player| player.faction_tag == source.faction) {
-            return Err(Error::new(format!(
-                "Supply source ({}, {}) references unknown faction '{}'.",
-                source.x, source.y, source.faction,
             )));
         }
     }
@@ -432,16 +426,6 @@ pub(super) struct ScenarioEvent {
     pub(super) morale_delta: i32,
     #[serde(default)]
     pub(super) experience_delta: i32,
-}
-
-/// One supply source: `faction`'s units trace connectivity back to this hex
-/// (see `game::supply`). No config/runtime split needed — plain data, same
-/// reasoning as `ScenarioEvent`.
-#[derive(Debug, Clone, serde::Deserialize, serde::Serialize)]
-pub(super) struct SupplySource {
-    pub(super) faction: String,
-    pub(super) x: u32,
-    pub(super) y: u32,
 }
 
 /// How a scenario is won: flat points for holding named hexes at the end,

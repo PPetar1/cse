@@ -16,7 +16,7 @@ impl Game {
     /// supply sources, blocked by enemy-occupied hexes the same way movement
     /// is.
     pub(super) fn faction_supplied_hexes(&self, faction: &str) -> HashSet<(u32, u32)> {
-        let sources = self.supply_sources.iter()
+        let sources = self.state.supply_sources.iter()
             .filter(|source| source.faction == faction)
             .map(|source| (source.x, source.y));
 
@@ -35,7 +35,7 @@ impl Game {
     /// it can currently trace a path back to one of its faction's supply
     /// sources. Backs the `supply` command.
     pub fn supply_status_summary(&self) -> String {
-        if self.supply_sources.is_empty() {
+        if self.state.supply_sources.is_empty() {
             return "This scenario has no supply sources.".to_string();
         }
 
