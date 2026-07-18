@@ -20,47 +20,52 @@ false` in Cargo.toml) — keeps target/ small. There is no CI.
 
 ## Two interfaces, one game
 
-`cargo run` starts both interfaces against one shared game: `main.rs`
-builds a `SharedGame` (`lib.rs`, `Arc<Mutex<Option<Game>>>` — `None` until
-a game is started or loaded from either side), spawns a background thread
-for the terminal loop, and runs the GUI (`gui/`) on the main thread (winit
-event loops must run there). There's only ever one `Game` behind the
-mutex, so each side sees the other's commands immediately; the GUI polls a
-few times a second (`request_repaint_after`) so terminal-driven changes
-surface without a window event. Closing the window or typing
-`exit`/Ctrl-D/Ctrl-C ends the whole process (the terminal thread can't
-hand control back to the main thread, so it calls `std::process::exit`).
+`cargo run` starts both interfaces against one shared game: `main.rs` is
+wiring only — it builds a `SharedGame` (`session.rs`,
+`Arc<Mutex<Option<Game>>>` — `None` until a game is started or loaded from
+either side), spawns a background thread running `cse::run_terminal`
+(`terminal::run_loop`), and runs the GUI (`cse::run_gui`, `gui::run`) on
+the main thread (winit event loops must run there). There's only ever one
+`Game` behind the mutex, so each side sees the other's commands
+immediately; the GUI polls a few times a second (`request_repaint_after`)
+so terminal-driven changes surface without a window event. Closing the
+window or typing `exit`/Ctrl-D/Ctrl-C ends the whole process (the terminal
+thread can't hand control back to the main thread, so it calls
+`std::process::exit`).
 
-The terminal thread reads stdin lines (rustyline: tab completion via
+`terminal::run_loop` reads stdin lines (rustyline: tab completion via
 `COMMAND_KEYWORDS` + a filename completer, arrow-key history) into
-`cse::run_shared(command, &shared)` — a lock-and-call wrapper around
-`cse::run(command, current_game)` in `lib.rs`, which parses via
-`command.rs` and dispatches. `run` returns `Result<Option<Game>, Error>`
-(`Some` = a new game replaces the current one).
+`run_shared(command, &shared)` — a lock-and-call wrapper around
+`run(command, current_game)`, which parses via `terminal/command.rs` and
+dispatches. `run` returns `Result<Option<Game>, Error>` (`Some` = a new
+game replaces the current one).
 
-`lib.rs` also hosts what both interfaces share:
-`new_game`/`load_game`/`save_game` (`pub(crate)`; the GUI's menu calls
-them directly since it builds/loads outside the mutex), and
-`report_turn_transition`/`play_pending_ai_turns` (`pub(crate)`, returning
-`Vec<String>` — the terminal prints them, the GUI logs them). AI auto-play
-runs after a human's `end_turn` and after `new`/`load` (the first or
-restored on-turn player can be AI), stopping when a human is on turn or
-the scenario scores. Known gap, not guarded: an all-AI scenario with no
+`session.rs` hosts what both interfaces share: `new_game`/`load_game`/
+`save_game` (`pub(crate)`; the GUI's menu calls them directly since it
+builds/loads outside the mutex), `report_turn_transition`/
+`play_pending_ai_turns` (`pub(crate)`, returning `Vec<String>` — the
+terminal prints them, the GUI logs them), and `activate_game` — the
+post-new/load ritual (auto-play any AI faction already on turn, then drain
+turn-1 event messages), called from both `terminal::run`'s tail and
+`gui::menu::adopt_game` so the two can't drift apart. AI auto-play runs
+after a human's `end_turn` and after `new`/`load` (the first or restored
+on-turn player can be AI), stopping when a human is on turn or the
+scenario scores. Known gap, not guarded: an all-AI scenario with no
 `last_turn` would loop forever.
 
 ### Adding a command
 
 Update all three of `Command::parse`, `HELP_TEXT` and `COMMAND_KEYWORDS`
-in command.rs (a test there guards keyword drift), the dispatch match in
-`run` (lib.rs), and the README command table.
+in `terminal/command.rs` (a test there guards keyword drift), the dispatch
+match in `run` (`terminal/mod.rs`), and the README command table.
 
 A command needing more than one line of input (`reassign_leader`: unit name,
 then a second prompt for the leader's name) can't go through `Command`/`run`
 at all — that path is one shared string in, one `Result` out, with no room
-for a follow-up prompt. It's special-cased in `main.rs`'s loop instead,
-ahead of the `cse::run_shared` call, and stays out of the `Command` enum;
-it's still in `COMMAND_KEYWORDS` for tab completion, and the keyword-drift
-test in command.rs excludes it by name (same as `exit`).
+for a follow-up prompt. It's special-cased in `terminal::run_loop` instead,
+ahead of the `run_shared` call, and stays out of the `Command` enum; it's
+still in `COMMAND_KEYWORDS` for tab completion, and the keyword-drift test
+in `terminal/command.rs` excludes it by name (same as `exit`).
 
 ## Layering and file map
 
@@ -69,23 +74,32 @@ test in command.rs excludes it by name (same as `exit`).
 meaty and independently testable, like combat or the supply flood fill);
 `game/` is the orchestration layer (one module per concern; `Game` keeps
 its fields in `game/mod.rs`, submodules add `impl Game` blocks and mark
-what crosses module lines `pub(super)`); the interface layer
-(`command.rs`/`ai.rs`/`gui/`) talks to `Game`'s public API. New systems
-follow the pattern: a pure procedure (if warranted) + a `game/` hook; the
-AI and GUI consume `Game` like any other front-end (`ai.rs` sits next to
-`command.rs`, not under `game/`).
+what crosses module lines `pub(super)`); `session.rs` is the application
+layer both frontends share (persistence, shared-game plumbing, turn-flow
+orchestration); the interface layer (`terminal/`/`ai.rs`/`gui/`) talks to
+`Game`'s public API. New systems follow the pattern: a pure procedure (if
+warranted) + a `game/` hook; the AI and GUI consume `Game` like any other
+front-end (`ai.rs` sits next to `terminal/`, not under `game/`).
 
 ```
 src/
-  main.rs        — spawns the terminal thread against a SharedGame, then runs
-                   the GUI on the main thread
-  lib.rs         — SharedGame/new_shared_game/run_shared; run(): command
-                   dispatch; new_game/load_game/save_game;
-                   report_turn_transition/play_pending_ai_turns
+  main.rs        — wiring only: builds a SharedGame, spawns the terminal
+                   thread, runs the GUI on the main thread
+  lib.rs         — module declarations plus the re-exports main.rs and the
+                   frontends need; no function bodies of its own
+  session.rs     — the application layer both frontends share: SharedGame/
+                   new_shared_game, new_game/load_game/save_game,
+                   report_turn_transition/play_pending_ai_turns,
+                   activate_game (the post-new/load ritual)
   ai.rs          — the AI opponent: take_turn per faction via Game's public
                    API (no own pathfinding or combat logic)
-  command.rs     — the command language: Command enum + parse,
-                   COMMAND_KEYWORDS, HELP_TEXT
+  terminal/      — the terminal frontend, mirrors gui/'s layout:
+    mod.rs         — run/run_shared: command dispatch against a SharedGame;
+                     run_loop: the rustyline read-eval-print loop
+                     (CommandHelper tab completion) plus the two-step
+                     reassign_leader prompt
+    command.rs     — the command language: Command enum + parse,
+                     COMMAND_KEYWORDS, HELP_TEXT
   error.rs       — crate-wide Error type + From impls (io/toml/postcard)
   gui/           — the egui/eframe window. Mirrors game/'s layout: GuiApp's
                    fields in mod.rs (plus render_playing/end_turn/

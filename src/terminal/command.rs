@@ -1,7 +1,7 @@
 //! The terminal command language: the `Command` enum, its parser, and the
 //! keyword/help listings that must stay in sync with it. Parsing is
-//! separated from execution (`run` in lib.rs) so argument handling can be
-//! tested without a running game.
+//! separated from execution (`run` in `terminal/mod.rs`) so argument
+//! handling can be tested without a running game.
 
 use crate::Error;
 use crate::game::InspectTarget;
