@@ -1,11 +1,13 @@
 //! The movement order: relocate one unit along the cheapest path to any
 //! reachable hex, charging its movement points. Pathfinding itself lives in
-//! `core::map` (`cheapest_path_cost`); this module owns the order's rules —
-//! whose turn it is, what blocks the way, what the trip costs.
+//! `procedures::pathfinding` (`cheapest_path_cost`); this module owns the
+//! order's rules — whose turn it is, what blocks the way, what the trip
+//! costs.
 
 use crate::Error;
 use crate::core::unit::{LocationCoords, UnitLocation};
 use crate::game::Game;
+use crate::procedures::pathfinding;
 
 impl Game {
     pub fn move_unit(&mut self, x_start: u32, y_start: u32, x_end: u32, y_end: u32, unit_i: usize) -> Result<(), Error> {
@@ -48,14 +50,15 @@ impl Game {
             return Err(Error::new("Cannot move into a hex occupied by the enemy."));
         }
 
-        let cost = self.state.map
-            .cheapest_path_cost((x_start, y_start), (x_end, y_end), |coords, location| {
+        let cost = pathfinding::cheapest_path_cost(
+            &self.state.map, (x_start, y_start), (x_end, y_end),
+            |coords, location| {
                 if enemy_hexes.contains(&coords) {
                     return None;
                 }
                 self.state.terrain_costs.cost(location.terrain)
-            })
-            .ok_or_else(|| Error::new("No passable route to the destination."))?;
+            },
+        ).ok_or_else(|| Error::new("No passable route to the destination."))?;
 
         let unit = self.state.units.get_mut(&unit_name).expect("moving unit vanished");
         if unit.mp_left < cost {

@@ -1,6 +1,6 @@
 # Move pathfinding into procedures/
 
-Status: pending
+Status: done
 
 ## Goal
 

@@ -71,7 +71,8 @@ in `terminal/command.rs` excludes it by name (same as `exit`).
 
 `core/` is the data model; `procedures/` are pure algorithms on snapshots
 (no `Game`/`State` access — worth the split only when the algorithm is
-meaty and independently testable, like combat or the supply flood fill);
+meaty and independently testable, like combat, the supply flood fill, or
+pathfinding);
 `game/` is the orchestration layer (one module per concern; `Game` keeps
 its fields in `game/mod.rs`, submodules add `impl Game` blocks and mark
 what crosses module lines `pub(super)`); `session.rs` is the application
@@ -154,8 +155,8 @@ src/
                    leaders, starting_strength); a true leaf, no game:: or
                    file I/O — assembly lives in game/scenario.rs::build_state
   core/map.rs    — Map: HashMap<(u32,u32), Location> + offmap locations;
-                   TOML map parsing; cheapest_path_cost (hexx a_star; start
-                   hex is free)
+                   TOML map parsing (pathfinding lives in
+                   procedures/pathfinding.rs)
   core/location.rs — Location wraps Option<hexx::Hex> (None = offmap),
                    Terrain, TerrainCosts (scenario overrides over code
                    defaults; 0 = impassable)
@@ -166,6 +167,8 @@ src/
                    Toe/Element, no config/runtime split
   procedures/combat.rs — the pure battle engine: CombatElement snapshots in,
                    BattleReport out; never touches Game/State
+  procedures/pathfinding.rs — cheapest_path_cost (hexx a_star over a Map;
+                   start hex is free)
   procedures/supply.rs — pure multi-source flood fill (reachable_hexes)
 ```
 
