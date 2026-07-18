@@ -60,6 +60,14 @@ pub struct CombatElement {
     /// `fort_defense_modifier`) — a purely defensive bonus, unlike
     /// morale/experience which scale both sides' CV identically.
     fort_level: u32,
+    /// Whether this element belongs to the defending ground stack for
+    /// `average_fort_level`'s purposes. False for interdiction covering
+    /// units pulled into a battle (`game::orders::attack::prepare_battle`)
+    /// — they aren't part of the stack and don't retreat with it, so
+    /// their fort level must neither raise nor lower its average. True for
+    /// everything else; inert on attacker-side snapshots, which never feed
+    /// the fort average.
+    in_defending_stack: bool,
 }
 
 /// Variant order matters: later = worse, and a doubly-hit element keeps the
@@ -108,11 +116,22 @@ pub fn combat_elements(
                     can_target_air: air_domain || element_type.anti_air,
                     devices: element_type.devices.clone(),
                     fort_level: unit.fort_level,
+                    in_defending_stack: true,
                 });
             }
         }
     }
     Ok(elements)
+}
+
+/// Mark a batch of just-built defender elements as not belonging to the
+/// defending ground stack — for interdiction covering units pulled into a
+/// battle, so their fort level doesn't shift `average_fort_level` (see
+/// `in_defending_stack`).
+pub fn exclude_from_defending_stack(elements: &mut [CombatElement]) {
+    for element in elements {
+        element.in_defending_stack = false;
+    }
 }
 
 /// Fight a battle to completion, mutating the snapshots' states in place.
@@ -409,14 +428,19 @@ fn terrain_defense(terrain: Terrain) -> f32 {
 /// The defending side's mean entrenchment level — a flat environmental
 /// property like terrain, so it's averaged over every defending instance
 /// (not just currently-Ready ones) rather than filtered like `ready_cv`.
-/// 0 for an empty side (battles are never fought with no defenders, but a
-/// literal average-of-zero avoids a division by zero regardless).
+/// Covering units pulled in by interdiction are excluded from both the
+/// numerator and the denominator (see `in_defending_stack`) — they aren't
+/// part of the stack. 0 for an empty stack (battles are never fought with
+/// no ground defenders, but a literal average-of-zero avoids a division by
+/// zero regardless).
 fn average_fort_level(defenders: &[CombatElement]) -> f32 {
-    if defenders.is_empty() {
+    let stack: Vec<&CombatElement> =
+        defenders.iter().filter(|element| element.in_defending_stack).collect();
+    if stack.is_empty() {
         return 0.0;
     }
-    let total: u32 = defenders.iter().map(|element| element.fort_level).sum();
-    total as f32 / defenders.len() as f32
+    let total: u32 = stack.iter().map(|element| element.fort_level).sum();
+    total as f32 / stack.len() as f32
 }
 
 /// Multiplier on the defender's final CV from entrenchment: ×1 at level 0,
@@ -866,6 +890,25 @@ mod tests {
         // 1.0 + 5 * 0.15 = 1.75.
         assert_eq!(report.attacker_cv, 120.0);
         assert_eq!(report.defender_cv, 210.0);
+    }
+
+    #[test]
+    fn covering_units_are_excluded_from_the_defending_stacks_fort_average() {
+        let types = registry(vec![element_type("rifle", ElementClass::Inf, 20, 100, 4.0)]);
+        let mut ground = unit_with("Ground Stack", vec![veterans("rifle", 10, 0)]);
+        ground.fort_level = 3;
+        let mut covering = unit_with("Covering Fighter", vec![veterans("rifle", 10, 0)]);
+        covering.fort_level = 5; // Must neither raise nor lower the stack's average.
+
+        let without_coverage = combat_elements(&[&ground], &types).unwrap();
+
+        let mut with_coverage = combat_elements(&[&ground], &types).unwrap();
+        let mut covering_elements = combat_elements(&[&covering], &types).unwrap();
+        exclude_from_defending_stack(&mut covering_elements);
+        with_coverage.extend(covering_elements);
+
+        assert_eq!(average_fort_level(&without_coverage), 3.0);
+        assert_eq!(average_fort_level(&with_coverage), average_fort_level(&without_coverage));
     }
 
     #[test]

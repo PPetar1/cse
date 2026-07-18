@@ -48,10 +48,10 @@ impl Game {
     /// acts), and morale drifting back toward the faction default (rest
     /// heals battered units, euphoria fades).
     fn begin_turn(&mut self) {
-        self.apply_scheduled_arrivals();
+        let just_arrived = self.apply_scheduled_arrivals();
         self.apply_scheduled_events();
         self.apply_refit();
-        self.apply_entrenchment();
+        self.apply_entrenchment(&just_arrived);
 
         let player = self.player_on_turn();
         let faction = player.faction_tag.clone();

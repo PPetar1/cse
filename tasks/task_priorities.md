@@ -23,7 +23,7 @@ Format: one line per task, checked off when done, e.g.
 - [x] arch-7-ai-core-methods.md
 - [x] arch-8-supply-sources-into-state.md
 - [x] arch-9-boundary-and-docs-review.md
-- [ ] fix-entrenchment-scope.md
+- [x] fix-entrenchment-scope.md
 - [ ] fix-ai-stack-follow-moves.md
 - [ ] fix-architecture-doc-drift.md
 - [ ] fix-stale-code-comments.md

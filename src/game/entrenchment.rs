@@ -4,6 +4,10 @@
 //! order actually moves the unit (`move_unit`, retreat, advance, scheduled
 //! arrivals) — see "Entrenchment" in docs/manual.md.
 
+use std::collections::HashSet;
+
+use crate::core::unit::UnitLocation;
+
 use super::Game;
 
 /// A unit's fort level never rises above this — WitE-style fortification
@@ -15,13 +19,23 @@ impl Game {
     /// unit of theirs gains one fort level, capped at `MAX_FORT_LEVEL`. A
     /// unit that relocated since its last turn already had its level reset
     /// to 0 at the moment it moved (see the callers listed above), so this
-    /// just ticks whoever's still standing where they were.
-    pub(super) fn apply_entrenchment(&mut self) {
+    /// just ticks whoever's still standing where they were. Offmap units
+    /// (reserve boxes) never entrench, and `just_arrived` — names this
+    /// turn's scheduled arrivals already reset to 0 — skips one tick so a
+    /// fresh reinforcement doesn't immediately dig in on the turn it lands.
+    pub(super) fn apply_entrenchment(&mut self, just_arrived: &HashSet<String>) {
         let faction = self.player_on_turn().faction_tag.clone();
-        for unit in self.state.units.values_mut() {
-            if unit.faction == faction {
-                unit.fort_level = (unit.fort_level + 1).min(MAX_FORT_LEVEL);
+        for (name, unit) in self.state.units.iter_mut() {
+            if unit.faction != faction {
+                continue;
             }
+            if !matches!(unit.location, UnitLocation::OnMap(_)) {
+                continue;
+            }
+            if just_arrived.contains(name) {
+                continue;
+            }
+            unit.fort_level = (unit.fort_level + 1).min(MAX_FORT_LEVEL);
         }
     }
 }
@@ -52,6 +66,34 @@ mod tests {
         game.end_turn();
 
         assert_eq!(game.state.units["1st Test Division"].fort_level, super::MAX_FORT_LEVEL);
+    }
+
+    #[test]
+    fn an_offmap_unit_never_entrenches() {
+        let mut game = Game::build(minimal_scenario(ONE_PLAYER, OFFMAP_UNIT)).unwrap();
+
+        game.end_turn();
+        game.end_turn();
+
+        assert_eq!(game.state.units["Reserve Division"].fort_level, 0);
+    }
+
+    #[test]
+    fn a_reinforcement_gets_no_entrenchment_tick_on_its_arrival_turn() {
+        let units = format!(
+            "{OFFMAP_UNIT}\n\n[[units]]\nname = \"Soviet Division\"\ntoe = \"test_toe\"\nfaction = \"SU\"\nlocation = {{ x = 2, y = 1 }}\n\n[[reinforcements]]\nunit = \"Reserve Division\"\nturn = 2\nlocation = {{ x = 4, y = 4 }}\n"
+        );
+        let mut game = Game::build(minimal_scenario(TWO_PLAYERS, &units)).unwrap();
+
+        game.end_turn(); // Axis -> Soviet, still turn 1.
+        game.end_turn(); // Soviet -> Axis, turn becomes 2: the reinforcement lands.
+
+        assert_eq!(game.state.units["Reserve Division"].fort_level, 0);
+
+        game.end_turn(); // Axis -> Soviet.
+        game.end_turn(); // Soviet -> Axis, turn 3: Axis's next turn start.
+
+        assert_eq!(game.state.units["Reserve Division"].fort_level, 1);
     }
 
     #[test]

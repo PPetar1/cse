@@ -28,9 +28,12 @@ impl Game {
     /// Move every unit whose scheduled arrival falls on the current turn and
     /// belongs to the faction coming on turn — reinforcements step onto the
     /// map, withdrawals step off it, both just a relocation of `location`.
-    pub(super) fn apply_scheduled_arrivals(&mut self) {
+    /// Returns the relocated units' names, so `apply_entrenchment` can skip
+    /// ticking a unit that was reset to fort level 0 this same turn start.
+    pub(super) fn apply_scheduled_arrivals(&mut self) -> std::collections::HashSet<String> {
         let faction = self.player_on_turn().faction_tag.clone();
         let turn = self.turn;
+        let mut relocated = std::collections::HashSet::new();
         for arrival in &self.scheduled_arrivals {
             if arrival.turn != turn {
                 continue;
@@ -39,8 +42,10 @@ impl Game {
                 && unit.faction == faction {
                     unit.location = arrival.location.clone();
                     unit.fort_level = 0; // Stepping on or off the map is a relocation too.
+                    relocated.insert(arrival.unit.clone());
                 }
         }
+        relocated
     }
 
     /// Human-readable rundown of every scheduled reinforcement/withdrawal:

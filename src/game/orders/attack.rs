@@ -220,7 +220,10 @@ impl Game {
             .filter(|unit| !defender_units.iter().any(|defender| defender.name == unit.name))
             .collect();
         if !covering_units.is_empty() {
-            defenders.extend(combat::combat_elements(&covering_units, &self.state.elements)?);
+            let mut covering_elements =
+                combat::combat_elements(&covering_units, &self.state.elements)?;
+            combat::exclude_from_defending_stack(&mut covering_elements);
+            defenders.extend(covering_elements);
         }
 
         Ok(BattlePlan {
@@ -1242,6 +1245,35 @@ air_attack = 100
         if let Some(fighter) = game.state.units.get("Soviet Fighter Wing") {
             assert!(fighter.elements[0].ready + fighter.elements[0].damaged <= 10);
         }
+    }
+
+    /// A covering fighter's own fort level (offmap, so it can be a phantom
+    /// value entirely) must not shift `average_fort_level` for the ground
+    /// stack it's pulled in to defend alongside. Two otherwise-identical
+    /// games, differing only in the covering fighter's fort level, must
+    /// produce the same `defender_cv` — same seed means an identical RNG
+    /// stream, and fort level influences nothing but that CV multiplier.
+    #[test]
+    fn a_covering_fighters_fort_level_does_not_shift_the_defending_stacks_fort_average() {
+        let units = format!("{OPPOSING_UNITS}\n{SOVIET_FIGHTER_WING}");
+
+        let mut low = Game::build(minimal_scenario(TWO_PLAYERS, &units)).unwrap();
+        low.state.units.get_mut("Soviet Division").unwrap().fort_level = 3;
+        low.state.units.get_mut("Soviet Fighter Wing").unwrap().fort_level = 0;
+        low.end_turn(); // Soviet Union's turn.
+        low.interdict("Soviet Fighter Wing", (2, 1)).unwrap();
+        low.end_turn(); // Back to Axis, still turn 1.
+        let report_low = low.attack((1, 1), (2, 1), &mut StdRng::seed_from_u64(42)).unwrap();
+
+        let mut high = Game::build(minimal_scenario(TWO_PLAYERS, &units)).unwrap();
+        high.state.units.get_mut("Soviet Division").unwrap().fort_level = 3;
+        high.state.units.get_mut("Soviet Fighter Wing").unwrap().fort_level = 5;
+        high.end_turn();
+        high.interdict("Soviet Fighter Wing", (2, 1)).unwrap();
+        high.end_turn();
+        let report_high = high.attack((1, 1), (2, 1), &mut StdRng::seed_from_u64(42)).unwrap();
+
+        assert_eq!(report_low.battle.defender_cv, report_high.battle.defender_cv);
     }
 
     const RANGED_BOMBER_WING: &str = r#"
