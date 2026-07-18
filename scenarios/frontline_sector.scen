@@ -330,6 +330,7 @@ name = "1st Rifle Division"
 toe = "SU_inf_div_41a"
 faction = "SU"
 location = { x = 0, y = 4 }
+leader = "Georgy Zhukov"
 
 [[units]]
 name = "2nd Rifle Division"
@@ -391,6 +392,7 @@ name = "11th Rifle Division"
 toe = "SU_inf_div_41a"
 faction = "SU"
 location = "SU Reserve"
+leader = "Konstantin Rokossovsky"
 
 [[units]]
 name = "12th Rifle Division"
@@ -431,6 +433,7 @@ faction = "AX"
 location = { x = 2, y = 5 }
 morale = 85
 experience = 75
+leader = "Heinz Guderian"
 
 [[units]]
 name = "3rd Infantry Division"
@@ -471,6 +474,7 @@ faction = "AX"
 location = { x = 7, y = 5 }
 morale = 85
 experience = 75
+leader = "Erwin Rommel"
 
 [[units]]
 name = "7th Infantry Division"
@@ -497,6 +501,7 @@ faction = "AX"
 location = "GE Reserve"
 morale = 85
 experience = 75
+leader = "Erich von Manstein"
 
 # Airfield: based on-map at the German supply source/Rear supply depot, in
 # range (9 hexes) of the frontline. mp = 0, so it never moves on its own.
@@ -507,6 +512,82 @@ faction = "AX"
 location = { x = 4, y = 7 }
 morale = 85
 experience = 75
+
+# Leaders: no gameplay effect yet (see docs/manual.md, "Leaders") — test
+# data for the leaders/leader/reassign_leader commands. Guderian, Rommel,
+# von Manstein and Rokossovsky are already assigned above; Konev is
+# deliberately left unassigned to exercise that state.
+[[leaders]]
+name = "Heinz Guderian"
+faction = "AX"
+[leaders.stats]
+political = 3
+morale = 7
+initiative = 9
+administration = 5
+mechanized = 9
+infantry = 4
+air = 2
+
+[[leaders]]
+name = "Erwin Rommel"
+faction = "AX"
+[leaders.stats]
+political = 4
+morale = 8
+initiative = 9
+administration = 4
+mechanized = 8
+infantry = 5
+air = 2
+
+[[leaders]]
+name = "Erich von Manstein"
+faction = "AX"
+[leaders.stats]
+political = 5
+morale = 7
+initiative = 8
+administration = 7
+mechanized = 6
+infantry = 6
+air = 2
+
+[[leaders]]
+name = "Georgy Zhukov"
+faction = "SU"
+[leaders.stats]
+political = 7
+morale = 8
+initiative = 8
+administration = 6
+mechanized = 5
+infantry = 7
+air = 3
+
+[[leaders]]
+name = "Konstantin Rokossovsky"
+faction = "SU"
+[leaders.stats]
+political = 5
+morale = 7
+initiative = 8
+administration = 6
+mechanized = 6
+infantry = 7
+air = 2
+
+[[leaders]]
+name = "Ivan Konev"
+faction = "SU"
+[leaders.stats]
+political = 6
+morale = 7
+initiative = 7
+administration = 6
+mechanized = 5
+infantry = 7
+air = 2
 
 # Where each faction traces its supply connectivity back to (game::supply):
 # a unit cut off from every source of its own is reported "cut off" by the

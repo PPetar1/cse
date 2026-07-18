@@ -258,6 +258,7 @@ name = "101st Infantry division"
 toe = "SU_inf_div_41a"
 faction = "SU"
 location = { x = 3, y = 3 }
+leader = "Georgy Zhukov"
 
 [[units.elements]]
 name = "SU_122mm_howitzer_M1938"
@@ -296,6 +297,7 @@ faction = "AX"
 location = { x = 3, y = 4 }
 morale = 80
 experience = 70
+leader = "Erwin Rommel"
 
 [[units]]
 name = "5th Panzer Division"
@@ -304,6 +306,7 @@ faction = "AX"
 location = { x = 2, y = 4 }
 morale = 80
 experience = 70
+leader = "Heinz Guderian"
 
 [[units]]
 name = "6th Panzer Division"
@@ -330,6 +333,58 @@ faction = "AX"
 location = { x = 9, y = 7 }
 morale = 80
 experience = 70
+
+# Leaders: no gameplay effect yet (see docs/manual.md, "Leaders") — this is
+# test data for the leaders/leader/reassign_leader commands. Rommel and
+# Guderian are already assigned above; Rokossovsky is deliberately left
+# unassigned to exercise that state.
+[[leaders]]
+name = "Erwin Rommel"
+faction = "AX"
+[leaders.stats]
+political = 4
+morale = 8
+initiative = 9
+administration = 4
+mechanized = 8
+infantry = 5
+air = 2
+
+[[leaders]]
+name = "Heinz Guderian"
+faction = "AX"
+[leaders.stats]
+political = 3
+morale = 7
+initiative = 9
+administration = 5
+mechanized = 9
+infantry = 4
+air = 2
+
+[[leaders]]
+name = "Georgy Zhukov"
+faction = "SU"
+[leaders.stats]
+political = 7
+morale = 8
+initiative = 8
+administration = 6
+mechanized = 5
+infantry = 7
+air = 3
+
+[[leaders]]
+name = "Konstantin Rokossovsky"
+faction = "SU"
+[leaders.stats]
+political = 5
+morale = 7
+initiative = 8
+administration = 6
+mechanized = 6
+infantry = 7
+air = 2
 
 # Where each faction traces its supply connectivity back to (game::supply):
 # the `supply` command reports any unit that can't reach one of these as
