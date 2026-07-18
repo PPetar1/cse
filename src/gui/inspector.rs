@@ -22,10 +22,7 @@ impl GuiApp {
         };
         ui.heading(format!("({x}, {y}) — {terrain:?}"));
 
-        let owns_hex = {
-            let location = game.location(x, y).unwrap();
-            game.units_at_location(location).iter().any(|unit| unit.faction == game.current_faction())
-        };
+        let owns_hex = game.hex_controlled_by(game.current_faction(), x, y);
 
         if let Some(order) = &self.pending_order {
             let prompt = match order.kind {

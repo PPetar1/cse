@@ -19,4 +19,4 @@ Format: one line per task, checked off when done, e.g.
 - [x] arch-3-session-and-terminal.md
 - [x] arch-4-seal-state.md
 - [x] arch-5-pathfinding-procedure.md
-- [ ] arch-6-gui-rule-leaks.md
+- [x] arch-6-gui-rule-leaks.md

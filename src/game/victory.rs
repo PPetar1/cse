@@ -51,6 +51,13 @@ impl Game {
         Some(self.units_at_location(location).first()?.faction.clone())
     }
 
+    /// Whether `faction` currently controls hex (x, y) — see
+    /// `controlling_faction`. The GUI's inspector uses this to decide
+    /// whether to show Move/Attack buttons for the hex it's showing.
+    pub fn hex_controlled_by(&self, faction: &str, x: u32, y: u32) -> bool {
+        self.controlling_faction(x, y).as_deref() == Some(faction)
+    }
+
     /// Percent of a faction's starting element strength (ready + damaged)
     /// that is now gone — destroyed, shattered or surrendered.
     fn percent_destroyed(&self, faction: &str) -> f32 {
@@ -184,6 +191,21 @@ mod tests {
         assert!(game.end_turn().is_none());
         assert!(game.end_turn().is_none());
         assert!(game.end_turn().is_none());
+    }
+
+    #[test]
+    fn hex_controlled_by_reports_the_occupying_faction() {
+        let game = Game::build(minimal_scenario(TWO_PLAYERS, OPPOSING_UNITS)).unwrap();
+
+        // Axis Division sits at (1, 1), Soviet Division at (2, 1) — see
+        // OPPOSING_UNITS.
+        assert!(game.hex_controlled_by("AX", 1, 1));
+        assert!(!game.hex_controlled_by("SU", 1, 1));
+        assert!(game.hex_controlled_by("SU", 2, 1));
+
+        // An empty hex belongs to no one.
+        assert!(!game.hex_controlled_by("AX", 0, 0));
+        assert!(!game.hex_controlled_by("SU", 0, 0));
     }
 
     #[test]

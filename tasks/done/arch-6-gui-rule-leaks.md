@@ -1,6 +1,6 @@
 # Pull game rules out of the GUI view code
 
-Status: pending
+Status: done
 
 ## Goal
 

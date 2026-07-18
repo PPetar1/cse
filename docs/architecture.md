@@ -317,6 +317,11 @@ manual.
   screen-space offsets; every draw method scales sizes off `MapView.size`
   (`HEX_SIZE * zoom`) so everything grows/shrinks together;
   `assign_stack_slots` (pure, tested) offsets stacked units sideways.
+  `gui/` renders answers, never derives rules: `render_inspector`'s
+  Move/Attack gate is `Game::hex_controlled_by` (victory.rs, wraps the
+  same `controlling_faction` `score_victory` uses), not an inline
+  ownership check — one rule, one home, so the sim and the display can't
+  drift apart.
 
 ## Testing
 
