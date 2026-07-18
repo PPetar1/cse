@@ -5,28 +5,15 @@ mod error;
 mod game;
 mod gui;
 mod procedures;
+mod session;
 
 pub use command::COMMAND_KEYWORDS;
 pub use error::Error;
 pub use gui::run as run_gui;
-
-use postcard::{from_bytes, to_allocvec};
-
-use std::{fs::File, io::{Read, Write}};
-use std::sync::{Arc, Mutex};
+pub use session::{SharedGame, new_shared_game};
 
 use command::{Command, HELP_TEXT};
-use game::{Game, VictoryReport};
-
-/// A game shared between the terminal thread and the GUI's main thread: both
-/// read and mutate the same session, so a command from either side is
-/// immediately visible to the other. `None` until a game is started (`new`)
-/// or resumed (`load`), from either side.
-pub type SharedGame = Arc<Mutex<Option<Game>>>;
-
-pub fn new_shared_game() -> SharedGame {
-    Arc::new(Mutex::new(None))
-}
+use game::Game;
 
 /// Run one terminal command against a shared game: locks, runs it exactly
 /// like a single-threaded caller would via `run`, and stores the result back
@@ -42,10 +29,10 @@ pub fn run_shared(input: &str, shared: &SharedGame) -> Result<(), Error> {
 
 pub fn run(input: &str, mut current_game: Option<&mut Game>) -> Result<Option<Game>, Error> {
     let mut new_game = match Command::parse(input)? {
-        Command::New { scenario_path } => Some(new_game(scenario_path)?),
-        Command::Load { save_path } => Some(load_game(save_path)?),
+        Command::New { scenario_path } => Some(session::new_game(scenario_path)?),
+        Command::Load { save_path } => Some(session::load_game(save_path)?),
         Command::Save { save_path } => {
-            save_game(save_path, require_game(current_game.as_deref_mut())?)?;
+            session::save_game(save_path, require_game(current_game.as_deref_mut())?)?;
             None
         }
         Command::Inspect(target) => {
@@ -87,10 +74,10 @@ pub fn run(input: &str, mut current_game: Option<&mut Game>) -> Result<Option<Ga
         Command::EndTurn => {
             let game = require_game(current_game.as_deref_mut())?;
             let victory = game.end_turn();
-            for line in report_turn_transition(game, &victory) {
+            for line in session::report_turn_transition(game, &victory) {
                 println!("{line}");
             }
-            for line in play_pending_ai_turns(game, victory) {
+            for line in session::play_pending_ai_turns(game, victory) {
                 println!("{line}");
             }
             None
@@ -130,19 +117,11 @@ pub fn run(input: &str, mut current_game: Option<&mut Game>) -> Result<Option<Ga
     };
 
     if let Some(game) = new_game.as_mut() {
-        // A freshly built (or loaded) game can already have an AI-controlled
-        // faction on turn — e.g. a scenario where the AI plays the first
-        // faction listed — so it gets the same auto-play treatment `end_turn`
-        // gives it mid-game, before anything else about the new game prints.
-        for line in play_pending_ai_turns(game, None) {
+        // A freshly built (or loaded) game gets the same auto-play-then-drain
+        // treatment as `gui::menu::adopt_game`, before anything else about
+        // the new game prints — see `session::activate_game`.
+        for line in session::activate_game(game) {
             println!("{line}");
-        }
-        // A freshly built game may already have fired turn-1 events (see
-        // Game::parse_scen_from_toml); print those now, since nothing else
-        // does. (Usually already drained by play_pending_ai_turns above if
-        // it ran; harmless — and necessary — when it didn't.)
-        for message in game.take_event_messages() {
-            println!("{message}");
         }
     }
 
@@ -172,68 +151,6 @@ pub fn unit_leader_context(unit: &str, shared: &SharedGame) -> Result<(String, V
 pub fn reassign_leader_shared(unit: &str, leader: &str, shared: &SharedGame) -> Result<(), Error> {
     let mut guard = shared.lock().unwrap();
     require_game(guard.as_mut())?.reassign_leader(leader, unit)
-}
-
-/// The aftermath of one `end_turn` call, one line per message: status, any
-/// event messages, and the final score if the scenario just ended. Shared
-/// between the human's `end_turn` and each AI-controlled turn `end_turn`
-/// auto-plays afterward, so the two don't drift apart — and between the
-/// terminal (which prints each line) and the GUI (`gui.rs`, which logs them
-/// instead).
-pub(crate) fn report_turn_transition(game: &mut Game, victory: &Option<VictoryReport>) -> Vec<String> {
-    let mut lines = vec![game.status()];
-    lines.extend(game.take_event_messages());
-    if let Some(report) = victory {
-        lines.push(report.to_string());
-    }
-    lines
-}
-
-/// Play out AI-controlled factions one after another — starting from
-/// whatever the last-known victory result was — until control reaches a
-/// human player or the game ends, returning one line per message (see
-/// `report_turn_transition`). Called both after a human's `end_turn` and
-/// right after a game is built/loaded, since either can leave an
-/// AI-controlled faction on turn. (Known limitation, not guarded against: an
-/// all-AI scenario with no `last_turn` would spin here forever — every
-/// scenario so far assumes at least one human seat.)
-pub(crate) fn play_pending_ai_turns(game: &mut Game, mut victory: Option<VictoryReport>) -> Vec<String> {
-    let mut lines = Vec::new();
-    while victory.is_none() && game.current_player_is_ai() {
-        lines.push(ai::take_turn(game, &mut rand::rng()).to_string());
-        victory = game.end_turn();
-        lines.extend(report_turn_transition(game, &victory));
-    }
-    lines
-}
-
-/// `pub(crate)`, not just a `run()` internal: `gui.rs`'s main menu calls these
-/// directly for New/Load, since it builds/loads a game outside the shared
-/// mutex (there's nothing to lock yet) rather than routing through `run`.
-pub(crate) fn new_game(scenario_path: &str) -> Result<Game, Error> {
-    let mut scen_file = File::open(scenario_path)?;
-    let mut contents = String::new();
-    scen_file.read_to_string(&mut contents)?;
-    Game::build(contents)
-}
-
-pub(crate) fn load_game(save_path: &str) -> Result<Game, Error> {
-    let mut file = File::open(save_path)?;
-    let mut contents = Vec::new();
-    file.read_to_end(&mut contents)?;
-
-    let game: Game = from_bytes(&contents)?;
-    Ok(game)
-}
-
-pub(crate) fn save_game(save_path: &str, game: &Game) -> Result<(), Error> {
-    let mut file = File::create(save_path)?;
-
-    let bin: Vec<u8> = to_allocvec(game)?;
-
-    file.write_all(&bin)?;
-
-    Ok(())
 }
 
 #[cfg(test)]

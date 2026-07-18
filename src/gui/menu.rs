@@ -6,7 +6,7 @@ use eframe::egui;
 
 use crate::Error;
 use crate::game::Game;
-use crate::play_pending_ai_turns;
+use crate::session;
 
 use super::GuiApp;
 use super::file_picker::{FilePicker, PickerField};
@@ -141,17 +141,16 @@ impl GuiApp {
         });
     }
 
-    /// Adopt the result of a New/Load attempt: on success, auto-play any
-    /// AI-controlled faction already on turn and drain turn-1 event
-    /// messages — the same treatment `lib.rs`'s `run()` gives a freshly
-    /// built or loaded game — then publish it to `shared`. On failure,
-    /// leave the shared game untouched and show the error on the menu.
+    /// Adopt the result of a New/Load attempt: on success, run the
+    /// post-new/load ritual (`session::activate_game` — the same treatment
+    /// `run()` gives a freshly built or loaded game) then publish it to
+    /// `shared`. On failure, leave the shared game untouched and show the
+    /// error on the menu.
     fn adopt_game(&mut self, result: Result<Game, Error>) {
         match result {
             Ok(mut game) => {
                 self.log.clear();
-                self.log.extend(play_pending_ai_turns(&mut game, None));
-                self.log.extend(game.take_event_messages());
+                self.log.extend(session::activate_game(&mut game));
                 self.selected_hex = None;
                 self.pending_order = None;
                 self.menu.error = None;
@@ -171,7 +170,7 @@ impl GuiApp {
             MenuAction::Save(path) => {
                 let guard = self.shared.lock().unwrap();
                 let result = match guard.as_ref() {
-                    Some(game) => crate::save_game(&path, game),
+                    Some(game) => session::save_game(&path, game),
                     None => Err(Error::new("No game loaded.")),
                 };
                 drop(guard);
@@ -180,8 +179,8 @@ impl GuiApp {
                     Err(error) => self.log.push(error.error_message),
                 }
             }
-            MenuAction::Load(path) => self.adopt_game(crate::load_game(&path)),
-            MenuAction::New(path) => self.adopt_game(crate::new_game(&path)),
+            MenuAction::Load(path) => self.adopt_game(session::load_game(&path)),
+            MenuAction::New(path) => self.adopt_game(session::new_game(&path)),
         }
     }
 }
@@ -196,7 +195,7 @@ mod tests {
         let path = concat!(env!("CARGO_MANIFEST_DIR"), "/scenarios/basic_scenario.scen");
         let mut app = app();
 
-        let result = crate::new_game(path);
+        let result = session::new_game(path);
         app.adopt_game(result);
 
         assert!(app.menu.error.is_none());
@@ -207,7 +206,7 @@ mod tests {
     fn adopt_game_records_an_error_on_failure_and_leaves_shared_state_untouched() {
         let mut app = app();
 
-        let result = crate::new_game("does/not/exist.scen");
+        let result = session::new_game("does/not/exist.scen");
         app.adopt_game(result);
 
         assert!(app.menu.error.is_some());

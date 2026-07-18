@@ -32,7 +32,7 @@ use eframe::egui;
 use crate::Error;
 use crate::SharedGame;
 use crate::game::Game;
-use crate::{play_pending_ai_turns, report_turn_transition};
+use crate::session;
 
 use file_picker::FilePicker;
 use menu::{DialogKind, MainMenuState, MenuAction};
@@ -194,8 +194,8 @@ impl GuiApp {
 
     fn end_turn(&mut self, game: &mut Game) {
         let victory = game.end_turn();
-        self.log.extend(report_turn_transition(game, &victory));
-        self.log.extend(play_pending_ai_turns(game, victory));
+        self.log.extend(session::report_turn_transition(game, &victory));
+        self.log.extend(session::play_pending_ai_turns(game, victory));
     }
 
     /// Resolve an armed order against the just-clicked destination hex:
