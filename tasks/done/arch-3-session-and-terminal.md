@@ -1,6 +1,6 @@
 # Dissolve lib.rs into session.rs and terminal/
 
-Status: pending
+Status: done
 
 ## Goal
 
