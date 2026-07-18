@@ -22,4 +22,4 @@ Format: one line per task, checked off when done, e.g.
 - [x] arch-6-gui-rule-leaks.md
 - [x] arch-7-ai-core-methods.md
 - [x] arch-8-supply-sources-into-state.md
-- [ ] arch-9-boundary-and-docs-review.md
+- [x] arch-9-boundary-and-docs-review.md
