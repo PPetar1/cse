@@ -103,8 +103,10 @@ src/
   game/mod.rs    — Game (state + players + turn/phase/date + schedules),
                    Game::build, unit queries (units_at_location/
                    units_of_faction/units_summary), check_mission_range
-  game/scenario.rs — the whole game-level .scen TOML schema + parse and
-                   load-time validation; domain types stay in their domains
+  game/scenario.rs — the whole game-level .scen TOML schema + parse,
+                   load-time validation, and build_state (resolves a
+                   Scenario into runtime State, reading the map file);
+                   domain types stay in their domains
   game/turn.rs   — end_turn/begin_turn/status, TurnPhase, TurnSystem (the
                    WEGO seam), turn-start morale drift
   game/orders/   — player orders, one module each: movement.rs (move_unit,
@@ -131,9 +133,9 @@ src/
   game/entrenchment.rs — apply_entrenchment (turn-start fort_level tick +
                    MAX_FORT_LEVEL cap)
   game/test_support.rs — shared #[cfg(test)] scenario fixtures
-  core/mod.rs    — State + State::build: resolves a Scenario into runtime
-                   State (element rosters instantiated from TOEs, with
-                   validation), starting_strength baseline
+  core/mod.rs    — State: the runtime data model (map, units, toe, elements,
+                   leaders, starting_strength); a true leaf, no game:: or
+                   file I/O — assembly lives in game/scenario.rs::build_state
   core/map.rs    — Map: HashMap<(u32,u32), Location> + offmap locations;
                    TOML map parsing; cheapest_path_cost (hexx a_star; start
                    hex is free)
@@ -195,7 +197,7 @@ manual.
 - **Scenario loading**: `game/scenario.rs` owns schema and validation
   (players non-empty, victory hexes/supply sources on the map, event and
   supply-source factions known, arrival units/destinations real).
-  `State::build` (`core/mod.rs`) validates element/TOE referential
+  `build_state` (`game/scenario.rs`) validates element/TOE referential
   integrity (non-empty devices, TOEs reference defined elements, units
   reference defined TOEs/factions, stat overrides name TOE members, leader
   factions are known, unit leader assignments name a real same-faction
@@ -246,7 +248,7 @@ manual.
   `Unit.leader: Option<String>` (the leader's name), not on `Leader`, so
   `State`'s leader roster (`leaders: HashMap<String, Leader>`) carries no
   back-reference; `Game::unit_led_by` does the reverse lookup by scanning
-  units. `State::build` enforces the invariants a scenario can violate that
+  units. `build_state` enforces the invariants a scenario can violate that
   `reassign_leader` can't (it always clears the old unit first): a unit's
   `leader` must name a real `[[leaders]]` entry of its own faction, and no
   two units may claim the same leader. Stats (`LeaderStats`, the seven
@@ -348,6 +350,6 @@ always reverted immediately after the screenshot confirms.
   compile. `render_inspector` re-fetches each read in its own small scope
   right before it's needed instead of binding once at the top.
 - Scenario element names must match TOE element names exactly —
-  `State::build` validates this, and `builds_the_real_basic_scenario` /
+  `build_state` validates this, and `builds_the_real_basic_scenario` /
   `builds_the_real_frontline_sector_scenario` guard the shipped
   scenarios.

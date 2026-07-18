@@ -141,11 +141,26 @@ terrain = "Urban"
     }
 
     #[test]
-    fn parses_real_map_file() {
-        let contents = std::fs::read_to_string(
-            concat!(env!("CARGO_MANIFEST_DIR"), "/maps/basic_map.map"),
-        ).unwrap();
-        let map = Map::map_from_string(&contents).unwrap();
+    fn parses_a_map_with_multiple_offmap_locations() {
+        let map_toml = r#"
+name = "front"
+width = 2
+height = 4
+
+[[locations]]
+x = 1
+y = 3
+terrain = "Water"
+
+[[offmap_locations]]
+name = "GE Reserve"
+terrain = "Urban"
+
+[[offmap_locations]]
+name = "SU Reserve"
+terrain = "Urban"
+"#;
+        let map = Map::map_from_string(map_toml).unwrap();
 
         assert_eq!(map.get_location(1, 3).unwrap().terrain, Terrain::Water);
         assert!(map.get_offmap_location("GE Reserve").is_some());

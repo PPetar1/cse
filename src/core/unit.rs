@@ -12,11 +12,11 @@ pub struct Unit {
     /// unit's faction comes on turn.
     pub mp_left: u32,
     pub elements: Vec<ElementInUnit>,
-    /// How dug in this unit is at its current hex, 0 (none) to
-    /// `game::entrenchment::MAX_FORT_LEVEL` — gains one level per turn spent
-    /// stationary, resets to 0 the moment it relocates (move, retreat, or
-    /// advance into a vacated hex). Boosts its defensive CV in combat; see
-    /// "Entrenchment" in docs/manual.md.
+    /// How dug in this unit is at its current hex, 0 (none) up to a fixed
+    /// cap — gains one level per turn spent stationary, resets to 0 the
+    /// moment it relocates (move, retreat, or advance into a vacated hex).
+    /// Boosts its defensive CV in combat; see "Entrenchment" in
+    /// docs/manual.md.
     pub fort_level: u32,
     /// The name of the leader currently commanding this unit, if any — see
     /// `core::leader::Leader`. `None` until assigned, either by the

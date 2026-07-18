@@ -13,7 +13,7 @@ mod victory;
 #[cfg(test)]
 mod test_support;
 
-pub use scenario::{Player, Scenario};
+pub use scenario::Player;
 pub use victory::VictoryReport;
 use reinforcements::ScheduledArrival;
 use scenario::{ScenarioEvent, SupplySource, VictoryConditions};
@@ -90,7 +90,7 @@ impl Game {
        let supply_sources = scenario.supply_sources.clone();
        let fog_of_war = scenario.fog_of_war.as_ref().map(|config| config.detection_range);
 
-       let state = State::build(scenario)?;
+       let state = scenario::build_state(scenario)?;
 
        scenario::validate_victory_hexes(&victory_conditions, &state)?;
        scenario::validate_events(&events, &players)?;

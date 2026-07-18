@@ -1,6 +1,6 @@
 # Make core/ a true leaf: move State assembly into game/scenario.rs
 
-Status: pending
+Status: done
 
 ## Goal
 
