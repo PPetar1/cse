@@ -20,6 +20,6 @@ Format: one line per task, checked off when done, e.g.
 - [x] arch-4-seal-state.md
 - [x] arch-5-pathfinding-procedure.md
 - [x] arch-6-gui-rule-leaks.md
-- [ ] arch-7-ai-core-methods.md
+- [x] arch-7-ai-core-methods.md
 - [ ] arch-8-supply-sources-into-state.md
 - [ ] arch-9-boundary-and-docs-review.md

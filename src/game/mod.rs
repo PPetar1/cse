@@ -210,6 +210,20 @@ impl Game {
         self.state.map.get_location(x, y)
     }
 
+    /// (x, y)'s neighbouring on-map hexes; empty if the hex doesn't exist or
+    /// is offmap. Lets callers outside `game/` (e.g. `ai.rs`) walk hex
+    /// adjacency without calling `Location::neighbour_coords()` themselves.
+    pub fn adjacent(&self, x: u32, y: u32) -> Vec<(u32, u32)> {
+        self.location(x, y).map(Location::neighbour_coords).unwrap_or_default()
+    }
+
+    /// Hex distance between `a` and `b`, or `None` if either isn't on the
+    /// map. Same reasoning as `adjacent`: keeps `Location::distance_to()`
+    /// behind a `Game` query.
+    pub fn distance(&self, a: (u32, u32), b: (u32, u32)) -> Option<u32> {
+        self.location(a.0, a.1)?.distance_to(self.location(b.0, b.1)?)
+    }
+
     /// A named offmap location (e.g. a reserve box), if one exists.
     pub fn offmap_location(&self, name: &str) -> Option<&Location> {
         self.state.map.get_offmap_location(name)

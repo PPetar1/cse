@@ -120,7 +120,8 @@ src/
                    Game::build, InspectTarget, read queries (location/
                    offmap_location/map_locations/unit/units_at_location/
                    units_of_faction/units_not_of_faction/units_by_name/
-                   units_summary/inspect_summary), check_mission_range
+                   adjacent/distance/units_summary/inspect_summary),
+                   check_mission_range
   game/scenario.rs — the whole game-level .scen TOML schema + parse,
                    load-time validation, and build_state (resolves a
                    Scenario into runtime State, reading the map file);
@@ -200,10 +201,21 @@ src/
 - **Sealed state**: `Game.state` is private — everything outside `game/`
   reads through `Game`'s query methods (`location`/`offmap_location`/
   `map_locations`/`unit`/`units_at_location`/`units_of_faction`/
-  `units_not_of_faction`/`units_by_name`), never `game.state.*` directly.
-  `game/` submodules still use `self.state` freely (field privacy is per
-  module tree, not per file). A new frontend need means a new `&`-returning
-  query next to the existing ones, not widened field visibility.
+  `units_not_of_faction`/`units_by_name`/`adjacent`/`distance`), never
+  `game.state.*` directly. `game/` submodules still use `self.state` freely
+  (field privacy is per module tree, not per file). A new frontend need
+  means a new `&`-returning query next to the existing ones, not widened
+  field visibility.
+- **The `core::` boundary**: a `core::` type's data (fields, enum variants)
+  may be read from anywhere — a shape change there surfaces as a compiler
+  error at the exact spot needing an update, so it's cheap to allow.
+  Calling a `core::` *method* is different: it's behavior, and it may only
+  be called from inside `game/` (or `procedures/`, exempt as pure algorithm
+  code `game/` calls into, not part of the interface layer). Outside
+  `game/`, that behavior must go through a `Game` query instead
+  (`adjacent`/`distance` wrap `Location::neighbour_coords`/`distance_to`
+  this way). `Game` queries themselves stay narrowly scoped — they never
+  return the whole `State` or an unfiltered internal collection.
 - **Dead config fields**: fields deserialized but not yet read
   (`Scenario.game_version`, `MapFile.width/height`, `VictoryHex.name`)
   carry

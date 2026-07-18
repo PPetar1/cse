@@ -64,10 +64,8 @@ fn faction_stacks(game: &Game, faction: &str) -> Vec<((u32, u32), Vec<String>)> 
 /// The best adjacent enemy hex to attack from `from`, if any `simulate`
 /// prediction clears `ATTACK_RETREAT_THRESHOLD`.
 fn best_attack(game: &Game, from: (u32, u32), faction: &str, rng: &mut impl Rng) -> Option<(u32, u32)> {
-    let from_location = game.location(from.0, from.1)?;
-
     let mut best: Option<((u32, u32), f32)> = None;
-    for (x, y) in from_location.neighbour_coords() {
+    for (x, y) in game.adjacent(from.0, from.1) {
         let Some(location) = game.location(x, y) else { continue };
         let defenders = game.units_at_location(location);
         if defenders.is_empty() || defenders.iter().any(|unit| unit.faction == faction) {
@@ -94,14 +92,9 @@ fn best_attack(game: &Game, from: (u32, u32), faction: &str, rng: &mut impl Rng)
 /// already held) — the nearest enemy unit. None if neither exists (nothing
 /// left to do).
 fn priority_target(game: &Game, faction: &str, from: (u32, u32)) -> Option<(u32, u32)> {
-    let from_location = game.location(from.0, from.1)?;
-
     let objective = game.victory_hexes().into_iter()
-        .filter(|hex| !controls(game, hex.x, hex.y, faction))
-        .filter_map(|hex| {
-            let location = game.location(hex.x, hex.y)?;
-            Some(((hex.x, hex.y), from_location.distance_to(location)?))
-        })
+        .filter(|hex| !game.hex_controlled_by(faction, hex.x, hex.y))
+        .filter_map(|hex| Some(((hex.x, hex.y), game.distance(from, (hex.x, hex.y))?)))
         .min_by_key(|&(_, distance)| distance);
     if let Some((coords, _)) = objective {
         return Some(coords);
@@ -109,19 +102,11 @@ fn priority_target(game: &Game, faction: &str, from: (u32, u32)) -> Option<(u32,
 
     game.units_not_of_faction(faction).into_iter()
         .filter_map(|unit| match &unit.location {
-            UnitLocation::OnMap(coords) => {
-                let location = game.location(coords.x, coords.y)?;
-                Some(((coords.x, coords.y), from_location.distance_to(location)?))
-            }
+            UnitLocation::OnMap(coords) => Some(((coords.x, coords.y), game.distance(from, (coords.x, coords.y))?)),
             UnitLocation::Offmap(_) => None,
         })
         .min_by_key(|&(_, distance)| distance)
         .map(|(coords, _)| coords)
-}
-
-fn controls(game: &Game, x: u32, y: u32, faction: &str) -> bool {
-    game.location(x, y)
-        .is_some_and(|location| game.units_at_location(location).iter().any(|unit| unit.faction == faction))
 }
 
 /// Move the unit at index 0 of `from` toward `target`: straight there if
@@ -135,14 +120,9 @@ fn move_toward(game: &mut Game, from: (u32, u32), target: (u32, u32)) -> Option<
         return Some(target);
     }
 
-    let from_location = game.location(from.0, from.1)?;
-    let target_location = game.location(target.0, target.1)?;
-    let mut candidates = from_location.neighbour_coords();
-    candidates.sort_by_key(|&(x, y)| {
-        let distance = game.location(x, y)
-            .and_then(|location| location.distance_to(target_location));
-        (distance.unwrap_or(u32::MAX), x, y)
-    });
+    game.location(target.0, target.1)?;
+    let mut candidates = game.adjacent(from.0, from.1);
+    candidates.sort_by_key(|&(x, y)| (game.distance((x, y), target).unwrap_or(u32::MAX), x, y));
 
     for (x, y) in candidates {
         if game.move_unit(from.0, from.1, x, y, 0).is_ok() {
@@ -312,11 +292,7 @@ points = 10
         let mut game = Game::build(minimal_scenario(AI_VS_HUMAN, units, victory)).unwrap();
         let mut rng = StdRng::seed_from_u64(1);
 
-        let start_distance = {
-            let start = game.location(0, 0).unwrap();
-            let target = game.location(9, 7).unwrap();
-            start.distance_to(target).unwrap()
-        };
+        let start_distance = game.distance((0, 0), (9, 7)).unwrap();
 
         let report = take_turn(&mut game, &mut rng);
 
@@ -325,9 +301,7 @@ points = 10
             panic!("unit left the map");
         };
         let (x, y) = (coords.x, coords.y);
-        let new_location = game.location(x, y).unwrap();
-        let target = game.location(9, 7).unwrap();
-        assert!(new_location.distance_to(target).unwrap() < start_distance);
+        assert!(game.distance((x, y), (9, 7)).unwrap() < start_distance);
         assert!(report.log.iter().any(|line| line.contains("moves")));
     }
 
@@ -349,11 +323,7 @@ location = { x = 9, y = 7 }
         let mut game = Game::build(minimal_scenario(AI_VS_HUMAN, units, "")).unwrap();
         let mut rng = StdRng::seed_from_u64(1);
 
-        let start_distance = {
-            let start = game.location(0, 0).unwrap();
-            let target = game.location(9, 7).unwrap();
-            start.distance_to(target).unwrap()
-        };
+        let start_distance = game.distance((0, 0), (9, 7)).unwrap();
 
         take_turn(&mut game, &mut rng);
 
@@ -362,8 +332,6 @@ location = { x = 9, y = 7 }
             panic!("unit left the map");
         };
         let (x, y) = (coords.x, coords.y);
-        let new_location = game.location(x, y).unwrap();
-        let target = game.location(9, 7).unwrap();
-        assert!(new_location.distance_to(target).unwrap() < start_distance);
+        assert!(game.distance((x, y), (9, 7)).unwrap() < start_distance);
     }
 }
