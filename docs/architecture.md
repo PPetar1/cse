@@ -152,10 +152,10 @@ src/
   game/entrenchment.rs — apply_entrenchment (turn-start fort_level tick +
                    MAX_FORT_LEVEL cap)
   game/test_support.rs — shared #[cfg(test)] scenario fixtures
-  core/mod.rs    — State: the runtime data model (map, units, toe, elements,
-                   leaders, supply_sources, starting_strength); a true leaf,
-                   no game:: or file I/O — assembly lives in
-                   game/scenario.rs::build_state
+  core/mod.rs    — State: the runtime data model (map, terrain_costs, units,
+                   toe, elements, leaders, supply_sources,
+                   starting_strength); a true leaf, no game:: or file I/O —
+                   assembly lives in game/scenario.rs::build_state
   core/map.rs    — Map: HashMap<(u32,u32), Location> + offmap locations;
                    TOML map parsing (pathfinding lives in
                    procedures/pathfinding.rs)
@@ -163,7 +163,7 @@ src/
                    Terrain, TerrainCosts (scenario overrides over code
                    defaults; 0 = impassable)
   core/unit.rs   — Unit (mp_left, fort_level, elements, leader), Toe (mp,
-                   range), Element/Device/ElementClass, Size + config structs
+                   range), Element/Device/ElementClass, Size
   core/leader.rs — Leader (name, faction, stats), LeaderStats (the seven
                    WitE2 ratings); deserialized straight from TOML like
                    Toe/Element, no config/runtime split
@@ -221,8 +221,7 @@ src/
   this way). `Game` queries themselves stay narrowly scoped — they never
   return the whole `State` or an unfiltered internal collection.
 - **Dead config fields**: fields deserialized but not yet read
-  (`Scenario.game_version`, `MapFile.width/height`, `VictoryHex.name`)
-  carry
+  (`Scenario.game_version`, `MapFile.width/height`) carry
   `#[allow(dead_code)]`; remove the attribute when a system starts using
   them.
 - **File formats**: `.map`/`.scen` are TOML, `.sav` is postcard (binary

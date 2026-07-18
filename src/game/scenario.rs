@@ -450,7 +450,6 @@ pub(super) struct VictoryHex {
     pub(super) y: u32,
     pub(super) points: f32,
     #[serde(default)]
-    #[allow(dead_code)]
     pub(super) name: Option<String>,
 }
 
