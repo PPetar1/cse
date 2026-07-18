@@ -64,6 +64,16 @@ pub struct Game {
     fog_of_war: Option<u32>,
 }
 
+/// A target for the `inspect` command: an on-map hex or a named offmap
+/// location. Lives here rather than in `command.rs` since `inspect_summary`
+/// consumes it; the interface layer imports it from the game layer, never
+/// the reverse.
+#[derive(Debug, PartialEq)]
+pub enum InspectTarget {
+    Hex { x: u32, y: u32 },
+    Offmap(String),
+}
+
 impl Game {
     pub fn build(scenario_toml: String) -> Result<Game, Error> {
        Game::parse_scen_from_toml(scenario_toml) 
@@ -179,6 +189,43 @@ impl Game {
         units
     }
 
+    /// Human-readable dump of a hex or offmap location and the units there:
+    /// the location, then per unit its `Display` line, TOE, leader,
+    /// unit-average morale/experience, and one line per element. Backs the
+    /// `inspect` command — returns the text instead of printing it, like
+    /// every other summary. A hex outside the current faction's detection
+    /// range reports as unknown instead of erroring (see `game::detection`).
+    pub fn inspect_summary(&self, target: &InspectTarget) -> Result<String, Error> {
+        let location = match target {
+            InspectTarget::Hex { x, y } => {
+                if !self.is_visible_to(self.current_faction(), *x, *y) {
+                    return Ok("Unknown — outside detection range.".to_string());
+                }
+                self.state.map.get_location(*x, *y).ok_or_else(|| Error::new("Hex not in range."))?
+            }
+            InspectTarget::Offmap(name) => self.state.map.get_offmap_location(name)
+                .ok_or_else(|| Error::new("Location not found."))?,
+        };
+
+        let mut lines = vec![location.to_string()];
+        for unit in self.units_at_location(location) {
+            lines.push(unit.to_string());
+            lines.push(format!("TOE: {}", unit.toe));
+            lines.push(format!("Leader: {}", unit.leader.as_deref().unwrap_or("none")));
+            lines.push(format!(
+                "Morale: {}  Experience: {} (unit average)",
+                unit.average_morale(), unit.average_experience(),
+            ));
+            for element in &unit.elements {
+                lines.push(format!(
+                    "  {}: {} ready, {} damaged — morale {}, experience {}",
+                    element.name, element.ready, element.damaged, element.morale, element.experience,
+                ));
+            }
+        }
+        Ok(lines.join("\n"))
+    }
+
     /// Whether `unit` can reach `target` for an air mission
     /// (`air_support`/`interdict`) — always fine for a unit still parked
     /// offmap (no coordinate to measure from) or whose TOE sets no `range`;
@@ -239,6 +286,37 @@ mod tests {
 
         let hex = game.state.map.get_location(0, 0).unwrap();
         assert!(game.units_at_location(hex).is_empty());
+    }
+
+    #[test]
+    fn inspect_summary_reports_unknown_for_a_fogged_hex() {
+        let units = format!("{ONMAP_UNIT}\n[fog_of_war]\ndetection_range = 0\n");
+        let game = Game::build(minimal_scenario(ONE_PLAYER, &units)).unwrap();
+
+        // Far corner of the 10x8 basic_map, well outside the unit's own hex
+        // (1, 1) at detection_range 0.
+        let summary = game.inspect_summary(&InspectTarget::Hex { x: 9, y: 7 }).unwrap();
+
+        assert_eq!(summary, "Unknown — outside detection range.");
+    }
+
+    #[test]
+    fn inspect_summary_lists_units_at_an_offmap_location() {
+        let game = Game::build(minimal_scenario(ONE_PLAYER, OFFMAP_UNIT)).unwrap();
+
+        let summary = game.inspect_summary(&InspectTarget::Offmap("GE Reserve".to_string())).unwrap();
+
+        assert!(summary.contains("Reserve Division"));
+        assert!(summary.contains("TOE: test_toe"));
+    }
+
+    #[test]
+    fn inspect_summary_rejects_an_unknown_offmap_location() {
+        let game = one_unit_game();
+
+        let error = game.inspect_summary(&InspectTarget::Offmap("Nowhere".to_string())).unwrap_err();
+
+        assert!(error.error_message.contains("not found"));
     }
 
     #[test]

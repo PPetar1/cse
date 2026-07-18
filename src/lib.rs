@@ -15,7 +15,7 @@ use postcard::{from_bytes, to_allocvec};
 use std::{fs::File, io::{Read, Write}};
 use std::sync::{Arc, Mutex};
 
-use command::{Command, HELP_TEXT, InspectTarget};
+use command::{Command, HELP_TEXT};
 use game::{Game, VictoryReport};
 
 /// A game shared between the terminal thread and the GUI's main thread: both
@@ -49,7 +49,7 @@ pub fn run(input: &str, mut current_game: Option<&mut Game>) -> Result<Option<Ga
             None
         }
         Command::Inspect(target) => {
-            inspect(require_game(current_game.as_deref_mut())?, &target)?;
+            println!("{}", require_game(current_game.as_deref_mut())?.inspect_summary(&target)?);
             None
         }
         Command::Units { detail } => {
@@ -205,35 +205,6 @@ pub(crate) fn play_pending_ai_turns(game: &mut Game, mut victory: Option<Victory
         lines.extend(report_turn_transition(game, &victory));
     }
     lines
-}
-
-fn inspect(game: &Game, target: &InspectTarget) -> Result<(), Error> {
-    let location = match target {
-        InspectTarget::Hex { x, y } => {
-            if !game.is_visible_to(game.current_faction(), *x, *y) {
-                println!("Unknown — outside detection range.");
-                return Ok(());
-            }
-            game.state.map.get_location(*x, *y).ok_or_else(|| Error::new("Hex not in range."))?
-        }
-        InspectTarget::Offmap(name) => game.state.map.get_offmap_location(name)
-            .ok_or_else(|| Error::new("Location not found."))?,
-    };
-
-    println!("{}", location);
-    for unit in game.units_at_location(location) {
-        println!("{}", unit);
-        println!("TOE: {}", unit.toe);
-        println!("Leader: {}", unit.leader.as_deref().unwrap_or("none"));
-        println!("Morale: {}  Experience: {} (unit average)", unit.average_morale(), unit.average_experience());
-        for element in &unit.elements {
-            println!(
-                "  {}: {} ready, {} damaged — morale {}, experience {}",
-                element.name, element.ready, element.damaged, element.morale, element.experience,
-            );
-        }
-    }
-    Ok(())
 }
 
 /// `pub(crate)`, not just a `run()` internal: `gui.rs`'s main menu calls these

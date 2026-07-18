@@ -80,7 +80,7 @@ src/
   main.rs        — spawns the terminal thread against a SharedGame, then runs
                    the GUI on the main thread
   lib.rs         — SharedGame/new_shared_game/run_shared; run(): command
-                   dispatch; new_game/load_game/save_game; inspect;
+                   dispatch; new_game/load_game/save_game;
                    report_turn_transition/play_pending_ai_turns
   ai.rs          — the AI opponent: take_turn per faction via Game's public
                    API (no own pathfinding or combat logic)
@@ -101,8 +101,9 @@ src/
     file_picker.rs — the Browse popup (std::fs::read_dir in an egui::Window)
     test_support.rs— shared test fixtures (cf. game/test_support.rs)
   game/mod.rs    — Game (state + players + turn/phase/date + schedules),
-                   Game::build, unit queries (units_at_location/
-                   units_of_faction/units_summary), check_mission_range
+                   Game::build, InspectTarget, unit queries
+                   (units_at_location/units_of_faction/units_summary/
+                   inspect_summary), check_mission_range
   game/scenario.rs — the whole game-level .scen TOML schema + parse,
                    load-time validation, and build_state (resolves a
                    Scenario into runtime State, reading the map file);
@@ -262,7 +263,7 @@ manual.
 - **Detection**: `is_visible_to`/`is_unit_visible_to` are pure queries —
   no persisted state, no `procedures/` split (a handful of lines over
   `Location::distance_to`). Display-only by design: they gate
-  `units_summary`'s `units_by_name`, `inspect` (lib.rs), and the GUI's
+  `units_summary`'s `units_by_name`, `inspect_summary` (game/mod.rs), and the GUI's
   map markers/inspector roster — never
   `units_at_location`/`units_of_faction`, which order validation, the AI
   and the GUI's buttons rely on.

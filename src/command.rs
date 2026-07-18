@@ -4,6 +4,7 @@
 //! tested without a running game.
 
 use crate::Error;
+use crate::game::InspectTarget;
 
 /// Command keywords, used for terminal tab completion. Keep in sync with
 /// `Command::parse` and HELP_TEXT.
@@ -61,12 +62,6 @@ pub(crate) enum Command<'a> {
     Leaders { faction: String },
     Leader { name: String },
     Help,
-}
-
-#[derive(Debug, PartialEq)]
-pub(crate) enum InspectTarget {
-    Hex { x: u32, y: u32 },
-    Offmap(String),
 }
 
 impl<'a> Command<'a> {

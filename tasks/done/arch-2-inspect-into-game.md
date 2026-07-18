@@ -1,6 +1,6 @@
 # Move inspect into Game as a summary method
 
-Status: pending
+Status: done
 
 ## Goal
 
