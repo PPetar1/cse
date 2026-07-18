@@ -114,10 +114,12 @@ src/
                      air-operations block
     file_picker.rs — the Browse popup (std::fs::read_dir in an egui::Window)
     test_support.rs— shared test fixtures (cf. game/test_support.rs)
-  game/mod.rs    — Game (state + players + turn/phase/date + schedules),
-                   Game::build, InspectTarget, unit queries
-                   (units_at_location/units_of_faction/units_summary/
-                   inspect_summary), check_mission_range
+  game/mod.rs    — Game (state + players + turn/phase/date + schedules;
+                   `state` is private — see "Sealed state" below),
+                   Game::build, InspectTarget, read queries (location/
+                   offmap_location/map_locations/unit/units_at_location/
+                   units_of_faction/units_not_of_faction/units_by_name/
+                   units_summary/inspect_summary), check_mission_range
   game/scenario.rs — the whole game-level .scen TOML schema + parse,
                    load-time validation, and build_state (resolves a
                    Scenario into runtime State, reading the map file);
@@ -192,6 +194,13 @@ src/
 - **Summaries return Strings**: every report (`victory`, `supply`,
   `units`, schedules, `leaders`/`leader`...) is a `Game` method returning
   `String`; interfaces print or log it. The game layer does no I/O.
+- **Sealed state**: `Game.state` is private — everything outside `game/`
+  reads through `Game`'s query methods (`location`/`offmap_location`/
+  `map_locations`/`unit`/`units_at_location`/`units_of_faction`/
+  `units_not_of_faction`/`units_by_name`), never `game.state.*` directly.
+  `game/` submodules still use `self.state` freely (field privacy is per
+  module tree, not per file). A new frontend need means a new `&`-returning
+  query next to the existing ones, not widened field visibility.
 - **Dead config fields**: fields deserialized but not yet read
   (`Scenario.game_version`, `MapFile.width/height`, `VictoryHex.name`)
   carry

@@ -252,7 +252,7 @@ location = { x = 1, y = 1 }
         assert!(app.log.is_empty());
         assert_eq!(app.selected_hex, Some((2, 1)));
         assert_eq!(
-            game.state.units["Axis Division"].location,
+            game.unit("Axis Division").unwrap().location,
             UnitLocation::OnMap(LocationCoords { x: 2, y: 1 }),
         );
     }
@@ -338,7 +338,7 @@ location = { x = 0, y = 0 }
         assert_eq!(app.selected_hex, Some((2, 1)));
         // The air unit never moves — see "Air support" in docs/manual.md.
         assert_eq!(
-            game.state.units["Stuka Wing"].location,
+            game.unit("Stuka Wing").unwrap().location,
             UnitLocation::OnMap(LocationCoords { x: 0, y: 0 }),
         );
     }

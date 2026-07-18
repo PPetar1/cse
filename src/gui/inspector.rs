@@ -16,14 +16,14 @@ impl GuiApp {
     /// repeated where needed) so no shared borrow of `game` is still alive
     /// when `Interdict` needs a `&mut Game` call partway through.
     pub(super) fn render_inspector(&mut self, ui: &mut egui::Ui, game: &mut Game, x: u32, y: u32) {
-        let Some(terrain) = game.state.map.get_location(x, y).map(|location| location.terrain) else {
+        let Some(terrain) = game.location(x, y).map(|location| location.terrain) else {
             ui.label("Invalid hex.");
             return;
         };
         ui.heading(format!("({x}, {y}) — {terrain:?}"));
 
         let owns_hex = {
-            let location = game.state.map.get_location(x, y).unwrap();
+            let location = game.location(x, y).unwrap();
             game.units_at_location(location).iter().any(|unit| unit.faction == game.current_faction())
         };
 
@@ -81,7 +81,7 @@ impl GuiApp {
             return;
         }
 
-        let location = game.state.map.get_location(x, y).unwrap();
+        let location = game.location(x, y).unwrap();
         let units = game.units_at_location(location);
         if units.is_empty() {
             ui.label("No units here.");

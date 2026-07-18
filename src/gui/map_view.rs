@@ -15,7 +15,7 @@ const HEX_SIZE: f32 = 40.0;
 
 impl GuiApp {
     pub(super) fn render_map(&mut self, ui: &mut egui::Ui, game: &mut Game) {
-        let hexes = game.state.map.all_locations();
+        let hexes = game.map_locations();
         let hex_set: std::collections::HashSet<(u32, u32)> =
             hexes.iter().map(|(coords, _)| *coords).collect();
 
@@ -46,9 +46,7 @@ impl GuiApp {
             view.draw_victory_flag(&painter, hex.x, hex.y, hex.points);
         }
 
-        let viewer = game.current_faction();
-        let onmap_units: Vec<((u32, u32), String, String)> = game.state.units.values()
-            .filter(|unit| game.is_unit_visible_to(unit, viewer))
+        let onmap_units: Vec<((u32, u32), String, String)> = game.units_by_name().into_iter()
             .filter_map(|unit| match &unit.location {
                 UnitLocation::OnMap(coords) => Some(((coords.x, coords.y), unit.name.clone(), unit.faction.clone())),
                 UnitLocation::Offmap(_) => None,
@@ -57,7 +55,7 @@ impl GuiApp {
         for (coords, name, faction, slot) in assign_stack_slots(onmap_units) {
             // Re-looked-up rather than threaded through assign_stack_slots:
             // fort_level doesn't affect sort order, only the drawing.
-            let fort_level = game.state.units.get(&name).map_or(0, |unit| unit.fort_level);
+            let fort_level = game.unit(&name).map_or(0, |unit| unit.fort_level);
             view.draw_unit(&painter, UnitMarker { x: coords.0, y: coords.1, slot, name: &name, faction: &faction, fort_level });
         }
 

@@ -25,11 +25,11 @@ use time::Date;
 use crate::core::State;
 use crate::Error;
 use crate::core::unit::*;
-use crate::core::location::Location;
+use crate::core::location::{Location, Terrain};
 
 #[derive(Debug, serde::Deserialize, serde::Serialize)]
 pub struct Game {
-    pub state: State,
+    state: State,
     scenario_name: String,
     players: Vec<Player>,
     turn_system: TurnSystem,
@@ -151,7 +151,7 @@ impl Game {
     /// units always included; enemy ones only if `is_unit_visible_to` says
     /// so — see `game::detection`) — HashMap iteration order would make the
     /// listing shuffle between runs otherwise.
-    fn units_by_name(&self) -> Vec<&Unit> {
+    pub fn units_by_name(&self) -> Vec<&Unit> {
         let viewer = self.current_faction();
         let mut units: Vec<&Unit> = self.state.units.values()
             .filter(|unit| self.is_unit_visible_to(unit, viewer))
@@ -187,6 +187,38 @@ impl Game {
         }
         units.sort_by(|a, b| a.name.cmp(&b.name));
         units
+    }
+
+    /// All on-map units NOT belonging to `faction`, unsorted — the AI's view
+    /// of "enemy units anywhere," used to find the nearest one when there's
+    /// no unclaimed objective left.
+    pub fn units_not_of_faction(&self, faction: &str) -> Vec<&Unit> {
+        self.state.units.values()
+            .filter(|unit| unit.faction != faction && matches!(unit.location, UnitLocation::OnMap(_)))
+            .collect()
+    }
+
+    /// A named unit, if one exists — the reassign-leader prompt's unit
+    /// lookup and the GUI's per-marker fort-level lookup both go through
+    /// this instead of reaching into `state` directly.
+    pub fn unit(&self, name: &str) -> Option<&Unit> {
+        self.state.units.get(name)
+    }
+
+    /// An on-map hex, if (x, y) is on the map.
+    pub fn location(&self, x: u32, y: u32) -> Option<&Location> {
+        self.state.map.get_location(x, y)
+    }
+
+    /// A named offmap location (e.g. a reserve box), if one exists.
+    pub fn offmap_location(&self, name: &str) -> Option<&Location> {
+        self.state.map.get_offmap_location(name)
+    }
+
+    /// Every on-map hex's coordinates and terrain, for map rendering
+    /// (`gui::map_view::render_map`).
+    pub fn map_locations(&self) -> Vec<((u32, u32), Terrain)> {
+        self.state.map.all_locations()
     }
 
     /// Human-readable dump of a hex or offmap location and the units there:

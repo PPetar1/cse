@@ -317,7 +317,7 @@ fn require_game(game: Option<&mut Game>) -> Result<&mut Game, Error> {
 fn unit_leader_context(unit: &str, shared: &SharedGame) -> Result<(String, Vec<String>), Error> {
     let guard = shared.lock().unwrap();
     let game = guard.as_ref().ok_or_else(|| Error::new("No game loaded."))?;
-    let faction = game.state.units.get(unit)
+    let faction = game.unit(unit)
         .ok_or_else(|| Error::new(format!("No such unit '{unit}'.")))?
         .faction.clone();
     let names = game.leaders_of_faction(&faction).iter().map(|leader| leader.name.clone()).collect();

@@ -1,6 +1,6 @@
 # Seal Game.state behind read queries
 
-Status: pending
+Status: done
 
 ## Goal
 
