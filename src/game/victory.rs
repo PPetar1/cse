@@ -117,8 +117,7 @@ impl Game {
 
 /// One objective hex, for display outside the game module (the `victory`
 /// command's text and the map view's flag markers) — decoupled from the
-/// scenario-parsed `VictoryHex` the same way `MapSnapshot` is decoupled from
-/// `State`.
+/// scenario-parsed `VictoryHex`.
 #[derive(Debug, Clone)]
 pub struct VictoryHexInfo {
     pub x: u32,

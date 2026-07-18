@@ -14,7 +14,8 @@
 //! This window owns the main thread for the whole process — winit event
 //! loops must run there — while the terminal command loop (`main.rs`) runs
 //! on a background thread. Both act on the same `SharedGame`
-//! (`Arc<Mutex<Option<Game>>>`, see lib.rs): a command from either side is
+//! (`Arc<Mutex<Option<Game>>>`, defined in session.rs and re-exported from
+//! lib.rs): a command from either side is
 //! immediately visible to the other, since there's only ever one `Game`.
 //! `ui()` polls it a few times a second (`request_repaint_after`) so
 //! terminal-driven changes show up without needing a window event to

@@ -133,8 +133,9 @@ pub struct Element {
     /// Ground elements can't target air-domain elements unless flagged —
     /// dual-purpose flak, historically. Meaningless (and harmless) on an
     /// already-air-domain element (`ElementClass::is_air_domain`), which can
-    /// always engage air regardless of this flag. See
-    /// `ElementClass::can_target_air` and docs/manual.md.
+    /// always engage air regardless of this flag. See the derived
+    /// `can_target_air` in `procedures::combat::combat_elements` and
+    /// docs/manual.md.
     #[serde(default)]
     pub anti_air: bool,
     /// The weapons this element fights with; every in-range device fires
@@ -161,7 +162,8 @@ pub struct Device {
     pub hard_attack: u32,
     /// 0–100. How devastating a hit is against air-domain targets — the
     /// counterpart to soft/hard attack for the air domain. Only relevant on
-    /// a device belonging to a firer that `can_target_air`.
+    /// a device belonging to a firer whose derived `can_target_air` is set
+    /// (see `procedures::combat::combat_elements`).
     #[serde(default)]
     pub air_attack: u32,
 }
@@ -190,8 +192,10 @@ impl ElementClass {
         matches!(self, ElementClass::LightTank | ElementClass::MedTank)
     }
 
-    /// Air-domain elements (aircraft) are valid targets for anything that
-    /// `can_target_air`, and never for ground-only firers.
+    /// Air-domain elements (aircraft) are valid targets for anything whose
+    /// derived `can_target_air` is set (see
+    /// `procedures::combat::combat_elements`), and never for ground-only
+    /// firers.
     pub fn is_air_domain(&self) -> bool {
         matches!(self, ElementClass::GroundAttack | ElementClass::Fighter)
     }

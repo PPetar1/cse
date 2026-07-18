@@ -1,5 +1,7 @@
 //! A simple rule-based opponent, wired in wherever a scenario marks a
-//! player's `controller = "Ai"` (see `Command::EndTurn` in lib.rs). It
+//! player's `controller = "Ai"` (invoked from
+//! `session::play_pending_ai_turns`; `Command` lives in
+//! `terminal/command.rs`). It
 //! consumes `Game` exactly the way `command.rs` does — no privileged access,
 //! no new pathfinding or combat logic — so a stronger AI can replace the
 //! decision-making here later without touching how it's invoked.
@@ -148,9 +150,10 @@ fn indent(text: &str) -> String {
     text.lines().map(|line| format!("  {line}")).collect::<Vec<_>>().join("\n")
 }
 
-/// What one faction's AI-controlled turn did — printed by `lib.rs` the same
-/// way a human's `attack`/`end_turn` output is, so the player can always see
-/// why the AI did what it did (transparency is a project pillar, not just a
+/// What one faction's AI-controlled turn did — returned through
+/// `session.rs`, printed by the terminal and logged by the GUI the same way
+/// a human's `attack`/`end_turn` output is, so the player can always see why
+/// the AI did what it did (transparency is a project pillar, not just a
 /// human-player nicety).
 pub(crate) struct AiTurnReport {
     faction: String,

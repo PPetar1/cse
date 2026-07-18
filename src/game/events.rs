@@ -26,7 +26,8 @@ impl Game {
     }
 
     /// Every event message queued since the last time this was called —
-    /// `run` drains and prints them after `end_turn`/`new`.
+    /// `session.rs` (`report_turn_transition`/`activate_game`) drains and
+    /// reports them after `end_turn`/`new`, for both frontends.
     pub fn take_event_messages(&mut self) -> Vec<String> {
         std::mem::take(&mut self.pending_event_messages)
     }

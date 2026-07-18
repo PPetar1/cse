@@ -64,7 +64,8 @@ impl Game {
 
     /// Assign `leader` to command `unit`, clearing any unit it previously
     /// led — a leader commands at most one unit at a time. Backs the
-    /// terminal's `reassign_leader` prompt (see `main.rs`).
+    /// terminal's `reassign_leader` prompt (see `run_reassign_leader` in
+    /// `terminal/mod.rs`).
     pub fn reassign_leader(&mut self, leader: &str, unit: &str) -> Result<(), Error> {
         let leader_faction = self.state.leaders.get(leader)
             .ok_or_else(|| Error::new(format!("No such leader '{leader}'.")))?

@@ -46,7 +46,7 @@ pub struct Game {
     /// Scenario events: a message plus an optional morale/experience nudge
     /// to a faction's default, due at a specific turn.
     events: Vec<ScenarioEvent>,
-    /// Messages from events fired since `run` last drained them via
+    /// Messages from events fired since `session.rs` last drained them via
     /// `take_event_messages` — transient, so it starts empty on load too.
     #[serde(skip)]
     pending_event_messages: Vec<String>,
