@@ -24,7 +24,7 @@ Format: one line per task, checked off when done, e.g.
 - [x] arch-8-supply-sources-into-state.md
 - [x] arch-9-boundary-and-docs-review.md
 - [x] fix-entrenchment-scope.md
-- [ ] fix-ai-stack-follow-moves.md
+- [x] fix-ai-stack-follow-moves.md
 - [ ] fix-architecture-doc-drift.md
 - [ ] fix-stale-code-comments.md
 - [ ] fix-manual-roadmap-wording.md

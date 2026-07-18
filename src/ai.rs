@@ -39,7 +39,7 @@ pub(crate) fn take_turn(game: &mut Game, rng: &mut impl Rng) -> AiTurnReport {
 
         let Some(target) = priority_target(game, &faction, from) else { continue };
         for name in unit_names {
-            if let Some(to) = move_toward(game, from, target) {
+            if let Some(to) = move_toward(game, from, target, &name) {
                 log.push(format!("{name} moves {:?} -> {:?}", from, to));
             }
         }
@@ -109,14 +109,17 @@ fn priority_target(game: &Game, faction: &str, from: (u32, u32)) -> Option<(u32,
         .map(|(coords, _)| coords)
 }
 
-/// Move the unit at index 0 of `from` toward `target`: straight there if
+/// Move the named unit at `from` toward `target`: straight there if
 /// reachable this turn (letting `move_unit`'s own cheapest-path costing
 /// decide), otherwise the single neighbouring hex that most closes the
 /// distance. Returns the hex actually reached, or None if the unit is stuck
-/// (no MP, nowhere passable). All validation — terrain, occupancy, MP — is
-/// `move_unit`'s; this only picks candidates and trusts its answer.
-fn move_toward(game: &mut Game, from: (u32, u32), target: (u32, u32)) -> Option<(u32, u32)> {
-    if game.move_unit(from.0, from.1, target.0, target.1, 0).is_ok() {
+/// (no MP, nowhere passable) or no longer at `from`. All validation —
+/// terrain, occupancy, MP — is `move_unit`'s; this only picks candidates and
+/// trusts its answer.
+fn move_toward(game: &mut Game, from: (u32, u32), target: (u32, u32), name: &str) -> Option<(u32, u32)> {
+    let unit_i = unit_index_at(game, from, name)?;
+
+    if game.move_unit(from.0, from.1, target.0, target.1, unit_i).is_ok() {
         return Some(target);
     }
 
@@ -125,11 +128,20 @@ fn move_toward(game: &mut Game, from: (u32, u32), target: (u32, u32)) -> Option<
     candidates.sort_by_key(|&(x, y)| (game.distance((x, y), target).unwrap_or(u32::MAX), x, y));
 
     for (x, y) in candidates {
-        if game.move_unit(from.0, from.1, x, y, 0).is_ok() {
+        if game.move_unit(from.0, from.1, x, y, unit_i).is_ok() {
             return Some((x, y));
         }
     }
     None
+}
+
+/// The named unit's index in `units_at_location`'s name-sorted order at
+/// `from` — the index `move_unit` expects. Resolved fresh per `move_toward`
+/// call: earlier stack members may already have moved away, shifting later
+/// units' indices.
+fn unit_index_at(game: &Game, from: (u32, u32), name: &str) -> Option<usize> {
+    let location = game.location(from.0, from.1)?;
+    game.units_at_location(location).iter().position(|unit| unit.name == name)
 }
 
 fn indent(text: &str) -> String {
@@ -303,6 +315,61 @@ points = 10
         let (x, y) = (coords.x, coords.y);
         assert!(game.distance((x, y), (9, 7)).unwrap() < start_distance);
         assert!(report.log.iter().any(|line| line.contains("moves")));
+    }
+
+    #[test]
+    fn a_stuck_lead_unit_does_not_block_its_stacks_other_units_from_moving() {
+        // "Axis A" sorts before "Axis B" (units_at_location's name order),
+        // so it's index 0 at the stack's hex — the index move_toward used to
+        // always address, regardless of which unit it was actually iterating
+        // for. Its TOE has 0 MP, so it can never move; "Axis B" has the
+        // normal budget and should still get moved toward the target.
+        let units = r#"
+[[toe]]
+name = "stuck_toe"
+size = "Division"
+mp = 0
+start_date = "1941-01-01"
+end_date = "1941-08-01"
+[[toe.elements]]
+name = "test_element"
+amount = 10
+
+[[units]]
+name = "Axis A"
+toe = "stuck_toe"
+faction = "AX"
+location = { x = 0, y = 0 }
+
+[[units]]
+name = "Axis B"
+toe = "test_toe"
+faction = "AX"
+location = { x = 0, y = 0 }
+
+[[units]]
+name = "Soviet Division"
+toe = "test_toe"
+faction = "SU"
+location = { x = 9, y = 7 }
+"#;
+        let mut game = Game::build(minimal_scenario(AI_VS_HUMAN, units, "")).unwrap();
+        let mut rng = StdRng::seed_from_u64(1);
+
+        let report = take_turn(&mut game, &mut rng);
+
+        let a = game.unit("Axis A").unwrap();
+        assert_eq!(a.location, UnitLocation::OnMap(LocationCoords { x: 0, y: 0 }));
+
+        let b = game.unit("Axis B").unwrap();
+        let UnitLocation::OnMap(coords) = &b.location else {
+            panic!("unit left the map");
+        };
+        assert_ne!((coords.x, coords.y), (0, 0));
+
+        // Every logged move line names the unit that actually moved.
+        assert!(report.log.iter().all(|line| !line.starts_with("Axis A moves")));
+        assert!(report.log.iter().any(|line| line.starts_with("Axis B moves")));
     }
 
     #[test]
