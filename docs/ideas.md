@@ -112,3 +112,13 @@ docs/roadmap.md).
   (close, hold at effective range, stand off). Deferred in favor of a WitE-style
   baseline first; the battle-engine snapshot/report interface is designed so this
   can be swapped in behind it later and compared via the simulator.
+
+- **Skirmish-chain battles** — a lighter-weight alternative to the 2D tactical
+  battlefield above that stays with the 1D closing-range model: a battle becomes
+  a chain of smaller skirmishes rather than one resolution. Terrain and other
+  factors decide how many skirmishes happen before either side has a clear read
+  on the fight; after that, each side's commander repeatedly judges whether to
+  advance, hold, or fall back based on how things are going, triggering further
+  skirmishes until one side disengages. Trades the 2D idea's richer terrain
+  geometry for reuse of the existing engine, with terrain instead shaping how
+  protracted a fight gets rather than its shape.
