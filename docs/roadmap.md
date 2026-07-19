@@ -60,8 +60,10 @@ basis for the real work, and it delivered one. What it contains:
 - **Air war** — ground support flown into ongoing battles, domain-restricted
   air-to-air targeting, interdiction coverage, airfield range limits.
 - **Interface** — an egui/eframe window and a terminal driving one shared
-  game; every command has a clickable equivalent (map with zoom/pan,
+  game; every order has a clickable equivalent (map with zoom/pan,
   inspector, order buttons, reports, save/load with a file browser).
+  `units`, `simulate`, `leaders`, `leader` and `reassign_leader` remain
+  terminal-only.
 - **Operational depth, started** — fog of war (detection ranges) and
   entrenchment.
 

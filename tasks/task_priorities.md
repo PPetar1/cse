@@ -27,4 +27,4 @@ Format: one line per task, checked off when done, e.g.
 - [x] fix-ai-stack-follow-moves.md
 - [x] fix-architecture-doc-drift.md
 - [x] fix-stale-code-comments.md
-- [ ] fix-manual-roadmap-wording.md
+- [x] fix-manual-roadmap-wording.md

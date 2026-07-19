@@ -5,10 +5,11 @@ no code references (those live in `docs/architecture.md`). When a system
 changes, this file changes with it; as the game matures it grows into the
 player-facing manual.
 
-Everything here is prototype-grade by design (`docs/roadmap.md`, Stage 1):
-good enough to play and learn from, with the real versions coming in Stage 2
-and beyond. Each section ends with its known simplifications and open
-questions.
+Most systems here originate from the Stage-1 prototype (`docs/roadmap.md`)
+and are being rebuilt to their real designs in Stage 2, now underway;
+systems Stage 2 adds from scratch (Leaders, and whatever lands after) are
+documented here as they arrive. Each section ends with its known
+simplifications and open questions.
 
 ## The world
 
@@ -242,11 +243,11 @@ The missions:
 - **Interdiction**: a fighter-capable unit *declares* coverage of a hex —
   up to 3 per unit at a time. Any battle at a covered hex, ground or
   air-supported, automatically pulls the covering unit in as an extra
-  defender. Pulled into a battle with no enemy aircraft, a fighter is a
-  harmless bystander (can neither shoot nor be shot at) but still gains
-  experience for being fielded. Coverage lasts through the opponent's next
-  turn, then must be redeclared — a scarce commitment, not a blanket air
-  umbrella.
+  defender. Pulled into a battle with no enemy aircraft, a fighter cannot
+  shoot — only anti-air-capable ground elements can shoot at it — but
+  still gains experience for being fielded. Coverage lasts through the
+  opponent's next turn, then must be redeclared — a scarce commitment, not
+  a blanket air umbrella.
 - **Airfields**: an air unit's base is wherever it sits — on the map or in
   an offmap box. Its TOE may cap mission reach in hexes from that base; a
   unit still offmap has no position to measure from, so no limit applies.
