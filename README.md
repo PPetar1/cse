@@ -18,7 +18,7 @@ The engine simulates battles between units on a hex map. Unit attributes (elemen
 - **Scenario machinery** — victory conditions (objective hexes plus points for enemy strength destroyed and lost, scored at a final turn), scheduled reinforcements and withdrawals, scripted events with morale/experience nudges.
 - **Supply and refit** — units trace connectivity to their faction's supply sources; supplied units repair damaged elements and receive replacements each turn, cut-off units get neither.
 - **Air war** — air units fly ground support into ongoing battles, declare interdiction coverage over hexes (covering fighters join any battle there), fight under domain-restricted targeting (fighters only engage aircraft; ground elements can't hit aircraft unless flagged anti-air), and operate within their TOE's mission range of their base.
-- **AI opponent** — a scenario faction can be AI-controlled: it attacks when simulated odds look favorable, otherwise advances on objectives, playing its turns automatically.
+- **AI opponent** — a scenario player can be AI-controlled: it attacks when simulated odds look favorable, otherwise advances on objectives, playing its turns automatically.
 - **Fog of war and entrenchment** — an optional per-scenario detection range hides enemy units none of your units can spot; units that hold still dig in for a defensive bonus, reset the moment they relocate.
 - **Two interfaces, one game** — `cargo run` opens a GUI window (egui/eframe) and a terminal at the same time, both driving the same session; every terminal command has a clickable equivalent. Save/load to compact binary files.
 
@@ -52,7 +52,7 @@ System behavior behind these commands — battle resolution, retreats, supply, f
 | `interdict <x> <y> <unit name>` | a fighter-capable unit declares coverage of that hex (up to 3 per unit, within mission range); it automatically joins any battle there as an extra defender, through the opponent's next turn |
 | `interdiction` | list every unit currently covering hexes, and which ones |
 | `simulate <x1> <y1> <x2> <y2> <n>` | fight that attack n times without changing the game; prints hold/retreat rates, average losses, mean final CVs — the balance-tuning tool. Only legal attacks (adjacent, on turn) can be simulated |
-| `end_turn` | pass control to the next player; when everyone has moved, the turn and date advance. The faction coming on turn gets its turn-start sequence (arrivals, events, refit, entrenchment, MP refill, morale drift). Completing the scenario's last turn prints the victory report; AI factions then play automatically until a human is on turn |
+| `end_turn` | pass control to the next player; a faction with several players just hands off between them with no other effect. Once every faction's players have all moved, the turn and date advance, and each faction gets its turn-start sequence (arrivals, events, refit, entrenchment, MP refill, morale drift) as its first player takes over. Completing the scenario's last turn prints the victory report; AI-controlled players then play automatically until a human is on turn |
 | `status` | show the scenario name, turn number, date and whose move it is |
 | `victory` | show the victory conditions and each objective hex's current holder |
 | `reinforcements` | list every scheduled reinforcement/withdrawal and whether it has arrived |

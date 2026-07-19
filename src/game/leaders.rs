@@ -27,7 +27,7 @@ impl Game {
     /// Human-readable rundown of a faction's leaders and which unit (if
     /// any) each commands. Backs the `leaders` command.
     pub fn leaders_summary(&self, faction: &str) -> Result<String, Error> {
-        if !self.players.iter().any(|player| player.faction_tag == faction) {
+        if self.faction_by_tag(faction).is_none() {
             return Err(Error::new(format!("Unknown faction '{faction}'.")));
         }
         let leaders = self.leaders_of_faction(faction);

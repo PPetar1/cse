@@ -31,7 +31,7 @@ impl Game {
     /// Returns the relocated units' names, so `apply_entrenchment` can skip
     /// ticking a unit that was reset to fort level 0 this same turn start.
     pub(super) fn apply_scheduled_arrivals(&mut self) -> std::collections::HashSet<String> {
-        let faction = self.player_on_turn().faction_tag.clone();
+        let faction = self.player_on_turn().faction.clone();
         let turn = self.turn;
         let mut relocated = std::collections::HashSet::new();
         for arrival in &self.scheduled_arrivals {

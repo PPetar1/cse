@@ -24,7 +24,7 @@ impl Game {
     /// turn's scheduled arrivals already reset to 0 — skips one tick so a
     /// fresh reinforcement doesn't immediately dig in on the turn it lands.
     pub(super) fn apply_entrenchment(&mut self, just_arrived: &HashSet<String>) {
-        let faction = self.player_on_turn().faction_tag.clone();
+        let faction = self.player_on_turn().faction.clone();
         for (name, unit) in self.state.units.iter_mut() {
             if unit.faction != faction {
                 continue;

@@ -38,13 +38,10 @@ const FBO_MAX: f32 = 2.0;
 const LOSSES_FOR_MAX_LOS: f32 = 500.0;
 
 impl Game {
-    /// A faction's current doctrine rating, 1-100. Every scenario faction
-    /// has a player, so an unknown faction is a caller bug.
+    /// A faction's current doctrine rating, 1-100. Passing an undefined
+    /// faction is a caller bug.
     pub(super) fn doctrine_of(&self, faction: &str) -> u32 {
-        self.players.iter()
-            .find(|player| player.faction_tag == faction)
-            .expect("faction has no player")
-            .doctrine
+        self.faction_by_tag(faction).expect("no such faction").doctrine
     }
 
     /// Credit (or debit) each side's battle leader — see the module doc for
@@ -104,10 +101,7 @@ impl Game {
     }
 
     fn apply_leader_contributions_to_faction_doctrine(&mut self, faction: &str) {
-        let Some(fdo) = self.players.iter()
-            .find(|player| player.faction_tag == faction)
-            .map(|player| player.doctrine as f32)
-        else {
+        let Some(fdo) = self.faction_by_tag(faction).map(|faction| faction.doctrine as f32) else {
             return;
         };
 
@@ -124,16 +118,14 @@ impl Game {
             }
         }
 
-        if let Some(player) = self.players.iter_mut().find(|player| player.faction_tag == faction) {
-            player.doctrine = (player.doctrine as f32 + total_delta).round().clamp(0.0, 100.0) as u32;
+        if let Some(scored_faction) = self.factions.iter_mut().find(|f| f.faction_tag == faction) {
+            scored_faction.doctrine =
+                (scored_faction.doctrine as f32 + total_delta).round().clamp(0.0, 100.0) as u32;
         }
     }
 
     fn drift_leaders_toward_faction_doctrine(&mut self, faction: &str) {
-        let Some(fdo) = self.players.iter()
-            .find(|player| player.faction_tag == faction)
-            .map(|player| player.doctrine as f32)
-        else {
+        let Some(fdo) = self.faction_by_tag(faction).map(|faction| faction.doctrine as f32) else {
             return;
         };
 
@@ -415,7 +407,7 @@ air = 5
     }
 
     fn faction_doctrine(game: &Game) -> u32 {
-        game.players.iter().find(|player| player.faction_tag == "AX").unwrap().doctrine
+        game.factions.iter().find(|faction| faction.faction_tag == "AX").unwrap().doctrine
     }
 
     #[test]
@@ -456,7 +448,7 @@ air = 5
         // Gaining (doc 30 < fdo 50): ((50-30)/10) * ((15-5)/15) = 2 * 0.6667
         // = 1.3333; 30 + 1.3333 = 31.3333, rounds to 31.
         let mut game = one_leader_game(30, stats(5, 5, 5, 5, 5, 5, 5));
-        game.players[0].doctrine = 50;
+        game.factions[0].doctrine = 50;
 
         game.drift_leaders_toward_faction_doctrine("AX");
 
@@ -468,7 +460,7 @@ air = 5
         // Losing (doc 70 > fdo 50): ((50-70)/10) * ((15-5)/15) = -2 * 0.6667
         // = -1.3333; 70 - 1.3333 = 68.6667, rounds to 69.
         let mut game = one_leader_game(70, stats(5, 5, 5, 5, 5, 5, 5));
-        game.players[0].doctrine = 50;
+        game.factions[0].doctrine = 50;
 
         game.drift_leaders_toward_faction_doctrine("AX");
 

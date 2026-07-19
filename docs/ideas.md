@@ -32,12 +32,16 @@ docs/roadmap.md).
 
 ## Structure
 
-- **Separate factions from players** — factions are currently tied 1:1 to
-  players (`[[players]]` carries the faction). Later, multiple players should
-  be able to control parts of one faction (multiplayer), so faction-owned
-  state (units, morale/experience defaults, supplies) and player-owned state
-  (control, turn order) need to become distinct concepts. Fine as-is until
-  the turn system firms up.
+- **Players with separate roles, playing simultaneously** — factions and
+  players are now split (`[[factions]]`/`[[players]]`, `game::turn`), and a
+  faction can already have several players, but today they're
+  interchangeable: whoever's up can give any order for the whole faction,
+  and they still play strictly one after another. The real multiplayer goal
+  is players with distinct *roles* for one faction (industry, army, air,
+  ...), each restricted to their own domain, and eventually able to act at
+  the same time rather than taking turns — a natural pairing with the WEGO
+  turn system below, since simultaneous *players* wants simultaneous
+  *factions* too.
 
 - **Air and naval warfare** — the end goal includes air warfare and possibly
   naval. Nothing built yet; the constraint it imposes today is only that

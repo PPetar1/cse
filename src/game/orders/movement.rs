@@ -32,7 +32,7 @@ impl Game {
         })?;
         let unit_name = unit.name.clone();
 
-        let on_turn = self.player_on_turn().faction_tag.clone();
+        let on_turn = self.player_on_turn().faction.clone();
         if unit.faction != on_turn {
             return Err(Error::new(format!("It is not {}'s turn.", unit.faction)));
         }

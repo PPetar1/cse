@@ -15,19 +15,26 @@ use super::scenario::PlayerController;
 const MORALE_RECOVERY_STEP: u32 = 10;
 
 impl Game {
-    /// End the current player's turn. Under IGO-UGO control passes to the
-    /// next player; once every player has moved, the turn counter and the
-    /// game date advance. Turn-end effects for the faction whose turn just
-    /// finished (doctrine) hook in here, before control passes; turn-start
-    /// effects for the faction coming on turn (MP reset, morale recovery)
-    /// hook into `begin_turn`. Returns the final score once the scenario's
-    /// `last_turn` has just been completed.
+    /// End the current player's turn and hand off to the next one. `players`
+    /// is grouped by faction (`scenario::build_players`), so a single flat
+    /// index sequences both levels: most handoffs just move to the next
+    /// player of the same faction ("nothing else," per the design — no
+    /// housekeeping runs). Only when the *last* player of a faction ends
+    /// their turn do that faction's turn-end effects fire (doctrine, before
+    /// the index advances); only when the *first* player of the next
+    /// faction's turn begins do that faction's turn-start effects fire
+    /// (`begin_turn`). Once every faction's players have all moved, the turn
+    /// counter and game date advance. Returns the final score once the
+    /// scenario's `last_turn` has just been completed.
     pub fn end_turn(&mut self) -> Option<VictoryReport> {
         let mut victory = None;
         match self.turn_system {
             TurnSystem::IgoUgo => {
-                let ending_faction = self.player_on_turn().faction_tag.clone();
-                self.apply_doctrine_turn_end(&ending_faction);
+                let index = self.phase.player_on_turn as usize;
+                if self.is_last_player_of_its_faction(index) {
+                    let ending_faction = self.players[index].faction.clone();
+                    self.apply_doctrine_turn_end(&ending_faction);
+                }
 
                 self.phase.player_on_turn += 1;
                 if self.phase.player_on_turn as usize >= self.players.len() {
@@ -38,10 +45,28 @@ impl Game {
                         victory = Some(self.score_victory());
                     }
                 }
-                self.begin_turn();
+                if self.is_first_player_of_its_faction(self.phase.player_on_turn as usize) {
+                    self.begin_turn();
+                }
             }
         }
         victory
+    }
+
+    /// Whether `self.players[index]` is the last consecutive player of its
+    /// faction — either it's the last entry in `players`, or the next entry
+    /// belongs to a different faction.
+    fn is_last_player_of_its_faction(&self, index: usize) -> bool {
+        index + 1 >= self.players.len() || self.players[index + 1].faction != self.players[index].faction
+    }
+
+    /// Whether `self.players[index]` is the first consecutive player of its
+    /// faction — either it's the first entry in `players`, or the previous
+    /// entry belongs to a different faction. `index == 0` is always true
+    /// here even for a single-faction game, since wrapping back to it is a
+    /// fresh turn for that faction.
+    fn is_first_player_of_its_faction(&self, index: usize) -> bool {
+        index == 0 || self.players[index - 1].faction != self.players[index].faction
     }
 
     /// Turn-start effects for the faction coming on turn: scheduled
@@ -52,16 +77,17 @@ impl Game {
     /// where it was), then a fresh movement budget from the TOE, interdiction
     /// coverage resetting (it must be redeclared every time this faction
     /// acts), and morale drifting back toward the faction default (rest
-    /// heals battered units, euphoria fades).
+    /// heals battered units, euphoria fades). Runs once per faction turn
+    /// (see `end_turn`), not once per player.
     fn begin_turn(&mut self) {
         let just_arrived = self.apply_scheduled_arrivals();
         self.apply_scheduled_events();
         self.apply_refit();
         self.apply_entrenchment(&just_arrived);
 
-        let player = self.player_on_turn();
-        let faction = player.faction_tag.clone();
-        let default_morale = player.morale;
+        let faction = self.player_on_turn().faction.clone();
+        let default_morale = self.faction_by_tag(&faction)
+            .expect("on-turn player's faction vanished").morale;
         self.reset_interdiction_coverage(&faction);
         for unit in self.state.units.values_mut() {
             if unit.faction == faction {
@@ -75,9 +101,12 @@ impl Game {
 
     /// One-line summary of where the game clock stands.
     pub fn status(&self) -> String {
+        let player = self.player_on_turn();
+        let faction = self.faction_by_tag(&player.faction)
+            .expect("on-turn player's faction vanished");
         format!(
-            "{} — turn {}, {}. {} to move.",
-            self.scenario_name, self.turn, self.date, self.player_on_turn().faction_name,
+            "{} — turn {}, {}. {} ({}) to move.",
+            self.scenario_name, self.turn, self.date, faction.faction_name, player.name,
         )
     }
 
@@ -89,7 +118,7 @@ impl Game {
     /// controller-aware logic outside `game` (the AI today) reads to know
     /// whose move it is.
     pub fn current_faction(&self) -> &str {
-        &self.player_on_turn().faction_tag
+        &self.player_on_turn().faction
     }
 
     /// Whether the player currently on turn is AI-controlled.
@@ -131,15 +160,17 @@ mod tests {
     #[test]
     fn end_turn_cycles_players_and_advances_the_clock() {
         let mut game = Game::build(minimal_scenario(TWO_PLAYERS, OPPOSING_UNITS)).unwrap();
-        assert_eq!(game.status(), "test scenario — turn 1, 1941-06-22. Axis to move.");
+        // No [[players]] listed: each faction's default player is named
+        // after the faction itself.
+        assert_eq!(game.status(), "test scenario — turn 1, 1941-06-22. Axis (Axis) to move.");
 
         game.end_turn();
         // Control passes within the same turn: the clock stands still.
-        assert_eq!(game.status(), "test scenario — turn 1, 1941-06-22. Soviet Union to move.");
+        assert_eq!(game.status(), "test scenario — turn 1, 1941-06-22. Soviet Union (Soviet Union) to move.");
 
         game.end_turn();
         // Every player has moved: turn and date (turn_length = 7) advance.
-        assert_eq!(game.status(), "test scenario — turn 2, 1941-06-29. Axis to move.");
+        assert_eq!(game.status(), "test scenario — turn 2, 1941-06-29. Axis (Axis) to move.");
     }
 
     #[test]
@@ -198,6 +229,92 @@ morale = 90
 
         game.end_turn();
         assert_eq!(game.state.units["1st Test Division"].elements[0].morale, 50);
+    }
+
+    /// Two named Axis players (Alice, Bob) sharing the Axis faction, plus
+    /// Soviet Union with no players listed (a default "Soviet Union" player)
+    /// — `OPPOSING_UNITS`' two divisions on top.
+    fn two_players_one_faction() -> String {
+        format!(
+            "{OPPOSING_UNITS}\n[[players]]\nname = \"Alice\"\nfaction = \"AX\"\n\
+             [[players]]\nname = \"Bob\"\nfaction = \"AX\"\n",
+        )
+    }
+
+    #[test]
+    fn handoff_between_two_players_of_one_faction_does_nothing_else() {
+        let factions = r#"
+[[factions]]
+faction_name = "Axis"
+faction_tag = "AX"
+[[factions]]
+faction_name = "Soviet Union"
+faction_tag = "SU"
+"#;
+        let mut game = Game::build(minimal_scenario(factions, &two_players_one_faction())).unwrap();
+        assert_eq!(game.status(), "test scenario — turn 1, 1941-06-22. Axis (Alice) to move.");
+
+        game.move_unit(1, 1, 1, 2, 0).unwrap();
+        assert_eq!(game.state.units["Axis Division"].mp_left, 14);
+
+        // Alice hands off to Bob — still Axis's own turn: no MP refill, no
+        // morale drift, nothing but the player index moving.
+        game.end_turn();
+        assert_eq!(game.status(), "test scenario — turn 1, 1941-06-22. Axis (Bob) to move.");
+        assert_eq!(game.state.units["Axis Division"].mp_left, 14);
+
+        // Bob (the last Axis player) hands off to Soviet Union: Axis's turn
+        // has ended and Soviet's has begun, but Axis's own MP only refills
+        // when Axis's turn starts again, not now.
+        game.end_turn();
+        assert_eq!(game.status(), "test scenario — turn 1, 1941-06-22. Soviet Union (Soviet Union) to move.");
+        assert_eq!(game.state.units["Axis Division"].mp_left, 14);
+
+        // Soviet Union (only one player) ends its turn: every faction has
+        // now moved, so the full round completes and Axis's turn begins
+        // again — Alice is back up, with fresh Axis MP.
+        game.end_turn();
+        assert_eq!(game.status(), "test scenario — turn 2, 1941-06-29. Axis (Alice) to move.");
+        assert_eq!(game.state.units["Axis Division"].mp_left, 16);
+    }
+
+    #[test]
+    fn doctrine_turn_end_fires_once_after_a_factions_last_player_not_every_handoff() {
+        // Same setup as doctrine_updates_when_a_factions_own_turn_ends...,
+        // but with two Axis players: Guderian's doctrine must stay put while
+        // Alice and Bob hand off between themselves, and only drift once Bob
+        // (the last Axis player) ends Axis's turn.
+        let leader = r#"
+[[leaders]]
+name = "Guderian"
+faction = "AX"
+doctrine = 70
+[leaders.stats]
+political = 5
+morale = 5
+initiative = 5
+administration = 5
+mechanized = 5
+infantry = 5
+air = 5
+"#;
+        let factions = r#"
+[[factions]]
+faction_name = "Axis"
+faction_tag = "AX"
+[[factions]]
+faction_name = "Soviet Union"
+faction_tag = "SU"
+"#;
+        let units = format!("{}\n{leader}", two_players_one_faction());
+        let mut game = Game::build(minimal_scenario(factions, &units)).unwrap();
+        assert_eq!(game.state.leaders["Guderian"].doctrine, 70);
+
+        game.end_turn(); // Alice -> Bob: still Axis's own turn.
+        assert_eq!(game.state.leaders["Guderian"].doctrine, 70);
+
+        game.end_turn(); // Bob -> Soviet Union: Axis's turn ends.
+        assert_eq!(game.state.leaders["Guderian"].doctrine, 69);
     }
 
     #[test]

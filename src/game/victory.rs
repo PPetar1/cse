@@ -12,15 +12,15 @@ impl Game {
     /// for the enemy strength it destroyed, minus a penalty for its own
     /// losses — all measured against `State::starting_strength`.
     pub(super) fn score_victory(&self) -> VictoryReport {
-        let scores = self.players.iter().map(|player| {
-            let faction = &player.faction_tag;
+        let scores = self.factions.iter().map(|scored_faction| {
+            let faction = &scored_faction.faction_tag;
 
             let hex_points: f32 = self.victory_conditions.hexes.iter()
                 .filter(|hex| self.controlling_faction(hex.x, hex.y).as_deref() == Some(faction.as_str()))
                 .map(|hex| hex.points)
                 .sum();
 
-            let destruction_points: f32 = self.players.iter()
+            let destruction_points: f32 = self.factions.iter()
                 .filter(|other| other.faction_tag != *faction)
                 .map(|other| {
                     self.percent_destroyed(&other.faction_tag)
@@ -32,7 +32,7 @@ impl Game {
                 * self.victory_conditions.points_per_percent_own_lost;
 
             FactionScore {
-                faction_name: player.faction_name.clone(),
+                faction_name: scored_faction.faction_name.clone(),
                 hex_points,
                 destruction_points,
                 loss_penalty,

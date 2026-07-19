@@ -14,7 +14,7 @@ mod victory;
 #[cfg(test)]
 mod test_support;
 
-pub use scenario::Player;
+pub use scenario::{Faction, Player};
 pub use victory::VictoryReport;
 use reinforcements::ScheduledArrival;
 use scenario::{ScenarioEvent, VictoryConditions};
@@ -32,12 +32,18 @@ use crate::core::location::{Location, Terrain};
 pub struct Game {
     state: State,
     scenario_name: String,
+    factions: Vec<Faction>,
+    /// Every faction's players, grouped by faction in `factions`' order and,
+    /// within a faction, by their listed order — `phase.player_on_turn` is a
+    /// single flat index into this (see `game::turn`). Built by
+    /// `scenario::build_players`, which synthesizes a lone default player
+    /// for any faction with none listed.
     players: Vec<Player>,
     turn_system: TurnSystem,
     turn: u32,
     phase: TurnPhase,
     /// The in-game date of the current turn; advances by `turn_length` days
-    /// whenever a full turn (every player moved) completes.
+    /// whenever a full turn (every faction moved) completes.
     date: Date,
     turn_length: u32,
     victory_conditions: VictoryConditions,
@@ -80,7 +86,8 @@ impl Game {
     fn parse_scen_from_toml(scenario_toml: String) -> Result<Game, Error>  {
        let mut scenario = scenario::parse(&scenario_toml)?;
 
-       let players = scenario.players.clone();
+       let factions = scenario.factions.clone();
+       let players = scenario::build_players(&factions, &scenario.players)?;
        let scenario_name = scenario.name.clone();
        let turn_system = scenario.turn_system;
        let date = scenario.start_date;
@@ -100,12 +107,13 @@ impl Game {
        let state = scenario::build_state(scenario)?;
 
        scenario::validate_victory_hexes(&victory_conditions, &state)?;
-       scenario::validate_events(&events, &players)?;
+       scenario::validate_events(&events, &factions)?;
        scenario::validate_arrivals(&scheduled_arrivals, &state)?;
 
        let mut game = Game {
            state,
            scenario_name,
+           factions,
            players,
            turn_system,
            turn: 1,
@@ -198,6 +206,13 @@ impl Game {
     /// this instead of reaching into `state` directly.
     pub fn unit(&self, name: &str) -> Option<&Unit> {
         self.state.units.get(name)
+    }
+
+    /// A faction by tag, if one exists — the shared lookup every
+    /// faction-scoped read (turn housekeeping, doctrine, events, victory
+    /// scoring) goes through instead of scanning `self.factions` itself.
+    pub(super) fn faction_by_tag(&self, tag: &str) -> Option<&Faction> {
+        self.factions.iter().find(|faction| faction.faction_tag == tag)
     }
 
     /// An on-map hex, if (x, y) is on the map.
@@ -300,8 +315,11 @@ mod tests {
         let game = one_unit_game();
 
         assert_eq!(game.turn, 1);
+        assert_eq!(game.factions.len(), 1);
+        assert_eq!(game.factions[0].faction_tag, "AX");
+        // No [[players]] listed: a default player is synthesized.
         assert_eq!(game.players.len(), 1);
-        assert_eq!(game.players[0].faction_tag, "AX");
+        assert_eq!(game.players[0].faction, "AX");
         assert_eq!(game.state.units.len(), 1);
     }
 
@@ -367,7 +385,13 @@ mod tests {
         ).unwrap();
         let game = Game::build(contents).unwrap();
 
-        assert_eq!(game.players.len(), 2);
+        assert_eq!(game.factions.len(), 2);
+        // Axis has 2 explicit players; Soviet Union has none, so it gets 1
+        // synthesized default.
+        assert_eq!(game.players.len(), 3);
+        assert_eq!(
+            game.players.iter().filter(|player| player.faction == "AX").count(), 2,
+        );
         assert_eq!(game.state.units.len(), 10);
         // Guards the TOE/element referential integrity of the shipped scenario.
         assert!(game.state.elements.contains_key("SU_45mm_at_gun"));
@@ -389,7 +413,7 @@ mod tests {
         ).unwrap();
         let mut game = Game::build(contents).unwrap();
 
-        assert_eq!(game.players.len(), 2);
+        assert_eq!(game.factions.len(), 2);
         // 10 Soviet frontline + 2 reserve + 1 fighter regiment, 8 German
         // infantry + 2 Panzer on the line + 1 Panzer + 1 Stuka wing in reserve.
         assert_eq!(game.state.units.len(), 25);

@@ -115,17 +115,19 @@ src/
                      air-operations block
     file_picker.rs — the Browse popup (std::fs::read_dir in an egui::Window)
     test_support.rs— shared test fixtures (cf. game/test_support.rs)
-  game/mod.rs    — Game (state + players + turn/phase/date + schedules;
-                   `state` is private — see "Sealed state" below),
-                   Game::build, InspectTarget, read queries (location/
-                   offmap_location/map_locations/unit/units_at_location/
-                   units_of_faction/units_not_of_faction/units_by_name/
-                   adjacent/distance/units_summary/inspect_summary),
-                   check_mission_range
+  game/mod.rs    — Game (state + factions + players + turn/phase/date +
+                   schedules; `state` is private — see "Sealed state" below),
+                   Game::build, faction_by_tag, InspectTarget, read queries
+                   (location/offmap_location/map_locations/unit/
+                   units_at_location/units_of_faction/units_not_of_faction/
+                   units_by_name/adjacent/distance/units_summary/
+                   inspect_summary), check_mission_range
   game/scenario.rs — the whole game-level .scen TOML schema + parse,
-                   load-time validation, and build_state (resolves a
-                   Scenario into runtime State, reading the map file);
-                   domain types stay in their domains
+                   load-time validation, build_state (resolves a Scenario
+                   into runtime State, reading the map file), and
+                   build_players (resolves the raw [[players]] list into
+                   Game.players — see "Factions and players" below); domain
+                   types stay in their domains
   game/turn.rs   — end_turn/begin_turn/status, TurnPhase, TurnSystem (the
                    WEGO seam), turn-start morale drift
   game/orders/   — player orders, one module each: movement.rs (move_unit,
@@ -246,7 +248,7 @@ What's non-obvious per system, beyond the file map. Behavior lives in the
 manual.
 
 - **Scenario loading**: `game/scenario.rs` owns schema and validation
-  (players non-empty, victory hexes on the map, event factions known,
+  (factions non-empty, victory hexes on the map, event factions known,
   arrival units/destinations real). `build_state` (`game/scenario.rs`)
   validates element/TOE referential integrity (non-empty devices, TOEs
   reference defined elements, units reference defined TOEs/factions, stat
@@ -256,22 +258,44 @@ manual.
   computes `starting_strength` per faction (the victory baseline).
   Morale/experience inheritance (element override → unit → faction
   default → 50) resolves here, at build time.
-- **Turn flow**: `Game::end_turn` first runs `apply_doctrine_turn_end` for
-  the faction whose turn is ending (before `TurnPhase` advances — see
-  "Doctrine" below), then advances `TurnPhase`/turn/date and triggers
-  `begin_turn` for the faction coming on turn: `apply_scheduled_arrivals` →
+- **Factions and players**: `Faction` (name/tag/morale/experience/doctrine)
+  is the true faction; `Player` (name/faction/controller) is just a
+  controller taking turns for one. `scenario::build_players` (called from
+  `Game::parse_scen_from_toml`, before `build_state` consumes the parsed
+  `Scenario`) validates every raw `[[players]]` entry's `faction` against a
+  real `[[factions]]` entry, then rebuilds `Game.players` grouped by faction
+  in `factions`' order — each faction's own explicit players keep their
+  relative listed order, and a faction with none listed gets a single
+  default (named after the faction, `Human`). This grouping is what lets
+  `game::turn` sequence both levels (which faction, which of its players)
+  with a single flat index — see "Turn flow" below. Everywhere else in the
+  codebase, "faction" is a bare `&str` tag (`Unit.faction`, `Leader.faction`,
+  etc.) with no back-reference to `Player`; only `game::turn` and anything
+  reading/writing faction-scoped stats (`game::doctrine`, `game::events`,
+  `game::victory`) look faction up by tag, via `Game::faction_by_tag`.
+- **Turn flow**: `TurnPhase.player_on_turn: u32` is a single flat index into
+  `Game.players`, which is grouped by faction consecutively (see "Factions
+  and players" above) — so most `end_turn` calls are a plain handoff to the
+  next player of the same faction, doing nothing else at all ("just hand
+  over the game state," per the design). `is_last_player_of_its_faction`/
+  `is_first_player_of_its_faction` (`game/turn.rs`, array-neighbor
+  comparisons on `players`) detect the two boundaries that matter:
+  `end_turn` runs `apply_doctrine_turn_end` for a faction only when its
+  *last* player ends their turn (before `TurnPhase` advances — see
+  "Doctrine" below), and only calls `begin_turn` when the *next* player is
+  the *first* of a new faction segment: `apply_scheduled_arrivals` →
   `apply_scheduled_events` → `apply_refit` → `apply_entrenchment` → MP
   refill + `reset_interdiction_coverage` + morale drift, in that order
   (events land before the drift so a delta steers the same turn's drift
   target). `begin_turn` only fires from `end_turn`, so turn-1
   arrivals/events for the very first mover get an explicit pass at the end
   of `Game::build`. Each faction gets exactly one `begin_turn`/
-  `apply_doctrine_turn_end` per turn number, so the schedule summaries infer
-  pending/fired status from `turn` alone — no "executed" flag.
-  `apply_doctrine_turn_end` runs per faction here (at that faction's own
-  turn end, not once per full game turn) — see "Command & doctrine" in
-  docs/ideas.md for the open question of whether that's the right cadence
-  long-term.
+  `apply_doctrine_turn_end` per turn number regardless of how many players
+  it has, so the schedule summaries infer pending/fired status from `turn`
+  alone — no "executed" flag. `apply_doctrine_turn_end` runs per faction
+  here (at that faction's own turn end, not once per full game turn) — see
+  "Command & doctrine" in docs/ideas.md for the open question of whether
+  that's the right cadence long-term.
 - **Combat orchestration** (`game/orders/attack.rs`): `prepare_battle`
   validates (adjacency, single factions per side, turn ownership), looks up
   each side's faction doctrine (`Game::doctrine_of`) and builds the
@@ -317,7 +341,7 @@ manual.
   WitE2 ratings) are read-only for now — no per-roll combat or
   command-radius effect yet; `game::doctrine` reads `initiative`/`political`
   for the drift formulas and averages the rest (`average_leader_value`).
-- **Doctrine** (`game/doctrine.rs`): a faction-wide rating (`Player::doctrine`)
+- **Doctrine** (`game/doctrine.rs`): a faction-wide rating (`Faction::doctrine`)
   plus a personal one per leader (`Leader::doctrine`), the latter resolved
   from an optional scenario field to the faction default at build time (see
   `LeaderConfig` above). Two independent, currently one-way flows: battles
@@ -329,7 +353,7 @@ manual.
   (a faction's own turn ending, not the next faction's beginning —
   `Game::end_turn` calls `apply_doctrine_turn_end` before `TurnPhase`
   advances) runs every faction leader's contribution to the faction value
-  (a two-pass snapshot — computed from `Player::doctrine` before any
+  (a two-pass snapshot — computed from `Faction::doctrine` before any
   leader's delta is applied — then drift back toward the updated value).
   Only one leader per
   side of a battle is credited: the one with the highest

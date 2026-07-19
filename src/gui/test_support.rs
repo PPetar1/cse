@@ -13,10 +13,10 @@ map = "{map_path}"
 start_date = "1941-06-22"
 turn_length = 7
 
-[[players]]
+[[factions]]
 faction_name = "Axis"
 faction_tag = "AX"
-[[players]]
+[[factions]]
 faction_name = "Soviet Union"
 faction_tag = "SU"
 

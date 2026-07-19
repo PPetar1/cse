@@ -17,7 +17,7 @@ impl Game {
     /// Declare that `unit` covers `target` this turn. A no-op if it's
     /// already covering that hex; rejects a hex beyond the per-unit cap.
     pub fn interdict(&mut self, unit: &str, target: (u32, u32)) -> Result<(), Error> {
-        let faction = self.player_on_turn().faction_tag.clone();
+        let faction = self.player_on_turn().faction.clone();
         let fighter = self.state.units.get(unit)
             .ok_or_else(|| Error::new(format!("No such unit '{unit}'.")))?;
         if fighter.faction != faction {

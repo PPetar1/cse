@@ -24,19 +24,24 @@ Water = 0
 
 # morale/experience: faction-wide defaults; units and single elements can
 # override them (the most specific setting wins, absent everywhere = 50).
-# controller: the Axis play themselves (a first, simple AI opponent) — the
-# landmark scenario for "lose to the machine".
-[[players]]
+[[factions]]
 faction_name = "Axis"
 faction_tag = "AX"
 morale = 75
 experience = 65
-controller = "Ai"
-[[players]]
+[[factions]]
 faction_name = "Soviet Union"
 faction_tag = "SU"
 morale = 40
 experience = 30
+
+# controller: the Axis play themselves (a first, simple AI opponent) — the
+# landmark scenario for "lose to the machine". Soviet Union has no player
+# listed, so it gets a single default (Human) player named after the faction.
+[[players]]
+name = "Axis"
+faction = "AX"
+controller = "Ai"
 
 # mp: movement points per turn — leg formations low, motorized/armored high.
 [[toe]]

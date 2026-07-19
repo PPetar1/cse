@@ -24,7 +24,7 @@ impl Game {
     /// receives some replacements for missing ones, both tapering and
     /// bounded by the unit's TOE-prescribed strength per element type.
     pub(super) fn apply_refit(&mut self) {
-        let faction = self.player_on_turn().faction_tag.clone();
+        let faction = self.player_on_turn().faction.clone();
         let reachable = self.faction_supplied_hexes(&faction);
 
         for unit in self.state.units.values_mut() {

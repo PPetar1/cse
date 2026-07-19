@@ -25,8 +25,8 @@ use super::reinforcements::ScheduledArrival;
 pub(super) fn parse(scenario_toml: &str) -> Result<Scenario, Error> {
     let scenario: Scenario = toml::from_str(scenario_toml)?;
 
-    if scenario.players.is_empty() {
-        return Err(Error::new("The game must have at least 1 player."));
+    if scenario.factions.is_empty() {
+        return Err(Error::new("The game must have at least 1 faction."));
     }
 
     Ok(scenario)
@@ -48,18 +48,18 @@ pub(super) fn build_state(scenario: Scenario) -> Result<State, Error> {
     let mut elements = HashMap::new();
     let mut leaders = HashMap::new();
 
-    let players_by_tag: HashMap<&str, &Player> = scenario.players.iter()
-        .map(|player| (player.faction_tag.as_str(), player))
+    let factions_by_tag: HashMap<&str, &Faction> = scenario.factions.iter()
+        .map(|faction| (faction.faction_tag.as_str(), faction))
         .collect();
 
     for leader in scenario.leaders {
-        let player = players_by_tag.get(leader.faction.as_str()).ok_or_else(|| Error {
+        let faction = factions_by_tag.get(leader.faction.as_str()).ok_or_else(|| Error {
             error_message: format!(
-                "Leader '{}' belongs to faction '{}' which has no player.",
+                "Leader '{}' belongs to faction '{}' which is not defined.",
                 leader.name, leader.faction
             ),
         })?;
-        let doctrine = leader.doctrine.unwrap_or(player.doctrine);
+        let doctrine = leader.doctrine.unwrap_or(faction.doctrine);
         leaders.insert(leader.name.clone(), Leader {
             name: leader.name,
             faction: leader.faction,
@@ -74,7 +74,7 @@ pub(super) fn build_state(scenario: Scenario) -> Result<State, Error> {
                 "Supply source ({}, {}) is not on the map.", source.x, source.y,
             )));
         }
-        if !players_by_tag.contains_key(source.faction.as_str()) {
+        if !factions_by_tag.contains_key(source.faction.as_str()) {
             return Err(Error::new(format!(
                 "Supply source ({}, {}) references unknown faction '{}'.",
                 source.x, source.y, source.faction,
@@ -109,9 +109,9 @@ pub(super) fn build_state(scenario: Scenario) -> Result<State, Error> {
     let mut assigned_leaders: HashMap<String, String> = HashMap::new();
 
     for unit in scenario.units {
-        let player = players_by_tag.get(unit.faction.as_str()).ok_or_else(|| Error {
+        let faction = factions_by_tag.get(unit.faction.as_str()).ok_or_else(|| Error {
             error_message: format!(
-                "Unit '{}' belongs to faction '{}' which has no player.",
+                "Unit '{}' belongs to faction '{}' which is not defined.",
                 unit.name, unit.faction
             ),
         })?;
@@ -162,8 +162,8 @@ pub(super) fn build_state(scenario: Scenario) -> Result<State, Error> {
                 name: element_in_toe.name.clone(),
                 ready: element_in_toe.amount,
                 damaged: 0,
-                morale: stats.and_then(|s| s.morale).or(unit.morale).unwrap_or(player.morale),
-                experience: stats.and_then(|s| s.experience).or(unit.experience).unwrap_or(player.experience),
+                morale: stats.and_then(|s| s.morale).or(unit.morale).unwrap_or(faction.morale),
+                experience: stats.and_then(|s| s.experience).or(unit.experience).unwrap_or(faction.experience),
             });
         }
 
@@ -248,13 +248,13 @@ pub(super) fn validate_arrivals(
     Ok(())
 }
 
-/// Every event must belong to a faction that has a player.
+/// Every event must belong to a defined faction.
 pub(super) fn validate_events(
     events: &[ScenarioEvent],
-    players: &[Player],
+    factions: &[Faction],
 ) -> Result<(), Error> {
     for event in events {
-        if !players.iter().any(|player| player.faction_tag == event.faction) {
+        if !factions.iter().any(|faction| faction.faction_tag == event.faction) {
             return Err(Error::new(format!(
                 "Event at turn {} references unknown faction '{}'.", event.turn, event.faction,
             )));
@@ -280,6 +280,13 @@ pub struct Scenario {
     #[serde(default)]
     pub terrain_costs: std::collections::HashMap<Terrain, u32>,
 
+    pub factions: Vec<Faction>,
+
+    /// `[[players]]` — the controllers taking turns for each faction.
+    /// Optional; a faction with none listed gets a single default player
+    /// (see `build_players`), so every scenario shipped before this table
+    /// existed is unaffected.
+    #[serde(default)]
     pub players: Vec<Player>,
 
     pub toe: Vec<Toe>,
@@ -333,13 +340,18 @@ pub(super) struct FogOfWarConfig {
     pub(super) detection_range: u32,
 }
 
+/// `[[factions]]` — a true faction: its identity and its faction-wide combat
+/// defaults. Factions never control anything themselves; who plays one is
+/// `Player.controller` (see below) — a faction can have several players
+/// taking turns for it, or none named at all (`build_players` synthesizes a
+/// default).
 #[derive(Debug, Clone, serde::Deserialize, serde::Serialize)]
-pub struct Player {
+pub struct Faction {
     pub(super) faction_name: String,
     pub faction_tag: String,
     /// Faction-wide default morale/experience, inherited by every element of
     /// the faction's units unless the unit or element sets its own. Lives on
-    /// the runtime player so future events can shift it over time.
+    /// the runtime faction so future events can shift it over time.
     #[serde(default = "default_stat")]
     pub morale: u32,
     #[serde(default = "default_stat")]
@@ -350,16 +362,58 @@ pub struct Player {
     /// experience does.
     #[serde(default = "default_stat")]
     pub doctrine: u32,
-    /// Who plays this faction. Absent = `Human`, so every scenario shipped
-    /// before this field existed is unaffected.
-    #[serde(default)]
-    pub controller: PlayerController,
 }
 
 /// Factions that don't specify default morale/experience/doctrine get an
 /// average rating.
 fn default_stat() -> u32 {
     50
+}
+
+/// `[[players]]` — a controller taking turns for one faction: just a name
+/// and which faction it plays. Several players can share a faction (they
+/// play it one after another, in listed order — see `game::turn`); a
+/// faction with none listed gets a single default (`build_players`).
+#[derive(Debug, Clone, serde::Deserialize, serde::Serialize)]
+pub struct Player {
+    pub name: String,
+    pub faction: String,
+    /// Who this player is. Absent = `Human`, so every scenario shipped
+    /// before this field existed is unaffected.
+    #[serde(default)]
+    pub controller: PlayerController,
+}
+
+/// Validate every raw `[[players]]` entry's `faction` against a real
+/// `[[factions]]` entry, then group players by faction in `factions`' order
+/// (each faction's own players keep their relative listed order) — the
+/// shape `game::turn`'s single flat turn index relies on. A faction with no
+/// listed players gets one synthesized: named after the faction, `Human`.
+pub(super) fn build_players(factions: &[Faction], raw_players: &[Player]) -> Result<Vec<Player>, Error> {
+    for player in raw_players {
+        if !factions.iter().any(|faction| faction.faction_tag == player.faction) {
+            return Err(Error::new(format!(
+                "Player '{}' references unknown faction '{}'.", player.name, player.faction,
+            )));
+        }
+    }
+
+    let mut players = Vec::new();
+    for faction in factions {
+        let mut faction_players: Vec<Player> = raw_players.iter()
+            .filter(|player| player.faction == faction.faction_tag)
+            .cloned()
+            .collect();
+        if faction_players.is_empty() {
+            faction_players.push(Player {
+                name: faction.faction_name.clone(),
+                faction: faction.faction_tag.clone(),
+                controller: PlayerController::default(),
+            });
+        }
+        players.append(&mut faction_players);
+    }
+    Ok(players)
 }
 
 /// `[[leaders]]` as written in the scenario TOML. `build_state` resolves
@@ -392,7 +446,7 @@ pub struct UnitConfig {
     pub faction: String,
     pub location: UnitLocationConfig,
     /// Unit-wide morale/experience, inherited by all its elements. Absent =
-    /// the faction default from [[players]].
+    /// the faction default from [[factions]].
     pub morale: Option<u32>,
     pub experience: Option<u32>,
     /// Per-element stat overrides ([[units.elements]]), the most specific
@@ -504,10 +558,10 @@ mod tests {
     }
 
     #[test]
-    fn rejects_a_scenario_with_no_players() {
-        let error = Game::build(minimal_scenario("players = []", ONMAP_UNIT)).unwrap_err();
+    fn rejects_a_scenario_with_no_factions() {
+        let error = Game::build(minimal_scenario("factions = []", ONMAP_UNIT)).unwrap_err();
 
-        assert!(error.error_message.contains("at least 1 player"));
+        assert!(error.error_message.contains("at least 1 faction"));
     }
 
     #[test]
@@ -634,6 +688,51 @@ location = { x = 1, y = 1 }
         assert_eq!((unrated.morale, unrated.experience), (50, 50));
     }
 
+    #[test]
+    fn a_faction_with_no_players_listed_gets_one_default_named_after_it() {
+        let game = Game::build(minimal_scenario(TWO_PLAYERS, OPPOSING_UNITS)).unwrap();
+
+        assert_eq!(game.players.len(), 2);
+        assert_eq!(game.players[0].name, "Axis");
+        assert_eq!(game.players[0].faction, "AX");
+        assert_eq!(game.players[1].name, "Soviet Union");
+        assert_eq!(game.players[1].faction, "SU");
+    }
+
+    #[test]
+    fn explicit_players_are_grouped_by_faction_in_the_factions_list_order() {
+        // Interleaved in the TOML (SU, then AX, then SU) — build_players
+        // must still group them by faction, in [[factions]]' order (AX
+        // first), each faction's own players keeping their relative order.
+        let factions = r#"
+[[factions]]
+faction_name = "Axis"
+faction_tag = "AX"
+[[factions]]
+faction_name = "Soviet Union"
+faction_tag = "SU"
+"#;
+        let units = format!(
+            "{OPPOSING_UNITS}\n[[players]]\nname = \"Ivan\"\nfaction = \"SU\"\n\
+             [[players]]\nname = \"Hans\"\nfaction = \"AX\"\n\
+             [[players]]\nname = \"Yuri\"\nfaction = \"SU\"\n",
+        );
+        let game = Game::build(minimal_scenario(factions, &units)).unwrap();
+
+        let names: Vec<&str> = game.players.iter().map(|player| player.name.as_str()).collect();
+        assert_eq!(names, vec!["Hans", "Ivan", "Yuri"]);
+    }
+
+    #[test]
+    fn a_player_referencing_an_unknown_faction_is_rejected() {
+        let units = format!("{ONMAP_UNIT}\n[[players]]\nname = \"Ghost\"\nfaction = \"ZZ\"\n");
+
+        let error = Game::build(minimal_scenario(ONE_PLAYER, &units)).unwrap_err();
+
+        assert!(error.error_message.contains("Ghost"));
+        assert!(error.error_message.contains("ZZ"));
+    }
+
     /// `build_state` assembly/validation: element rosters instantiated from
     /// TOEs, and the leader/toe/element/faction cross-references TOML
     /// deserialization alone can't check. Its own scenario builder, since it
@@ -644,7 +743,7 @@ location = { x = 1, y = 1 }
         use crate::Error;
         use crate::core::State;
 
-        fn scenario_toml(players: &str, toe_elements: &str, units: &str) -> String {
+        fn scenario_toml(factions: &str, toe_elements: &str, units: &str) -> String {
             let map_path = concat!(env!("CARGO_MANIFEST_DIR"), "/maps/basic_map.map");
             format!(r#"
 name = "test scenario"
@@ -652,7 +751,7 @@ game_version = "0.1.0"
 map = "{map_path}"
 start_date = "1941-06-22"
 turn_length = 7
-{players}
+{factions}
 
 [[toe]]
 name = "test_toe"
@@ -692,19 +791,19 @@ hard_attack = 90
 "#)
         }
 
-        const DEFAULT_PLAYERS: &str = r#"
-[[players]]
+        const DEFAULT_FACTIONS: &str = r#"
+[[factions]]
 faction_name = "Axis"
 faction_tag = "AX"
 "#;
 
-        fn state_with_players(players: &str, toe_elements: &str, units: &str) -> Result<State, Error> {
-            let scenario: Scenario = toml::from_str(&scenario_toml(players, toe_elements, units)).unwrap();
+        fn state_with_factions(factions: &str, toe_elements: &str, units: &str) -> Result<State, Error> {
+            let scenario: Scenario = toml::from_str(&scenario_toml(factions, toe_elements, units)).unwrap();
             build_state(scenario)
         }
 
         fn state(toe_elements: &str, units: &str) -> Result<State, Error> {
-            state_with_players(DEFAULT_PLAYERS, toe_elements, units)
+            state_with_factions(DEFAULT_FACTIONS, toe_elements, units)
         }
 
         const VALID_TOE_ELEMENTS: &str = r#"
@@ -806,8 +905,8 @@ devices = []
 
         #[test]
         fn element_stats_inherit_the_most_specific_setting() {
-            let players = r#"
-[[players]]
+            let factions = r#"
+[[factions]]
 faction_name = "Axis"
 faction_tag = "AX"
 morale = 60
@@ -833,7 +932,7 @@ morale = 70
 name = "second_element"
 experience = 90
 "#;
-            let result = state_with_players(players, toe_elements, units).unwrap();
+            let result = state_with_factions(factions, toe_elements, units).unwrap();
 
             let elements = &result.units["1st Test Division"].elements;
             // Unit morale beats the faction's; experience falls through to the faction.

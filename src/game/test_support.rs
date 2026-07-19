@@ -5,17 +5,21 @@
 
 use super::Game;
 
+/// A single faction, Axis — named `ONE_PLAYER` because with no `[[players]]`
+/// listed, `build_players` synthesizes exactly one default player for it.
 pub(super) const ONE_PLAYER: &str = r#"
-[[players]]
+[[factions]]
 faction_name = "Axis"
 faction_tag = "AX"
 "#;
 
+/// Two factions, Axis and Soviet Union — see `ONE_PLAYER`: one default
+/// player each.
 pub(super) const TWO_PLAYERS: &str = r#"
-[[players]]
+[[factions]]
 faction_name = "Axis"
 faction_tag = "AX"
-[[players]]
+[[factions]]
 faction_name = "Soviet Union"
 faction_tag = "SU"
 "#;
@@ -50,7 +54,7 @@ faction = "AX"
 location = "GE Reserve"
 "#;
 
-pub(super) fn minimal_scenario(players: &str, units: &str) -> String {
+pub(super) fn minimal_scenario(factions: &str, units: &str) -> String {
     let map_path = concat!(env!("CARGO_MANIFEST_DIR"), "/maps/basic_map.map");
     format!(r#"
 name = "test scenario"
@@ -58,7 +62,7 @@ game_version = "0.1.0"
 map = "{map_path}"
 start_date = "1941-06-22"
 turn_length = 7
-{players}
+{factions}
 
 [[toe]]
 name = "test_toe"
@@ -94,10 +98,10 @@ pub(super) fn one_unit_game() -> Game {
 /// `minimal_scenario` for a single AX faction with an explicit starting
 /// doctrine, instead of the unspecified default of 50.
 pub(super) fn minimal_scenario_with_doctrine(doctrine: u32, units: &str) -> String {
-    let players = format!(
-        "[[players]]\nfaction_name = \"Axis\"\nfaction_tag = \"AX\"\ndoctrine = {doctrine}\n",
+    let factions = format!(
+        "[[factions]]\nfaction_name = \"Axis\"\nfaction_tag = \"AX\"\ndoctrine = {doctrine}\n",
     );
-    minimal_scenario(&players, units)
+    minimal_scenario(&factions, units)
 }
 
 /// Three stacked attacking divisions at (1, 1) vs one defender at (2, 1)

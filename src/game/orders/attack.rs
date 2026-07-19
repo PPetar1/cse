@@ -188,7 +188,7 @@ impl Game {
         if attacker_faction == defender_faction {
             return Err(Error::new("Cannot attack units of the same faction."));
         }
-        if attacker_faction != self.player_on_turn().faction_tag {
+        if attacker_faction != self.player_on_turn().faction {
             return Err(Error::new(format!("It is not {attacker_faction}'s turn.")));
         }
 

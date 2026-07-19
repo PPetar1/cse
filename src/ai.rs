@@ -218,13 +218,16 @@ hard_attack = 3
     }
 
     const AI_VS_HUMAN: &str = r#"
-[[players]]
+[[factions]]
 faction_name = "Axis"
 faction_tag = "AX"
-controller = "Ai"
-[[players]]
+[[factions]]
 faction_name = "Soviet Union"
 faction_tag = "SU"
+[[players]]
+name = "Axis"
+faction = "AX"
+controller = "Ai"
 "#;
 
     #[test]

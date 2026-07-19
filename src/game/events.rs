@@ -11,15 +11,15 @@ impl Game {
     /// whose faction is coming on turn: nudge that faction's default
     /// morale/experience and queue the event's message for `run` to print.
     pub(super) fn apply_scheduled_events(&mut self) {
-        let faction = self.player_on_turn().faction_tag.clone();
+        let faction = self.player_on_turn().faction.clone();
         let turn = self.turn;
         for event in &self.events {
             if event.turn != turn || event.faction != faction {
                 continue;
             }
-            if let Some(player) = self.players.iter_mut().find(|p| p.faction_tag == faction) {
-                player.morale = clamp_percent(player.morale as i32 + event.morale_delta);
-                player.experience = clamp_percent(player.experience as i32 + event.experience_delta);
+            if let Some(faction) = self.factions.iter_mut().find(|f| f.faction_tag == event.faction) {
+                faction.morale = clamp_percent(faction.morale as i32 + event.morale_delta);
+                faction.experience = clamp_percent(faction.experience as i32 + event.experience_delta);
             }
             self.pending_event_messages.push(event.message.clone());
         }
@@ -77,7 +77,7 @@ mod tests {
         );
         let mut game = Game::build(minimal_scenario(ONE_PLAYER, &units)).unwrap();
 
-        assert_eq!(game.players[0].morale, 60); // default 50 + 10
+        assert_eq!(game.factions[0].morale, 60); // default 50 + 10
         assert_eq!(game.take_event_messages(), vec!["Opening barrage".to_string()]);
     }
 
@@ -107,7 +107,7 @@ mod tests {
         );
         let game = Game::build(minimal_scenario(ONE_PLAYER, &units)).unwrap();
 
-        assert_eq!(game.players[0].morale, 0);
+        assert_eq!(game.factions[0].morale, 0);
     }
 
     #[test]

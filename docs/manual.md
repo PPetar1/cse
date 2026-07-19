@@ -19,11 +19,11 @@ cost, combat ranges, cover and defense. A map may also define named
 **offmap boxes** (e.g. "GE Reserve"): holding areas where units wait before
 arriving or after withdrawing; nothing happens to a unit in one.
 
-A scenario is entirely data in editable text files — map, factions and
-their controllers, units, equipment tables, weapons, terrain costs, victory
-conditions, reinforcement schedules, events, supply sources, optional rules
-like fog of war. Scenarios are content, not code: a motivated player can
-create one with a text editor.
+A scenario is entirely data in editable text files — map, factions and the
+players controlling them, units, equipment tables, weapons, terrain costs,
+victory conditions, reinforcement schedules, events, supply sources,
+optional rules like fog of war. Scenarios are content, not code: a
+motivated player can create one with a text editor.
 
 ### Units, TOEs, elements, devices
 
@@ -103,17 +103,35 @@ Doctrine is deliberately data-driven and one-way for now: leaders influence
 it, it influences combat, but a leader's personal doctrine doesn't yet
 affect their own battle rolls directly (planned).
 
+## Factions and players
+
+A **faction** is a true side in the conflict — Axis, Soviet Union — and
+carries the faction-wide defaults (morale, experience, doctrine) every one
+of its units and leaders can inherit or drift toward.
+
+A **player** is a controller taking a turn for one faction: human or AI, a
+name, and which faction they play. A scenario can list several players for
+the same faction — they take that faction's turn one after another, in the
+order they're listed. A faction with no players listed gets a single
+default one, named after the faction itself and human-controlled, so every
+scenario works whether or not it names any players explicitly.
+
 ## The turn system
 
 Play alternates player by player ("IGO-UGO"): each moves and fights with
-all their units, then passes. When everyone has moved, the turn counter
-advances and the date jumps by the scenario's turn length in days.
+all their units, then passes to the next. When a faction has several
+players, handing off between them is nothing more than that — the next
+player picks up exactly where the last one left off, with the same
+movement points, the same everything. Only once every one of a faction's
+players has had their turn does that faction's own turn genuinely end.
+When everyone has moved, the turn counter advances and the date jumps by
+the scenario's turn length in days.
 
-When a faction's own turn ends, before control passes to the next one, its
+When a faction's own turn ends, before control passes onward, its
 **doctrine** updates (see "Doctrine" above): every leader of that faction
 nudges its doctrine value, then every leader personally drifts toward it.
 
-Then, when a faction comes on turn, in order:
+Then, when a faction's turn begins (its first player takes over), in order:
 
 1. **Scheduled arrivals** — its reinforcements/withdrawals due this turn
    step on or off the map.
@@ -455,10 +473,10 @@ pending/fired status.
 
 ## The AI opponent
 
-A scenario can hand any faction to the AI; its turns then play themselves
-whenever control reaches it, with a printed report of everything it did
-(you should always see *why* — transparency is a design pillar). Its rules,
-deliberately simple:
+A scenario can make any player AI-controlled; that player's turns then play
+themselves whenever control reaches them, with a printed report of
+everything done (you should always see *why* — transparency is a design
+pillar). Its rules, deliberately simple:
 
 - Per stack: simulate an attack on each adjacent enemy hex, and attack the
   best if the predicted retreat rate clears 60% — only clearly winning

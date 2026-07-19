@@ -344,13 +344,17 @@ map = "{map_path}"
 start_date = "1941-06-22"
 turn_length = 7
 
-[[players]]
+[[factions]]
 faction_name = "Soviet Union"
 faction_tag = "SU"
 
-[[players]]
+[[factions]]
 faction_name = "Axis"
 faction_tag = "AX"
+
+[[players]]
+name = "Axis"
+faction = "AX"
 controller = "Ai"
 
 [[toe]]
@@ -393,14 +397,20 @@ location = {{ x = 5, y = 5 }}
     #[test]
     fn end_turn_auto_plays_ai_factions_until_control_reaches_a_human() {
         let mut game = Game::build(human_vs_ai_scenario()).unwrap();
-        assert_eq!(game.status(), "terminal test scenario — turn 1, 1941-06-22. Soviet Union to move.");
+        assert_eq!(
+            game.status(),
+            "terminal test scenario — turn 1, 1941-06-22. Soviet Union (Soviet Union) to move.",
+        );
 
         // The human ends turn 1; the Axis AI then plays its own turn 1
         // automatically, and control lands back on the human for turn 2 —
         // all from a single "end_turn" command.
         run("end_turn", Some(&mut game)).unwrap();
 
-        assert_eq!(game.status(), "terminal test scenario — turn 2, 1941-06-29. Soviet Union to move.");
+        assert_eq!(
+            game.status(),
+            "terminal test scenario — turn 2, 1941-06-29. Soviet Union (Soviet Union) to move.",
+        );
     }
 
     #[test]
@@ -416,14 +426,18 @@ map = "{map_path}"
 start_date = "1941-06-22"
 turn_length = 7
 
-[[players]]
+[[factions]]
 faction_name = "Axis"
 faction_tag = "AX"
-controller = "Ai"
 
-[[players]]
+[[factions]]
 faction_name = "Soviet Union"
 faction_tag = "SU"
+
+[[players]]
+name = "Axis"
+faction = "AX"
+controller = "Ai"
 
 [[toe]]
 name = "test_toe"
@@ -468,6 +482,9 @@ location = {{ x = 1, y = 1 }}
         let _ = std::fs::remove_file(&path);
         let game = result.unwrap().unwrap();
 
-        assert_eq!(game.status(), "terminal test scenario — turn 1, 1941-06-22. Soviet Union to move.");
+        assert_eq!(
+            game.status(),
+            "terminal test scenario — turn 1, 1941-06-22. Soviet Union (Soviet Union) to move.",
+        );
     }
 }

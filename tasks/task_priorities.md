@@ -29,3 +29,4 @@ Format: one line per task, checked off when done, e.g.
 - [x] fix-stale-code-comments.md
 - [x] fix-manual-roadmap-wording.md
 - [x] doctrine.md
+- [x] players.md

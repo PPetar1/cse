@@ -25,16 +25,26 @@ Water = 0
 
 # morale/experience: faction-wide defaults; units and single elements can
 # override them (the most specific setting wins, absent everywhere = 50).
-[[players]]
+[[factions]]
 faction_name = "Axis"
 faction_tag = "AX"
 morale = 75
 experience = 65
-[[players]]
+[[factions]]
 faction_name = "Soviet Union"
 faction_tag = "SU"
 morale = 45
 experience = 35
+
+# Players: who takes turns for each faction. Axis has two here, playing one
+# after another (in this order) whenever it's Axis's turn — Soviet Union has
+# none listed, so it gets a single default player named after the faction.
+[[players]]
+name = "Axis Player 1"
+faction = "AX"
+[[players]]
+name = "Axis Player 2"
+faction = "AX"
 
 # mp: movement points per turn — leg formations low, motorized/armored high.
 [[toe]]
