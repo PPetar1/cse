@@ -91,12 +91,13 @@ two ways:
   decisive, costly win. A leader's personal doctrine never crosses ten
   times their own average rating, win or lose — that ceiling/floor is what
   their skill can sustain.
-- **Between turns.** At its faction's turn start, every leader of that
-  faction first nudges the faction's doctrine value — up if their personal
-  doctrine sits above it, down if below, more so the more politically
-  attuned (raising) or less initiative-driven (lowering) they are — then
-  personally drifts toward the (now-updated) faction value, resisted by
-  their own initiative (losing doctrine) or political rating (gaining it).
+- **Between turns.** When its faction's own turn ends (not when the next
+  faction's turn starts), every leader of that faction first nudges the
+  faction's doctrine value — up if their personal doctrine sits above it,
+  down if below, more so the more initiative-driven (raising) or
+  politically attuned (lowering) they are — then personally drifts toward
+  the (now-updated) faction value, resisted by their own initiative (losing
+  doctrine) or political rating (gaining it).
 
 Doctrine is deliberately data-driven and one-way for now: leaders influence
 it, it influences combat, but a leader's personal doctrine doesn't yet
@@ -108,7 +109,11 @@ Play alternates player by player ("IGO-UGO"): each moves and fights with
 all their units, then passes. When everyone has moved, the turn counter
 advances and the date jumps by the scenario's turn length in days.
 
-When a faction comes on turn, in order:
+When a faction's own turn ends, before control passes to the next one, its
+**doctrine** updates (see "Doctrine" above): every leader of that faction
+nudges its doctrine value, then every leader personally drifts toward it.
+
+Then, when a faction comes on turn, in order:
 
 1. **Scheduled arrivals** — its reinforcements/withdrawals due this turn
    step on or off the map.
@@ -118,14 +123,12 @@ When a faction comes on turn, in order:
 4. **Entrenchment** — every on-map unit that hasn't relocated digs in one
    level.
 5. **Housekeeping** — fresh movement points from each unit's TOE, the
-   faction's interdiction declarations reset, every element's morale drifts
-   one step toward the faction default, and doctrine updates (see
-   "Doctrine" above): every leader of the faction nudges its doctrine
-   value, then every leader personally drifts toward it.
+   faction's interdiction declarations reset, and every element's morale
+   drifts one step toward the faction default.
 
 A simultaneous ("WEGO") mode, where all players issue orders that resolve
 together, is a planned alternative — scenarios already choose their turn
-system; there's just only one choice so far. Doctrine's turn-start step
+system; there's just only one choice so far. Doctrine's turn-end step
 currently runs at this per-faction boundary rather than once per full game
 turn — worth revisiting later (see docs/ideas.md).
 

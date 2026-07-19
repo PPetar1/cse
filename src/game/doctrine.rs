@@ -14,12 +14,13 @@
 //!   docs/ideas.md for why only one, for now). That leader's personal
 //!   doctrine shifts by `(LAV - DOC/10) * FBO * LOS`, never crossing the
 //!   `LAV * 10` ceiling/floor its own rating caps it at.
-//! - **Turn start** (`apply_doctrine_turn_start`, called from
-//!   `game::turn::begin_turn`): every leader of the faction coming on turn
-//!   first nudges the faction doctrine value up or down (leaders above pull
-//!   it up, leaders below pull it down — computed from a single pre-update
-//!   snapshot so no leader's contribution is skewed by another's), then
-//!   drifts personally toward the (now current) faction value.
+//! - **Turn end** (`apply_doctrine_turn_end`, called from `game::turn::end_turn`
+//!   for the faction whose turn just finished, before control passes):
+//!   every leader of that faction first nudges the faction doctrine value up
+//!   or down (leaders above pull it up, leaders below pull it down —
+//!   computed from a single pre-update snapshot so no leader's contribution
+//!   is skewed by another's), then drifts personally toward the (now
+//!   current) faction value.
 
 use crate::core::leader::LeaderStats;
 use crate::procedures::combat::BattleReport;
@@ -92,11 +93,12 @@ impl Game {
             .map(|(name, _)| name.to_string())
     }
 
-    /// Turn-start doctrine processing for the faction coming on turn:
-    /// leaders update the faction value first (`leader_contributions_to_faction_doctrine`),
-    /// then drift toward it (`drift_leaders_toward_faction_doctrine`) — see
-    /// the module doc for why the order matters.
-    pub(super) fn apply_doctrine_turn_start(&mut self, faction: &str) {
+    /// Turn-end doctrine processing for the faction whose turn just
+    /// finished: leaders update the faction value first
+    /// (`leader_contributions_to_faction_doctrine`), then drift toward it
+    /// (`drift_leaders_toward_faction_doctrine`) — see the module doc for
+    /// why the order matters.
+    pub(super) fn apply_doctrine_turn_end(&mut self, faction: &str) {
         self.apply_leader_contributions_to_faction_doctrine(faction);
         self.drift_leaders_toward_faction_doctrine(faction);
     }
@@ -355,7 +357,7 @@ air = 5
     }
 
     /// A single leader, `doctrine` and `stats` set by the caller, assigned to
-    /// "1st Test Division" — the battle-result and turn-start tests build on
+    /// "1st Test Division" — the battle-result and turn-end tests build on
     /// this instead of repeating the scenario TOML.
     fn one_leader_game(doctrine: u32, stats: LeaderStats) -> Game {
         let units = format!(

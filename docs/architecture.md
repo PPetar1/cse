@@ -149,8 +149,9 @@ src/
                    Leader (see below)
   game/doctrine.rs — faction-wide doctrine: doctrine_of (feeds CV scaling in
                    prepare_battle), apply_doctrine_battle_result (per-battle
-                   personal doctrine gain/loss), apply_doctrine_turn_start
-                   (leader/faction feedback, called from begin_turn)
+                   personal doctrine gain/loss), apply_doctrine_turn_end
+                   (leader/faction feedback, called from end_turn for the
+                   faction whose turn just finished)
   game/detection.rs — is_visible_to/is_unit_visible_to, the fog-of-war
                    display gate
   game/entrenchment.rs — apply_entrenchment (turn-start fort_level tick +
@@ -255,20 +256,22 @@ manual.
   computes `starting_strength` per faction (the victory baseline).
   Morale/experience inheritance (element override → unit → faction
   default → 50) resolves here, at build time.
-- **Turn flow**: `Game::end_turn` advances `TurnPhase`/turn/date and
-  triggers `begin_turn` for the faction coming on turn:
-  `apply_scheduled_arrivals` → `apply_scheduled_events` → `apply_refit` →
-  `apply_entrenchment` → MP refill + `reset_interdiction_coverage` +
-  morale drift + `apply_doctrine_turn_start`, in that order (events land
-  before the drift so a delta steers the same turn's drift target).
-  `begin_turn` only fires from `end_turn`, so turn-1 arrivals/events for
-  the very first mover get an explicit pass at the end of `Game::build`.
-  Each faction gets exactly one `begin_turn` per turn number, so the
-  schedule summaries infer pending/fired status from `turn` alone — no
-  "executed" flag. `apply_doctrine_turn_start` runs per faction here (not
-  once per full game turn) purely by following this existing pattern — see
-  "Command & doctrine" in docs/ideas.md for the open question of whether
-  that's the right cadence long-term.
+- **Turn flow**: `Game::end_turn` first runs `apply_doctrine_turn_end` for
+  the faction whose turn is ending (before `TurnPhase` advances — see
+  "Doctrine" below), then advances `TurnPhase`/turn/date and triggers
+  `begin_turn` for the faction coming on turn: `apply_scheduled_arrivals` →
+  `apply_scheduled_events` → `apply_refit` → `apply_entrenchment` → MP
+  refill + `reset_interdiction_coverage` + morale drift, in that order
+  (events land before the drift so a delta steers the same turn's drift
+  target). `begin_turn` only fires from `end_turn`, so turn-1
+  arrivals/events for the very first mover get an explicit pass at the end
+  of `Game::build`. Each faction gets exactly one `begin_turn`/
+  `apply_doctrine_turn_end` per turn number, so the schedule summaries infer
+  pending/fired status from `turn` alone — no "executed" flag.
+  `apply_doctrine_turn_end` runs per faction here (at that faction's own
+  turn end, not once per full game turn) — see "Command & doctrine" in
+  docs/ideas.md for the open question of whether that's the right cadence
+  long-term.
 - **Combat orchestration** (`game/orders/attack.rs`): `prepare_battle`
   validates (adjacency, single factions per side, turn ownership), looks up
   each side's faction doctrine (`Game::doctrine_of`) and builds the
@@ -322,10 +325,13 @@ manual.
   the `LAV * 10` ceiling/floor a leader's own rating caps it at — the cap is
   provably unreachable by a single battle, since `FBO * LOS` never exceeds
   2.0 against a `10 * (LAV - DOC/10)` gap, but stays as the spec's explicit
-  safety net and is unit-tested directly by calling past it), and turn start
-  runs every faction leader's contribution to the faction value (a two-pass
-  snapshot — computed from `Player::doctrine` before any leader's delta is
-  applied — then drift back toward the updated value). Only one leader per
+  safety net and is unit-tested directly by calling past it), and turn end
+  (a faction's own turn ending, not the next faction's beginning —
+  `Game::end_turn` calls `apply_doctrine_turn_end` before `TurnPhase`
+  advances) runs every faction leader's contribution to the faction value
+  (a two-pass snapshot — computed from `Player::doctrine` before any
+  leader's delta is applied — then drift back toward the updated value).
+  Only one leader per
   side of a battle is credited: the one with the highest
   `average_leader_value` among that side's participating (ground, named)
   units — see "Command & doctrine" in docs/ideas.md for the deliberately

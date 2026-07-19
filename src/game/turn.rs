@@ -1,8 +1,9 @@
 //! The turn system: how control passes between players and what happens to
 //! a faction when its turn begins (MP refill, morale drift, scheduled
-//! arrivals and events). A future WEGO mode (simultaneous orders, resolved
-//! together at turn end) lands as a second `TurnSystem` variant plus an
-//! order queue — the matches on that enum are the places it plugs in.
+//! arrivals and events) and ends (doctrine — see `game::doctrine`). A future
+//! WEGO mode (simultaneous orders, resolved together at turn end) lands as a
+//! second `TurnSystem` variant plus an order queue — the matches on that
+//! enum are the places it plugs in.
 
 use super::{Game, Player, VictoryReport};
 use super::scenario::PlayerController;
@@ -16,13 +17,18 @@ const MORALE_RECOVERY_STEP: u32 = 10;
 impl Game {
     /// End the current player's turn. Under IGO-UGO control passes to the
     /// next player; once every player has moved, the turn counter and the
-    /// game date advance. Turn-start effects for the faction coming on turn
-    /// (MP reset, morale recovery) hook in here as they land. Returns the
-    /// final score once the scenario's `last_turn` has just been completed.
+    /// game date advance. Turn-end effects for the faction whose turn just
+    /// finished (doctrine) hook in here, before control passes; turn-start
+    /// effects for the faction coming on turn (MP reset, morale recovery)
+    /// hook into `begin_turn`. Returns the final score once the scenario's
+    /// `last_turn` has just been completed.
     pub fn end_turn(&mut self) -> Option<VictoryReport> {
         let mut victory = None;
         match self.turn_system {
             TurnSystem::IgoUgo => {
+                let ending_faction = self.player_on_turn().faction_tag.clone();
+                self.apply_doctrine_turn_end(&ending_faction);
+
                 self.phase.player_on_turn += 1;
                 if self.phase.player_on_turn as usize >= self.players.len() {
                     self.phase.player_on_turn = 0;
@@ -65,7 +71,6 @@ impl Game {
                 }
             }
         }
-        self.apply_doctrine_turn_start(&faction);
     }
 
     /// One-line summary of where the game clock stands.
@@ -193,5 +198,35 @@ morale = 90
 
         game.end_turn();
         assert_eq!(game.state.units["1st Test Division"].elements[0].morale, 50);
+    }
+
+    #[test]
+    fn doctrine_updates_when_a_factions_own_turn_ends_not_when_the_next_ones_starts() {
+        // Guderian's doctrine (70) sits above AX's unspecified default (50);
+        // ending AX's own turn — not SU's turn starting next — must drift
+        // him down right away. ((50-70)/10) * ((15-5)/15) = -1.3333; 70 -
+        // 1.3333 = 68.6667, rounds to 69. (The leader-to-faction contribution
+        // this same step barely moves FDO: it stays 50, rounded.)
+        let leader = r#"
+[[leaders]]
+name = "Guderian"
+faction = "AX"
+doctrine = 70
+[leaders.stats]
+political = 5
+morale = 5
+initiative = 5
+administration = 5
+mechanized = 5
+infantry = 5
+air = 5
+"#;
+        let units = format!("{OPPOSING_UNITS}\n{leader}");
+        let mut game = Game::build(minimal_scenario(TWO_PLAYERS, &units)).unwrap();
+        assert_eq!(game.state.leaders["Guderian"].doctrine, 70);
+
+        game.end_turn(); // Axis ends its own turn; Soviet Union's turn starts.
+
+        assert_eq!(game.state.leaders["Guderian"].doctrine, 69);
     }
 }

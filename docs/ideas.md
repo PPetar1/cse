@@ -55,14 +55,13 @@ docs/roadmap.md).
 
 ## Command & doctrine
 
-- **Doctrine turn-timing** — doctrine's turn-start step (leader-to-faction
+- **Doctrine turn-timing** — doctrine's turn-end step (leader-to-faction
   contribution, then faction-to-leader drift; see `game::doctrine` and
-  "Doctrine" in docs/manual.md) currently runs per-faction, at each
-  faction's own turn boundary, purely because that's the existing pattern
-  morale drift and refit already follow. Whether it should instead run once
-  per full game turn (after every faction has moved) is still open —
-  revisit once there's a clearer feel for which cadence plays better,
-  especially once a WEGO turn system exists.
+  "Doctrine" in docs/manual.md) currently runs per-faction, when that
+  faction's own turn ends. Whether it should instead run once per full game
+  turn (after every faction has moved) is still open — revisit once there's
+  a clearer feel for which cadence plays better, especially once a WEGO
+  turn system exists.
 
 - **Battle leadership attribution** — a battle currently credits doctrine
   gain/loss to exactly one leader per side: whichever participating unit's
