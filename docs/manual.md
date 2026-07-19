@@ -58,11 +58,49 @@ one there, and the `reassign_leader` command can move one between units
 later, unassigning it from wherever it was. A unit can go without a leader
 entirely.
 
-For now leaders are purely informational: their stats have no gameplay
-effect. They're groundwork for a future command/effectiveness system, and
-today's blanket "leaders can command any unit" will narrow once unit types
-and HQs exist — a Corps or Army leader restricted to the HQ level they fit,
-the way WitE2 does it.
+The seven ratings themselves are still read-only — no per-roll combat or
+command-radius effect yet. What they *do* drive today is **doctrine** (see
+below): Initiative and Political feed the drift formulas, and the other
+five (Morale, Administration, Mechanized, Infantry — everything except
+Political and Air) average into a leader's personal doctrine ceiling/floor.
+Individual battle rolls, and today's blanket "leaders can command any unit"
+narrowing once unit types and HQs exist (a Corps or Army leader restricted
+to the HQ level they fit, the way WitE2 does it), remain future work.
+
+### Doctrine
+
+**Doctrine** is a faction-wide rating (1-100, scenario-settable, default 50)
+representing how well a faction's army fights as an institution — separate
+from any one unit's morale or experience. It scales combat the same way
+experience does (see "Morale and experience" below): it adds to an
+element's CV modifier, and it independently gates whether an element
+commits to a shot at all.
+
+Every leader also carries a **personal doctrine** rating (1-100), starting
+at the faction's value unless the scenario sets one explicitly. It moves in
+two ways:
+
+- **Battles.** Only one leader is credited per side of a battle: whichever
+  of that side's participating units has the leader with the highest
+  average rating (Morale, Initiative, Administration, Mechanized, Infantry
+  — the same five doctrine draws its ceiling from). That leader's personal
+  doctrine shifts based on how their own rating compares to their current
+  doctrine, scaled by how lopsided the battle's final odds were and how
+  costly it was in losses — a leader whose doctrine already matches their
+  ability barely moves; one far below it can move substantially on a
+  decisive, costly win. A leader's personal doctrine never crosses ten
+  times their own average rating, win or lose — that ceiling/floor is what
+  their skill can sustain.
+- **Between turns.** At its faction's turn start, every leader of that
+  faction first nudges the faction's doctrine value — up if their personal
+  doctrine sits above it, down if below, more so the more politically
+  attuned (raising) or less initiative-driven (lowering) they are — then
+  personally drifts toward the (now-updated) faction value, resisted by
+  their own initiative (losing doctrine) or political rating (gaining it).
+
+Doctrine is deliberately data-driven and one-way for now: leaders influence
+it, it influences combat, but a leader's personal doctrine doesn't yet
+affect their own battle rolls directly (planned).
 
 ## The turn system
 
@@ -80,12 +118,16 @@ When a faction comes on turn, in order:
 4. **Entrenchment** — every on-map unit that hasn't relocated digs in one
    level.
 5. **Housekeeping** — fresh movement points from each unit's TOE, the
-   faction's interdiction declarations reset, and every element's morale
-   drifts one step toward the faction default.
+   faction's interdiction declarations reset, every element's morale drifts
+   one step toward the faction default, and doctrine updates (see
+   "Doctrine" above): every leader of the faction nudges its doctrine
+   value, then every leader personally drifts toward it.
 
 A simultaneous ("WEGO") mode, where all players issue orders that resolve
 together, is a planned alternative — scenarios already choose their turn
-system; there's just only one choice so far.
+system; there's just only one choice so far. Doctrine's turn-start step
+currently runs at this per-faction boundary rather than once per full game
+turn — worth revisiting later (see docs/ideas.md).
 
 ## Movement
 
@@ -200,7 +242,11 @@ A beaten defending stack must leave its hex:
 Every element carries morale and experience (0–100), set by the scenario at
 whatever granularity is convenient — element of a unit → unit → faction
 default → 50, most specific wins. Experience gates commitment, both scale
-CV, and a unit's strength-weighted average morale gates routs.
+CV, and a unit's strength-weighted average morale gates routs. Faction
+doctrine (see "Doctrine" above) rides alongside both in a battle: it's a
+single value shared by every element of a faction rather than a per-element
+setting, but it scales CV and gates commitment exactly the way experience
+does.
 
 Battles move both. **Experience**: every element type that fielded troops
 gains it, winners and losers alike, tapering as it rises (+7 around 35, +1
@@ -265,8 +311,9 @@ stand-alone air strikes without a ground attack, and AI use of air missions
   battles are tunable via simulation.
 - Fixed one round per range band; WitE2 has a variable number and can break
   off battles early on bad odds.
-- No fatigue, ammo or leader checks, no support/reserve commitment, no CPP
-  or weather.
+- No fatigue, ammo or per-roll leader checks (a leader's personal doctrine
+  doesn't yet influence their own battle rolls — see "Doctrine" above), no
+  support/reserve commitment, no CPP or weather.
 
 ### The simulation tool
 

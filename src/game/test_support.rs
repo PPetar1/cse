@@ -91,6 +91,15 @@ pub(super) fn one_unit_game() -> Game {
     Game::build(minimal_scenario(ONE_PLAYER, ONMAP_UNIT)).unwrap()
 }
 
+/// `minimal_scenario` for a single AX faction with an explicit starting
+/// doctrine, instead of the unspecified default of 50.
+pub(super) fn minimal_scenario_with_doctrine(doctrine: u32, units: &str) -> String {
+    let players = format!(
+        "[[players]]\nfaction_name = \"Axis\"\nfaction_tag = \"AX\"\ndoctrine = {doctrine}\n",
+    );
+    minimal_scenario(&players, units)
+}
+
 /// Three stacked attacking divisions at (1, 1) vs one defender at (2, 1)
 /// with the given morale — the standard "defender surely loses" setup.
 pub(super) fn three_vs_one(defender_morale: u32) -> String {

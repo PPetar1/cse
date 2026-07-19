@@ -28,3 +28,4 @@ Format: one line per task, checked off when done, e.g.
 - [x] fix-architecture-doc-drift.md
 - [x] fix-stale-code-comments.md
 - [x] fix-manual-roadmap-wording.md
+- [x] doctrine.md

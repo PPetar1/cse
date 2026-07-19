@@ -90,6 +90,11 @@ impl Game {
         self.apply_battle_losses(&attackers);
         self.apply_battle_losses(&defenders);
 
+        // Leader doctrine gain/loss reads `Unit.leader` by name, so it must
+        // run before a beaten defender can be removed from `state.units`
+        // (surrendered/shattered — see `execute_retreat` below).
+        self.apply_doctrine_battle_result(&attacker_names, &defender_names, &battle);
+
         let retreat = if battle.outcome == BattleOutcome::DefenderRetreats {
             self.execute_retreat(from, to, &defender_names, &defender_faction, rng)
         } else {
@@ -187,8 +192,11 @@ impl Game {
             return Err(Error::new(format!("It is not {attacker_faction}'s turn.")));
         }
 
-        let mut attackers = combat::combat_elements(&attacker_units, &self.state.elements)?;
-        let mut defenders = combat::combat_elements(&defender_units, &self.state.elements)?;
+        let attacker_doctrine = self.doctrine_of(&attacker_faction);
+        let defender_doctrine = self.doctrine_of(&defender_faction);
+
+        let mut attackers = combat::combat_elements(&attacker_units, &self.state.elements, attacker_doctrine)?;
+        let mut defenders = combat::combat_elements(&defender_units, &self.state.elements, defender_doctrine)?;
         if let Some(name) = air_support {
             if attacker_units.iter().any(|unit| unit.name == name) {
                 return Err(Error::new(format!(
@@ -202,7 +210,7 @@ impl Game {
                 return Err(Error::new(format!("'{name}' does not belong to {attacker_faction}.")));
             }
             self.check_mission_range(air_unit, to)?;
-            attackers.extend(combat::combat_elements(&[air_unit], &self.state.elements)?);
+            attackers.extend(combat::combat_elements(&[air_unit], &self.state.elements, attacker_doctrine)?);
         }
 
         // Interdiction: any fighters the defending faction has declared to
@@ -221,7 +229,7 @@ impl Game {
             .collect();
         if !covering_units.is_empty() {
             let mut covering_elements =
-                combat::combat_elements(&covering_units, &self.state.elements)?;
+                combat::combat_elements(&covering_units, &self.state.elements, defender_doctrine)?;
             combat::exclude_from_defending_stack(&mut covering_elements);
             defenders.extend(covering_elements);
         }
@@ -559,6 +567,99 @@ location = { x = 3, y = 1 }
     }
 
     #[test]
+    fn a_won_battle_shifts_the_attacking_leaders_personal_doctrine() {
+        // A much larger battle than the other fixtures here: LOS (NEL / 500,
+        // see game::doctrine) only produces a visible, non-rounded-away
+        // doctrine shift once a battle's element-instance losses reach the
+        // low double digits — a single small division-sized fight (as in
+        // three_vs_one) never does. High accuracy guarantees that scale of
+        // loss regardless of seed.
+        let map_path = concat!(env!("CARGO_MANIFEST_DIR"), "/maps/basic_map.map");
+        let scenario = format!(
+            r#"
+name = "test scenario"
+game_version = "0.1.0"
+map = "{map_path}"
+start_date = "1941-06-22"
+turn_length = 7
+{TWO_PLAYERS}
+
+[[toe]]
+name = "test_toe"
+size = "Division"
+mp = 16
+start_date = "1941-01-01"
+end_date = "1941-08-01"
+[[toe.elements]]
+name = "test_element"
+amount = 100
+
+[[elements]]
+name = "test_element"
+class = "Inf"
+cv = 4.0
+vulnerability = 100
+[[elements.devices]]
+name = "test_rifles"
+accuracy = 80
+range = 100
+rate_of_fire = 1
+soft_attack = 100
+hard_attack = 3
+
+[[units]]
+name = "Axis First"
+toe = "test_toe"
+faction = "AX"
+location = {{ x = 1, y = 1 }}
+leader = "Guderian"
+
+[[units]]
+name = "Axis Second"
+toe = "test_toe"
+faction = "AX"
+location = {{ x = 1, y = 1 }}
+
+[[units]]
+name = "Axis Third"
+toe = "test_toe"
+faction = "AX"
+location = {{ x = 1, y = 1 }}
+
+[[units]]
+name = "Soviet Division"
+toe = "test_toe"
+faction = "SU"
+location = {{ x = 2, y = 1 }}
+morale = 100
+
+[[leaders]]
+name = "Guderian"
+faction = "AX"
+doctrine = 50
+[leaders.stats]
+political = 5
+morale = 9
+initiative = 9
+administration = 9
+mechanized = 9
+infantry = 9
+air = 5
+"#
+        );
+        let mut game = Game::build(scenario).unwrap();
+        let mut rng = StdRng::seed_from_u64(42);
+
+        let report = game.attack((1, 1), (2, 1), &mut rng).unwrap();
+
+        // A decisive, costly win: LAV (9) exceeds DOC/10 (5), so Guderian —
+        // "Axis First"'s leader, the only leader among the three attacking
+        // units — gains doctrine from it.
+        assert_eq!(report.battle.outcome, BattleOutcome::DefenderRetreats);
+        assert_eq!(game.state.leaders["Guderian"].doctrine, 51);
+    }
+
+    #[test]
     fn attack_applies_losses_that_match_the_report() {
         // Two defending units vs one attacker: the defender holds, so no
         // retreat attrition muddies the loss bookkeeping.
@@ -776,7 +877,7 @@ morale = 100
     #[test]
     fn a_routed_unit_loses_morale_twice() {
         let mut game = Game::build(minimal_scenario(TWO_PLAYERS, &three_vs_one(40))).unwrap();
-        let mut rng = StdRng::seed_from_u64(42);
+        let mut rng = StdRng::seed_from_u64(1);
 
         let report = game.attack((1, 1), (2, 1), &mut rng).unwrap();
 

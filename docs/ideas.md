@@ -55,16 +55,23 @@ docs/roadmap.md).
 
 ## Command & doctrine
 
-- **Split doctrine out of morale** — WitE "morale" conflates two things: a
-  unit's fighting spirit and the faction's overall combat-doctrine
-  effectiveness. Split them: morale stays per-element, and a separate
-  faction-wide **doctrine** modifier captures how well the faction fights as an
-  institution. Doctrine improves when high-initiative leaders take part in
-  battles (scaled by battle size or similar) and drifts toward the faction's
-  average leader capability over time. The pull goes both ways: leader stats
-  also drift toward the doctrine level, so leaders and doctrine converge.
-  Depends on leaders existing first. Slots naturally onto the runtime `Player`
-  (where faction-wide morale/experience defaults already live).
+- **Doctrine turn-timing** — doctrine's turn-start step (leader-to-faction
+  contribution, then faction-to-leader drift; see `game::doctrine` and
+  "Doctrine" in docs/manual.md) currently runs per-faction, at each
+  faction's own turn boundary, purely because that's the existing pattern
+  morale drift and refit already follow. Whether it should instead run once
+  per full game turn (after every faction has moved) is still open —
+  revisit once there's a clearer feel for which cadence plays better,
+  especially once a WEGO turn system exists.
+
+- **Battle leadership attribution** — a battle currently credits doctrine
+  gain/loss to exactly one leader per side: whichever participating unit's
+  leader has the highest average rating (`average_leader_value`). Leaders
+  of air-support or interdiction-covering units are never eligible (they
+  aren't in `attacker_names`/`defender_names`). Both the "one leader only"
+  rule and this eligibility scope are simplifications for now — worth
+  reworking once leader battle rolls (see docs/manual.md's "Combat"
+  deviations) give a fuller picture of how leaders should participate.
 
 - **Unit staffs** — beyond a single commanding leader, units carry a staff with
   its own stats, influencing recovery, logistics throughput, leader checks and

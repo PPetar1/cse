@@ -12,7 +12,7 @@ use time::Date;
 
 use crate::Error;
 use crate::core::State;
-use crate::core::leader::Leader;
+use crate::core::leader::{Leader, LeaderStats};
 use crate::core::location::{Terrain, TerrainCosts};
 use crate::core::map::Map;
 use crate::core::supply::SupplySource;
@@ -53,15 +53,19 @@ pub(super) fn build_state(scenario: Scenario) -> Result<State, Error> {
         .collect();
 
     for leader in scenario.leaders {
-        if !players_by_tag.contains_key(leader.faction.as_str()) {
-            return Err(Error {
-                error_message: format!(
-                    "Leader '{}' belongs to faction '{}' which has no player.",
-                    leader.name, leader.faction
-                ),
-            });
-        }
-        leaders.insert(leader.name.clone(), leader);
+        let player = players_by_tag.get(leader.faction.as_str()).ok_or_else(|| Error {
+            error_message: format!(
+                "Leader '{}' belongs to faction '{}' which has no player.",
+                leader.name, leader.faction
+            ),
+        })?;
+        let doctrine = leader.doctrine.unwrap_or(player.doctrine);
+        leaders.insert(leader.name.clone(), Leader {
+            name: leader.name,
+            faction: leader.faction,
+            stats: leader.stats,
+            doctrine,
+        });
     }
 
     for source in &scenario.supply_sources {
@@ -285,10 +289,10 @@ pub struct Scenario {
     pub units: Vec<UnitConfig>,
 
     /// `[[leaders]]` — commanders available to assign to units, per
-    /// faction. Deserialized straight into the domain type, same as `toe`/
-    /// `elements` above.
+    /// faction. `build_state` resolves each into the runtime `Leader`,
+    /// filling an absent `doctrine` from the leader's faction.
     #[serde(default)]
-    pub leaders: Vec<Leader>,
+    pub leaders: Vec<LeaderConfig>,
 
     /// `[victory_conditions]` — optional; a scenario with none never scores
     /// or ends on its own.
@@ -340,15 +344,36 @@ pub struct Player {
     pub morale: u32,
     #[serde(default = "default_stat")]
     pub experience: u32,
+    /// 1-100. The faction's overall combat-doctrine effectiveness — leaders
+    /// drift toward it and feed back into it over time (see
+    /// `game::doctrine`), and it scales unit CV in battle the same way
+    /// experience does.
+    #[serde(default = "default_stat")]
+    pub doctrine: u32,
     /// Who plays this faction. Absent = `Human`, so every scenario shipped
     /// before this field existed is unaffected.
     #[serde(default)]
     pub controller: PlayerController,
 }
 
-/// Factions that don't specify default morale/experience get an average rating.
+/// Factions that don't specify default morale/experience/doctrine get an
+/// average rating.
 fn default_stat() -> u32 {
     50
+}
+
+/// `[[leaders]]` as written in the scenario TOML. `build_state` resolves
+/// this into the runtime `Leader`, filling an absent `doctrine` from the
+/// leader's faction — the one field `Leader` can't just deserialize
+/// straight, unlike `Toe`/`Element`.
+#[derive(Debug, serde::Deserialize)]
+pub struct LeaderConfig {
+    pub name: String,
+    pub faction: String,
+    pub stats: LeaderStats,
+    /// Absent = the faction's `doctrine` at scenario load.
+    #[serde(default)]
+    pub doctrine: Option<u32>,
 }
 
 /// Who plays a faction. A future networked mode would add a variant here,

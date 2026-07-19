@@ -147,6 +147,10 @@ src/
   game/leaders.rs — leaders_of_faction/leaders_summary/leader_detail/
                    reassign_leader; assignment lives on Unit.leader, not on
                    Leader (see below)
+  game/doctrine.rs — faction-wide doctrine: doctrine_of (feeds CV scaling in
+                   prepare_battle), apply_doctrine_battle_result (per-battle
+                   personal doctrine gain/loss), apply_doctrine_turn_start
+                   (leader/faction feedback, called from begin_turn)
   game/detection.rs — is_visible_to/is_unit_visible_to, the fog-of-war
                    display gate
   game/entrenchment.rs — apply_entrenchment (turn-start fort_level tick +
@@ -164,9 +168,9 @@ src/
                    defaults; 0 = impassable)
   core/unit.rs   — Unit (mp_left, fort_level, elements, leader), Toe (mp,
                    range), Element/Device/ElementClass, Size
-  core/leader.rs — Leader (name, faction, stats), LeaderStats (the seven
-                   WitE2 ratings); deserialized straight from TOML like
-                   Toe/Element, no config/runtime split
+  core/leader.rs — Leader (name, faction, stats, doctrine), LeaderStats (the
+                   seven WitE2 ratings); the runtime type `LeaderConfig`
+                   (game/scenario.rs) resolves into
   core/supply.rs — SupplySource (faction, x, y): a faction's supply-source
                    hexes; deserialized straight from TOML, same reasoning
                    as Leader
@@ -185,7 +189,11 @@ src/
   runtime types (`UnitLocation`, `ScheduledArrival` — normally tagged),
   with `From` impls across. Keep new untagged enums on the config side
   only. Types the same shape in TOML and at runtime (`ScenarioEvent`,
-  `SupplySource`) need no split.
+  `SupplySource`) need no split. A second, unrelated reason for the same
+  split: a field whose default depends on other scenario data, resolved in
+  `build_state` rather than by a static `#[serde(default = "fn")]` — see
+  `UnitConfig`/`ElementStatsConfig` (morale/experience) and
+  `LeaderConfig`/`Leader` (doctrine).
 - **Randomness**: anything that rolls dice takes `&mut impl rand::Rng`
   from the caller — the command loop passes `rand::rng()`, tests pass
   `StdRng::seed_from_u64(...)`. Never iterate a HashMap where order
@@ -251,32 +259,42 @@ manual.
   triggers `begin_turn` for the faction coming on turn:
   `apply_scheduled_arrivals` → `apply_scheduled_events` → `apply_refit` →
   `apply_entrenchment` → MP refill + `reset_interdiction_coverage` +
-  morale drift, in that order (events land before the drift so a delta
-  steers the same turn's drift target). `begin_turn` only fires from
-  `end_turn`, so turn-1 arrivals/events for the very first mover get an
-  explicit pass at the end of `Game::build`. Each faction gets exactly one
-  `begin_turn` per turn number, so the schedule summaries infer
-  pending/fired status from `turn` alone — no "executed" flag.
+  morale drift + `apply_doctrine_turn_start`, in that order (events land
+  before the drift so a delta steers the same turn's drift target).
+  `begin_turn` only fires from `end_turn`, so turn-1 arrivals/events for
+  the very first mover get an explicit pass at the end of `Game::build`.
+  Each faction gets exactly one `begin_turn` per turn number, so the
+  schedule summaries infer pending/fired status from `turn` alone — no
+  "executed" flag. `apply_doctrine_turn_start` runs per faction here (not
+  once per full game turn) purely by following this existing pattern — see
+  "Command & doctrine" in docs/ideas.md for the open question of whether
+  that's the right cadence long-term.
 - **Combat orchestration** (`game/orders/attack.rs`): `prepare_battle`
-  validates (adjacency, single factions per side, turn ownership) and
-  builds the `CombatElement` snapshots; `attack`/`air_support` persist
-  results afterwards, `simulate` never does — all three share it. The
-  aftermath order matters: experience gain (before losses reshape
-  rosters), losses, retreat execution, advance, then morale shifts (once
-  routs are known). `BattlePlan.attacker_names` is ground-only — an
-  air-support unit joins the snapshot but not the name lists, which keeps
-  it out of the advance and morale shift while its element losses/
-  experience (snapshot-driven) still persist.
+  validates (adjacency, single factions per side, turn ownership), looks up
+  each side's faction doctrine (`Game::doctrine_of`) and builds the
+  `CombatElement` snapshots with it; `attack`/`air_support` persist results
+  afterwards, `simulate` never does — all three share it. The aftermath
+  order matters: experience gain (before losses reshape rosters), losses,
+  `apply_doctrine_battle_result` (leader lookup by unit name, so it must
+  still run before a beaten defender can be removed), retreat execution,
+  advance, then morale shifts (once routs are known). `BattlePlan.attacker_names`
+  is ground-only — an air-support unit joins the snapshot but not the name
+  lists, which keeps it out of the advance, morale shift and doctrine
+  attribution while its element losses/experience (snapshot-driven) still
+  persist.
 - **Combat engine** (`procedures/combat.rs`): per-instance snapshots (one
   `CombatElement` per ready squad/gun/vehicle; damaged sit out) carry
-  everything resolution needs — cv, morale, experience, vulnerability,
-  armored/air-domain/targeting flags, devices, fort_level — so future
-  stats extend the snapshot builder and modifier math, not the control
-  flow. Rounds fire simultaneously (hits collected, then applied);
-  severity keeps the worse of double hits. The constants at the top of
-  the file are the tuning knobs (RANGE_BANDS, DISRUPT/DAMAGE_CHANCE,
-  RETREAT_ODDS, FORT_CV_BONUS_PER_LEVEL); `morexp_modifier` is the single
-  function to swap for a different stat curve.
+  everything resolution needs — cv, morale, experience, doctrine,
+  vulnerability, armored/air-domain/targeting flags, devices, fort_level —
+  so future stats extend the snapshot builder and modifier math, not the
+  control flow. `doctrine` is a single value stamped uniformly across every
+  element on a side (one faction per side, always), unlike the per-element
+  morale/experience. Rounds fire simultaneously (hits collected, then
+  applied); severity keeps the worse of double hits. The constants at the
+  top of the file are the tuning knobs (RANGE_BANDS, DISRUPT/DAMAGE_CHANCE,
+  RETREAT_ODDS, FORT_CV_BONUS_PER_LEVEL); `stat_modifier` is the single
+  function to swap for a different stat curve. Doctrine also gates
+  commitment in `fire_round`, as a second roll independent of experience's.
 - **Interdiction**: coverage lives on `Game` (`interdiction_coverage:
   HashMap<unit name, Vec<hex>>`), not on `Unit` — same separation as
   `scheduled_arrivals`/`events`. `prepare_battle` extends the defender
@@ -293,8 +311,25 @@ manual.
   `reassign_leader` can't (it always clears the old unit first): a unit's
   `leader` must name a real `[[leaders]]` entry of its own faction, and no
   two units may claim the same leader. Stats (`LeaderStats`, the seven
-  WitE2 ratings) are read-only for now — no combat or command-radius effect
-  yet.
+  WitE2 ratings) are read-only for now — no per-roll combat or
+  command-radius effect yet; `game::doctrine` reads `initiative`/`political`
+  for the drift formulas and averages the rest (`average_leader_value`).
+- **Doctrine** (`game/doctrine.rs`): a faction-wide rating (`Player::doctrine`)
+  plus a personal one per leader (`Leader::doctrine`), the latter resolved
+  from an optional scenario field to the faction default at build time (see
+  `LeaderConfig` above). Two independent, currently one-way flows: battles
+  shift a leader's personal doctrine (see the module doc for the formula and
+  the `LAV * 10` ceiling/floor a leader's own rating caps it at — the cap is
+  provably unreachable by a single battle, since `FBO * LOS` never exceeds
+  2.0 against a `10 * (LAV - DOC/10)` gap, but stays as the spec's explicit
+  safety net and is unit-tested directly by calling past it), and turn start
+  runs every faction leader's contribution to the faction value (a two-pass
+  snapshot — computed from `Player::doctrine` before any leader's delta is
+  applied — then drift back toward the updated value). Only one leader per
+  side of a battle is credited: the one with the highest
+  `average_leader_value` among that side's participating (ground, named)
+  units — see "Command & doctrine" in docs/ideas.md for the deliberately
+  deferred question of whether others should share in it.
 - **Airfields**: `Toe.range: Option<u32>` (`None` = unlimited, every
   pre-existing TOE's behavior). `Game::check_mission_range` is a no-op
   for an offmap unit or a range-less TOE; otherwise compares

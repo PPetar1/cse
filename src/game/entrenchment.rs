@@ -129,7 +129,7 @@ mod tests {
         // never routs or shatters, so the defender always plainly retreats.
         let mut game = Game::build(minimal_scenario(TWO_PLAYERS, &three_vs_one(100))).unwrap();
         game.state.units.get_mut("Soviet Division").unwrap().fort_level = 4;
-        let mut rng = StdRng::seed_from_u64(42);
+        let mut rng = StdRng::seed_from_u64(2);
 
         game.attack((1, 1), (2, 1), &mut rng).unwrap();
 

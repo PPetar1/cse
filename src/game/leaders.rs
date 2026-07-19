@@ -54,10 +54,11 @@ impl Game {
             .map_or("unassigned".to_string(), |unit| unit.name.clone());
         let stats = &leader.stats;
         Ok(format!(
-            "{} ({})\n  Political: {}  Morale: {}  Initiative: {}  Administration: {}  Mechanized: {}  Infantry: {}  Air: {}\n  Assigned to: {}",
+            "{} ({})\n  Political: {}  Morale: {}  Initiative: {}  Administration: {}  Mechanized: {}  Infantry: {}  Air: {}\n  Doctrine: {}\n  Assigned to: {}",
             leader.name, leader.faction,
             stats.political, stats.morale, stats.initiative, stats.administration,
             stats.mechanized, stats.infantry, stats.air,
+            leader.doctrine,
             assignment,
         ))
     }
@@ -182,6 +183,8 @@ air = 1
         let detail = game.leader_detail("Erwin Rommel").unwrap();
         assert!(detail.contains("Political: 5"));
         assert!(detail.contains("Air: 1"));
+        // AXIS_LEADER sets no doctrine: it falls back to AX's default of 50.
+        assert!(detail.contains("Doctrine: 50"));
         assert!(detail.contains("Assigned to: unassigned"));
     }
 

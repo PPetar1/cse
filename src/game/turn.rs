@@ -65,6 +65,7 @@ impl Game {
                 }
             }
         }
+        self.apply_doctrine_turn_start(&faction);
     }
 
     /// One-line summary of where the game clock stands.

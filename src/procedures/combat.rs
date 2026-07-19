@@ -44,6 +44,11 @@ pub struct CombatElement {
     cv: f32,
     morale: u32,
     experience: u32,
+    /// The element's faction doctrine at snapshot time — a single value
+    /// shared by every element on a side, stamped on by `combat_elements`'
+    /// caller (`prepare_battle`). Scales CV and gates commitment the same
+    /// way `experience` does; see `stat_modifier` and `fire_round`.
+    doctrine: u32,
     vulnerability: u32,
     armored: bool,
     /// Whether this element is itself an air target (an aircraft) — decides
@@ -90,6 +95,7 @@ pub enum CombatElementState {
 pub fn combat_elements(
     units: &[&Unit],
     element_types: &HashMap<String, Element>,
+    doctrine: u32,
 ) -> Result<Vec<CombatElement>, Error> {
     let mut elements = Vec::new();
     for unit in units {
@@ -109,6 +115,7 @@ pub fn combat_elements(
                     cv: element_type.cv,
                     morale: element_in_unit.morale,
                     experience: element_in_unit.experience,
+                    doctrine,
                     vulnerability: element_type.vulnerability,
                     armored: element_type.class.is_armored(),
                     air_domain,
@@ -286,7 +293,13 @@ fn fire_round(
         }
         // Failure to commit: green elements often don't fire at all (WitE's
         // "notional CV lost as combat progresses"). No shot is recorded.
+        // Faction doctrine gates the same way, as an independent roll —
+        // a badly-drilled faction doctrine can sit an experienced element
+        // out just as easily as its own inexperience can.
         if rng.random_range(0.0..100.0) >= firer.experience as f32 {
+            continue;
+        }
+        if rng.random_range(0.0..100.0) >= firer.doctrine as f32 {
             continue;
         }
 
@@ -367,17 +380,19 @@ fn has_ready(side: &[CombatElement]) -> bool {
 fn ready_cv(side: &[CombatElement]) -> f32 {
     side.iter()
         .filter(|element| element.state == CombatElementState::Ready)
-        .map(|element| element.cv * morexp_modifier(element))
+        .map(|element| element.cv * stat_modifier(element))
         .sum()
 }
 
-/// Morale/experience scaling of an element's CV: ×1 at 0/0, ×2 at the 50/50
-/// baseline, ×3 at 100/100. Additive (WitE-style) so stats tilt the odds
-/// without dwarfing equipment — the multiplicative alternative
-/// (mor/100 × exp/100) would hand elite-vs-green a 3.5:1 CV gap on stats
-/// alone. Swap this function to try other curves.
-fn morexp_modifier(element: &CombatElement) -> f32 {
-    1.0 + element.morale as f32 / 100.0 + element.experience as f32 / 100.0
+/// Morale/experience/doctrine scaling of an element's CV: ×1 at 0/0/0, ×2.5
+/// at the 50/50/50 baseline, ×4 at 100/100/100. Additive (WitE-style) so
+/// stats tilt the odds without dwarfing equipment — the multiplicative
+/// alternative (mor/100 × exp/100 × doc/100) would hand elite-vs-green a
+/// much wider CV gap on stats alone. Swap this function to try other curves.
+fn stat_modifier(element: &CombatElement) -> f32 {
+    1.0 + element.morale as f32 / 100.0
+        + element.experience as f32 / 100.0
+        + element.doctrine as f32 / 100.0
 }
 
 fn losses(side: &[CombatElement]) -> Losses {
@@ -630,9 +645,10 @@ mod tests {
         }
     }
 
-    /// Veterans (morale/experience 100): every element always commits, keeping
-    /// the shot counts asserted below deterministic, and the CV modifier is a
-    /// flat ×3.
+    /// Veterans (morale/experience 100): combined with the doctrine of 100
+    /// every `combat_elements` call below passes, every element always
+    /// commits, keeping the shot counts asserted below deterministic, and
+    /// the CV modifier is a flat ×4.
     fn veterans(name: &str, ready: u32, damaged: u32) -> ElementInUnit {
         ElementInUnit {
             name: name.to_string(),
@@ -659,7 +675,7 @@ mod tests {
             vec![veterans("squad", count, 0)],
         );
         let types = registry(vec![element_type("squad", ElementClass::Inf, accuracy, range, cv)]);
-        combat_elements(&[&unit], &types).unwrap()
+        combat_elements(&[&unit], &types, 100).unwrap()
     }
 
     #[test]
@@ -670,7 +686,7 @@ mod tests {
         );
         let types = registry(vec![element_type("squad", ElementClass::Inf, 20, 100, 4.0)]);
 
-        let elements = combat_elements(&[&unit], &types).unwrap();
+        let elements = combat_elements(&[&unit], &types, 100).unwrap();
 
         assert_eq!(elements.len(), 3);
         assert!(elements.iter().all(|e| e.state == CombatElementState::Ready));
@@ -684,7 +700,7 @@ mod tests {
             vec![veterans("ghost", 1, 0)],
         );
 
-        let error = combat_elements(&[&unit], &HashMap::new()).unwrap_err();
+        let error = combat_elements(&[&unit], &HashMap::new(), 100).unwrap_err();
 
         assert!(error.error_message.contains("ghost"));
         assert!(error.error_message.contains("Test Division"));
@@ -724,9 +740,9 @@ mod tests {
         assert_eq!(report.outcome, BattleOutcome::DefenderHolds);
         assert_eq!(report.rounds.len(), RANGE_BANDS.len());
         assert!(report.rounds.iter().all(|r| r.attacker_hits == 0 && r.defender_hits == 0));
-        // 10 elements × cv 4 × the veterans' ×3 morale/experience modifier.
-        assert_eq!(report.attacker_cv, 120.0);
-        assert_eq!(report.defender_cv, 120.0);
+        // 10 elements × cv 4 × the veterans' ×4 morale/experience/doctrine modifier.
+        assert_eq!(report.attacker_cv, 160.0);
+        assert_eq!(report.defender_cv, 160.0);
     }
 
     #[test]
@@ -771,7 +787,7 @@ mod tests {
         let mut tank = element_type("tank", ElementClass::MedTank, 0, 0, 8.0);
         tank.devices = vec![device(0, 3000, 1), device(0, 100, 4)];
         let types = registry(vec![tank]);
-        let mut attackers = combat_elements(&[&unit], &types).unwrap();
+        let mut attackers = combat_elements(&[&unit], &types, 100).unwrap();
         let mut defenders = side(5, 0, 3000, 4.0);
         let mut rng = StdRng::seed_from_u64(42);
 
@@ -798,6 +814,46 @@ mod tests {
 
         assert!(report.rounds.iter().all(|round| round.attacker_shots == 0));
         assert!(report.rounds.iter().all(|round| round.defender_shots == 5));
+    }
+
+    #[test]
+    fn elements_without_doctrine_never_commit() {
+        // Zero faction doctrine gates commitment exactly like zero
+        // experience does, independently of it.
+        let mut attackers = side(5, 100, 3000, 4.0);
+        for element in &mut attackers {
+            element.doctrine = 0;
+        }
+        let mut defenders = side(5, 0, 3000, 4.0);
+        let mut rng = StdRng::seed_from_u64(42);
+
+        let report =
+            resolve_battle(&mut attackers, &mut defenders, Terrain::Plains, &mut rng);
+
+        assert!(report.rounds.iter().all(|round| round.attacker_shots == 0));
+        assert!(report.rounds.iter().all(|round| round.defender_shots == 5));
+    }
+
+    #[test]
+    fn doctrine_scales_the_final_cv() {
+        // Same equipment on both sides, but the defenders' faction has no
+        // doctrine at all: their CV modifier drops from ×4 to ×3 (morale and
+        // experience, untouched, still contribute their own +1 each) — a
+        // milder version of morale_and_experience_scale_the_final_cv, not
+        // enough on its own to force a retreat at these odds.
+        let mut attackers = side(10, 0, 3000, 4.0);
+        let mut defenders = side(10, 0, 3000, 4.0);
+        for element in &mut defenders {
+            element.doctrine = 0;
+        }
+        let mut rng = StdRng::seed_from_u64(42);
+
+        let report =
+            resolve_battle(&mut attackers, &mut defenders, Terrain::Plains, &mut rng);
+
+        assert_eq!(report.attacker_cv, 160.0);
+        assert_eq!(report.defender_cv, 120.0);
+        assert_eq!(report.outcome, BattleOutcome::DefenderHolds);
     }
 
     #[test]
@@ -868,8 +924,8 @@ mod tests {
         let report =
             resolve_battle(&mut attackers, &mut defenders, Terrain::Mountain, &mut rng);
 
-        assert_eq!(report.attacker_cv, 120.0);
-        assert_eq!(report.defender_cv, 360.0);
+        assert_eq!(report.attacker_cv, 160.0);
+        assert_eq!(report.defender_cv, 480.0);
     }
 
     #[test]
@@ -888,8 +944,8 @@ mod tests {
 
         // Plains terrain_defense is ×1, so the whole multiplier here is fort's:
         // 1.0 + 5 * 0.15 = 1.75.
-        assert_eq!(report.attacker_cv, 120.0);
-        assert_eq!(report.defender_cv, 210.0);
+        assert_eq!(report.attacker_cv, 160.0);
+        assert_eq!(report.defender_cv, 280.0);
     }
 
     #[test]
@@ -900,10 +956,10 @@ mod tests {
         let mut covering = unit_with("Covering Fighter", vec![veterans("rifle", 10, 0)]);
         covering.fort_level = 5; // Must neither raise nor lower the stack's average.
 
-        let without_coverage = combat_elements(&[&ground], &types).unwrap();
+        let without_coverage = combat_elements(&[&ground], &types, 100).unwrap();
 
-        let mut with_coverage = combat_elements(&[&ground], &types).unwrap();
-        let mut covering_elements = combat_elements(&[&covering], &types).unwrap();
+        let mut with_coverage = combat_elements(&[&ground], &types, 100).unwrap();
+        let mut covering_elements = combat_elements(&[&covering], &types, 100).unwrap();
         exclude_from_defending_stack(&mut covering_elements);
         with_coverage.extend(covering_elements);
 
@@ -914,8 +970,9 @@ mod tests {
     #[test]
     fn morale_and_experience_scale_the_final_cv() {
         // Same equipment on both sides, but the defenders are broken recruits:
-        // their CV modifier drops from ×3 to ×1 and the 3:1 modified odds
-        // force them back without a shot fired.
+        // their CV modifier drops from ×4 to ×2 (doctrine, untouched, still
+        // contributes its own +1) and the 2:1 modified odds force them back
+        // without a shot fired.
         let mut attackers = side(10, 0, 3000, 4.0);
         let mut defenders = side(10, 0, 3000, 4.0);
         for element in &mut defenders {
@@ -927,8 +984,8 @@ mod tests {
         let report =
             resolve_battle(&mut attackers, &mut defenders, Terrain::Plains, &mut rng);
 
-        assert_eq!(report.attacker_cv, 120.0);
-        assert_eq!(report.defender_cv, 40.0);
+        assert_eq!(report.attacker_cv, 160.0);
+        assert_eq!(report.defender_cv, 80.0);
         assert_eq!(report.outcome, BattleOutcome::DefenderRetreats);
     }
 
@@ -964,8 +1021,8 @@ mod tests {
 
         assert_eq!(report.retreats, 0);
         assert_eq!(report.attacker_losses.damaged, 0.0);
-        assert_eq!(report.attacker_cv, 120.0);
-        assert_eq!(report.defender_cv, 120.0);
+        assert_eq!(report.attacker_cv, 160.0);
+        assert_eq!(report.defender_cv, 160.0);
     }
 
     #[test]
@@ -1000,7 +1057,7 @@ mod tests {
         let mut fighter = element_type("interceptor", ElementClass::Fighter, 100, 3000, 5.0);
         fighter.devices[0].air_attack = 100;
         let types = registry(vec![fighter]);
-        let mut attackers = combat_elements(&[&unit], &types).unwrap();
+        let mut attackers = combat_elements(&[&unit], &types, 100).unwrap();
         let mut defenders = side(5, 100, 3000, 4.0);
         let mut rng = StdRng::seed_from_u64(42);
 
@@ -1015,14 +1072,14 @@ mod tests {
         let mut fighter = element_type("interceptor", ElementClass::Fighter, 100, 3000, 5.0);
         fighter.devices[0].air_attack = 100;
         let types = registry(vec![fighter]);
-        let mut attackers = combat_elements(&[&unit], &types).unwrap();
+        let mut attackers = combat_elements(&[&unit], &types, 100).unwrap();
 
         // A bomber stack with zero accuracy: isolates the fighter's shots,
         // since the bomber never lands a hit of its own.
         let bomber_unit = unit_with("Bomber Wing", vec![veterans("bomber", 5, 0)]);
         let bomber = element_type("bomber", ElementClass::GroundAttack, 0, 3000, 4.0);
         let bomber_types = registry(vec![bomber]);
-        let mut defenders = combat_elements(&[&bomber_unit], &bomber_types).unwrap();
+        let mut defenders = combat_elements(&[&bomber_unit], &bomber_types, 100).unwrap();
         let mut rng = StdRng::seed_from_u64(42);
 
         let report = resolve_battle(&mut attackers, &mut defenders, Terrain::Plains, &mut rng);
@@ -1036,7 +1093,7 @@ mod tests {
         let bomber_unit = unit_with("Bomber Wing", vec![veterans("bomber", 5, 0)]);
         let bomber = element_type("bomber", ElementClass::GroundAttack, 0, 3000, 4.0);
         let bomber_types = registry(vec![bomber]);
-        let mut defenders = combat_elements(&[&bomber_unit], &bomber_types).unwrap();
+        let mut defenders = combat_elements(&[&bomber_unit], &bomber_types, 100).unwrap();
         let mut rng = StdRng::seed_from_u64(42);
 
         let report = resolve_battle(&mut attackers, &mut defenders, Terrain::Plains, &mut rng);
@@ -1051,12 +1108,12 @@ mod tests {
         flak.anti_air = true;
         flak.devices[0].air_attack = 100;
         let types = registry(vec![flak]);
-        let mut attackers = combat_elements(&[&unit], &types).unwrap();
+        let mut attackers = combat_elements(&[&unit], &types, 100).unwrap();
 
         let bomber_unit = unit_with("Bomber Wing", vec![veterans("bomber", 5, 0)]);
         let bomber = element_type("bomber", ElementClass::GroundAttack, 0, 3000, 4.0);
         let bomber_types = registry(vec![bomber]);
-        let mut defenders = combat_elements(&[&bomber_unit], &bomber_types).unwrap();
+        let mut defenders = combat_elements(&[&bomber_unit], &bomber_types, 100).unwrap();
         let mut rng = StdRng::seed_from_u64(42);
 
         let report = resolve_battle(&mut attackers, &mut defenders, Terrain::Plains, &mut rng);
@@ -1070,7 +1127,7 @@ mod tests {
         let mut bomber = element_type("bomber", ElementClass::GroundAttack, 100, 3000, 4.0);
         bomber.devices[0].air_attack = 100;
         let types = registry(vec![bomber]);
-        let mut attackers = combat_elements(&[&unit], &types).unwrap();
+        let mut attackers = combat_elements(&[&unit], &types, 100).unwrap();
 
         // A mixed defending stack: one ground unit, one fighter unit.
         let ground_unit = unit_with("Ground Defenders", vec![veterans("squad", 5, 0)]);
@@ -1078,7 +1135,7 @@ mod tests {
         let fighter_unit = unit_with("Fighter Wing", vec![veterans("interceptor", 5, 0)]);
         let fighter_type = element_type("interceptor", ElementClass::Fighter, 0, 3000, 4.0);
         let types = registry(vec![ground_type, fighter_type]);
-        let mut defenders = combat_elements(&[&ground_unit, &fighter_unit], &types).unwrap();
+        let mut defenders = combat_elements(&[&ground_unit, &fighter_unit], &types, 100).unwrap();
         let mut rng = StdRng::seed_from_u64(42);
 
         resolve_battle(&mut attackers, &mut defenders, Terrain::Plains, &mut rng);
