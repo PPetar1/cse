@@ -399,7 +399,7 @@ location = {{ x = 5, y = 5 }}
         let mut game = Game::build(human_vs_ai_scenario()).unwrap();
         assert_eq!(
             game.status(),
-            "terminal test scenario — turn 1, 1941-06-22. Soviet Union (Soviet Union) to move.",
+            "terminal test scenario — turn 1, 1941-06-22. Soviet Union to move.",
         );
 
         // The human ends turn 1; the Axis AI then plays its own turn 1
@@ -409,7 +409,7 @@ location = {{ x = 5, y = 5 }}
 
         assert_eq!(
             game.status(),
-            "terminal test scenario — turn 2, 1941-06-29. Soviet Union (Soviet Union) to move.",
+            "terminal test scenario — turn 2, 1941-06-29. Soviet Union to move.",
         );
     }
 
@@ -484,7 +484,7 @@ location = {{ x = 1, y = 1 }}
 
         assert_eq!(
             game.status(),
-            "terminal test scenario — turn 1, 1941-06-22. Soviet Union (Soviet Union) to move.",
+            "terminal test scenario — turn 1, 1941-06-22. Soviet Union to move.",
         );
     }
 }

@@ -99,14 +99,23 @@ impl Game {
         }
     }
 
-    /// One-line summary of where the game clock stands.
+    /// One-line summary of where the game clock stands. The player's name is
+    /// only shown alongside the faction's when that faction has more than one
+    /// player — naming the sole player is redundant.
     pub fn status(&self) -> String {
+        let index = self.phase.player_on_turn as usize;
         let player = self.player_on_turn();
         let faction = self.faction_by_tag(&player.faction)
             .expect("on-turn player's faction vanished");
+        let is_sole_player = self.is_first_player_of_its_faction(index) && self.is_last_player_of_its_faction(index);
+        let who = if is_sole_player {
+            faction.faction_name.clone()
+        } else {
+            format!("{} ({})", faction.faction_name, player.name)
+        };
         format!(
-            "{} — turn {}, {}. {} ({}) to move.",
-            self.scenario_name, self.turn, self.date, faction.faction_name, player.name,
+            "{} — turn {}, {}. {} to move.",
+            self.scenario_name, self.turn, self.date, who,
         )
     }
 
@@ -160,17 +169,18 @@ mod tests {
     #[test]
     fn end_turn_cycles_players_and_advances_the_clock() {
         let mut game = Game::build(minimal_scenario(TWO_PLAYERS, OPPOSING_UNITS)).unwrap();
-        // No [[players]] listed: each faction's default player is named
-        // after the faction itself.
-        assert_eq!(game.status(), "test scenario — turn 1, 1941-06-22. Axis (Axis) to move.");
+        // No [[players]] listed: each faction has a single default player,
+        // so status shows just the faction name — naming the sole player
+        // would be redundant.
+        assert_eq!(game.status(), "test scenario — turn 1, 1941-06-22. Axis to move.");
 
         game.end_turn();
         // Control passes within the same turn: the clock stands still.
-        assert_eq!(game.status(), "test scenario — turn 1, 1941-06-22. Soviet Union (Soviet Union) to move.");
+        assert_eq!(game.status(), "test scenario — turn 1, 1941-06-22. Soviet Union to move.");
 
         game.end_turn();
         // Every player has moved: turn and date (turn_length = 7) advance.
-        assert_eq!(game.status(), "test scenario — turn 2, 1941-06-29. Axis (Axis) to move.");
+        assert_eq!(game.status(), "test scenario — turn 2, 1941-06-29. Axis to move.");
     }
 
     #[test]
@@ -267,7 +277,7 @@ faction_tag = "SU"
         // has ended and Soviet's has begun, but Axis's own MP only refills
         // when Axis's turn starts again, not now.
         game.end_turn();
-        assert_eq!(game.status(), "test scenario — turn 1, 1941-06-22. Soviet Union (Soviet Union) to move.");
+        assert_eq!(game.status(), "test scenario — turn 1, 1941-06-22. Soviet Union to move.");
         assert_eq!(game.state.units["Axis Division"].mp_left, 14);
 
         // Soviet Union (only one player) ends its turn: every faction has
