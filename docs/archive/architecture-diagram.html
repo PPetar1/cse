@@ -1,0 +1,473 @@
+<title>CSE — Architecture Snapshot</title>
+<meta charset="utf-8">
+<style>
+  :root {
+    --bg: #eef1ec;
+    --bg-raise: #e4e9e2;
+    --ink: #1b2320;
+    --ink-soft: #4a534c;
+    --line: #b9c2b7;
+    --line-soft: #d3d9d0;
+    --interface: #3d5a73;
+    --interface-bg: #dde6ea;
+    --session: #6b5a3d;
+    --session-bg: #e9e2d3;
+    --game: #4f6b45;
+    --game-bg: #dfe7dc;
+    --core: #7a4a35;
+    --core-bg: #ecdfd7;
+    --accent: #b23a2e;
+    --accent-bg: #f3ddd9;
+    --shadow: rgba(27, 35, 32, 0.12);
+  }
+
+  :root[data-theme="dark"] {
+    --bg: #12181a;
+    --bg-raise: #182022;
+    --ink: #dfe6e0;
+    --ink-soft: #97a49b;
+    --line: #3a453e;
+    --line-soft: #2a332d;
+    --interface: #8fb4cf;
+    --interface-bg: #1d2a33;
+    --session: #cbb489;
+    --session-bg: #2a2418;
+    --game: #93b587;
+    --game-bg: #1e2a1b;
+    --core: #d1957a;
+    --core-bg: #2e2019;
+    --accent: #e0776a;
+    --accent-bg: #33201d;
+    --shadow: rgba(0, 0, 0, 0.4);
+  }
+
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #12181a;
+      --bg-raise: #182022;
+      --ink: #dfe6e0;
+      --ink-soft: #97a49b;
+      --line: #3a453e;
+      --line-soft: #2a332d;
+      --interface: #8fb4cf;
+      --interface-bg: #1d2a33;
+      --session: #cbb489;
+      --session-bg: #2a2418;
+      --game: #93b587;
+      --game-bg: #1e2a1b;
+      --core: #d1957a;
+      --core-bg: #2e2019;
+      --accent: #e0776a;
+      --accent-bg: #33201d;
+      --shadow: rgba(0, 0, 0, 0.4);
+    }
+  }
+
+  * { box-sizing: border-box; }
+
+  body {
+    margin: 0;
+    background:
+      repeating-linear-gradient(60deg, transparent 0 38px, var(--line-soft) 38px 39px),
+      repeating-linear-gradient(-60deg, transparent 0 38px, var(--line-soft) 38px 39px),
+      var(--bg);
+    color: var(--ink);
+    font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  .page {
+    max-width: 1180px;
+    margin: 0 auto;
+    padding: 3.5rem 2rem 5rem;
+  }
+
+  .label {
+    font-family: "Arial Narrow", "Helvetica Neue", Arial, sans-serif;
+    font-weight: 800;
+    text-transform: uppercase;
+    letter-spacing: 0.14em;
+  }
+
+  header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-end;
+    gap: 2rem;
+    border-bottom: 2px solid var(--ink);
+    padding-bottom: 1.25rem;
+    margin-bottom: 0.5rem;
+    flex-wrap: wrap;
+  }
+
+  h1 {
+    font-family: "Arial Narrow", "Helvetica Neue", Arial, sans-serif;
+    font-weight: 900;
+    font-size: clamp(1.9rem, 4vw, 2.7rem);
+    letter-spacing: 0.02em;
+    margin: 0;
+    text-wrap: balance;
+  }
+
+  h1 .unit-mark {
+    display: inline-block;
+    width: 0.62em;
+    height: 0.62em;
+    border: 3px solid var(--ink);
+    transform: rotate(45deg);
+    margin-right: 0.35em;
+    vertical-align: middle;
+  }
+
+  .meta {
+    font-size: 0.72rem;
+    color: var(--ink-soft);
+    text-align: right;
+    line-height: 1.5;
+  }
+
+  .meta .label { font-size: 0.7rem; color: var(--ink-soft); }
+
+  .dek {
+    max-width: 62ch;
+    color: var(--ink-soft);
+    font-size: 0.98rem;
+    line-height: 1.6;
+    margin: 1.4rem 0 3rem;
+  }
+
+  /* ---- stack diagram ---- */
+
+  .stack { display: flex; flex-direction: column; gap: 0; }
+
+  .tier { position: relative; padding: 1.6rem 0; }
+
+  .tier-head {
+    display: flex;
+    align-items: baseline;
+    gap: 0.7rem;
+    margin-bottom: 0.9rem;
+  }
+
+  .tier-tag {
+    font-size: 0.68rem;
+    padding: 0.15rem 0.55rem;
+    border: 1px solid currentColor;
+  }
+
+  .tier-name { font-size: 0.95rem; }
+
+  .tier-role {
+    font-size: 0.8rem;
+    color: var(--ink-soft);
+    font-family: Georgia, serif;
+    font-style: italic;
+  }
+
+  .connector {
+    display: flex;
+    justify-content: center;
+    color: var(--ink-soft);
+    font-size: 1.1rem;
+    line-height: 1;
+    padding: 0.15rem 0;
+  }
+  .connector::before {
+    content: "";
+    width: 1px;
+    height: 1.4rem;
+    background: var(--line);
+    display: block;
+    margin: 0 auto;
+  }
+  .connector .arrow { position: relative; top: -0.55rem; }
+
+  .boxes {
+    display: grid;
+    gap: 0.7rem;
+  }
+
+  .boxes.cols-4 { grid-template-columns: repeat(4, 1fr); }
+  .boxes.cols-1 { grid-template-columns: 1fr; }
+  .boxes.cols-2 { grid-template-columns: repeat(2, 1fr); }
+  .boxes.cols-3 { grid-template-columns: repeat(3, 1fr); }
+
+  .mod-grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 0.55rem;
+  }
+
+  .box {
+    border: 1px solid currentColor;
+    background: var(--box-bg);
+    color: var(--ink);
+    padding: 0.65rem 0.75rem 0.7rem;
+    position: relative;
+    box-shadow: 2px 2px 0 var(--shadow);
+  }
+
+  .box::before, .box::after {
+    content: "";
+    position: absolute;
+    width: 6px;
+    height: 6px;
+    border: 1px solid var(--box-line);
+    top: -1px;
+  }
+  .box::before { left: -1px; border-right: none; border-bottom: none; }
+  .box::after { right: -1px; border-left: none; border-bottom: none; }
+
+  .box .path {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.78rem;
+    font-weight: 700;
+    color: var(--box-line);
+    display: block;
+    margin-bottom: 0.3rem;
+  }
+
+  .box .desc {
+    font-size: 0.74rem;
+    line-height: 1.4;
+    color: var(--ink-soft);
+    margin: 0;
+  }
+
+  .tier.interface { --box-bg: var(--interface-bg); --box-line: var(--interface); color: var(--interface); }
+  .tier.session   { --box-bg: var(--session-bg);   --box-line: var(--session);   color: var(--session); }
+  .tier.game      { --box-bg: var(--game-bg);      --box-line: var(--game);      color: var(--game); }
+  .tier.core      { --box-bg: var(--core-bg);      --box-line: var(--core);      color: var(--core); }
+
+  .shared-note {
+    grid-column: 1 / -1;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    font-size: 0.72rem;
+    color: var(--ink-soft);
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    padding-top: 0.2rem;
+  }
+  .shared-note .glyph { font-size: 0.95rem; color: var(--interface); }
+
+  /* ---- field notes ---- */
+
+  .notes-head {
+    margin: 3.2rem 0 1rem;
+    display: flex;
+    align-items: baseline;
+    gap: 0.6rem;
+  }
+
+  .notes {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 1px;
+    background: var(--line);
+    border: 1px solid var(--line);
+  }
+
+  .note {
+    background: var(--bg-raise);
+    padding: 1.1rem 1.3rem;
+  }
+
+  .note .n-title {
+    font-size: 0.82rem;
+    margin-bottom: 0.4rem;
+    color: var(--ink);
+  }
+
+  .note .n-title .tag {
+    color: var(--accent);
+    margin-right: 0.4em;
+  }
+
+  .note p {
+    margin: 0;
+    font-size: 0.83rem;
+    line-height: 1.55;
+    color: var(--ink-soft);
+  }
+
+  .note code {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.82em;
+    background: var(--bg);
+    padding: 0.05em 0.3em;
+    border: 1px solid var(--line-soft);
+  }
+
+  footer {
+    margin-top: 3.5rem;
+    padding-top: 1.2rem;
+    border-top: 1px solid var(--line);
+    display: flex;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 0.6rem;
+    font-size: 0.72rem;
+    color: var(--ink-soft);
+  }
+
+  footer .accent-flag {
+    color: var(--accent);
+    font-weight: 700;
+  }
+
+  @media (max-width: 860px) {
+    .boxes.cols-4, .mod-grid { grid-template-columns: repeat(2, 1fr); }
+    .notes { grid-template-columns: 1fr; }
+    header { flex-direction: column; align-items: flex-start; }
+    .meta { text-align: left; }
+  }
+
+  @media (max-width: 560px) {
+    .boxes.cols-4, .mod-grid, .boxes.cols-3 { grid-template-columns: 1fr; }
+  }
+</style>
+
+<div class="page">
+
+  <header>
+    <h1><span class="unit-mark" aria-hidden="true"></span>CSE — Architecture Snapshot</h1>
+    <div class="meta">
+      <div class="label">Frozen reference</div>
+      <div>generated 2026-07-25 · refresh on demand only</div>
+    </div>
+  </header>
+
+  <p class="dek">
+    One game, two frontends, four layers. Dependencies only point downward —
+    the interface layer talks to <code style="font-family: ui-monospace, monospace;">Game</code>'s
+    public API, the foundation never calls back up. This is a still image of
+    that shape, not a live document — see <code style="font-family: ui-monospace, monospace;">docs/archive/README.md</code>.
+  </p>
+
+  <div class="stack">
+
+    <div class="tier interface">
+      <div class="tier-head">
+        <span class="tier-tag">01</span>
+        <span class="label tier-name">Interface layer</span>
+        <span class="tier-role">talks to Game, owns no rules of its own</span>
+      </div>
+      <div class="boxes cols-4">
+        <div class="box">
+          <span class="path">main.rs</span>
+          <p class="desc">Wiring only — builds the SharedGame, spawns the terminal thread, runs the GUI on the main thread.</p>
+        </div>
+        <div class="box">
+          <span class="path">terminal/</span>
+          <p class="desc">Rustyline REPL; <span class="path" style="display:inline">command.rs</span> holds the Command enum + parser.</p>
+        </div>
+        <div class="box">
+          <span class="path">gui/</span>
+          <p class="desc">egui/eframe window — menu, map_view, inspector, file_picker.</p>
+        </div>
+        <div class="box">
+          <span class="path">ai.rs</span>
+          <p class="desc">Rule-based opponent, per-faction take_turn — no pathfinding or combat logic of its own.</p>
+        </div>
+        <div class="shared-note">
+          <span class="glyph">⇄</span>
+          terminal &amp; gui share one <code style="background:none;border:none;padding:0;">Arc&lt;Mutex&lt;Option&lt;Game&gt;&gt;&gt;</code> — each sees the other's commands immediately
+        </div>
+      </div>
+    </div>
+
+    <div class="connector"><span class="arrow">▾</span></div>
+
+    <div class="tier session">
+      <div class="tier-head">
+        <span class="tier-tag">02</span>
+        <span class="label tier-name">Application layer</span>
+        <span class="tier-role">shared by both frontends</span>
+      </div>
+      <div class="boxes cols-1">
+        <div class="box">
+          <span class="path">session.rs</span>
+          <p class="desc">new_game / load_game / save_game, report_turn_transition &amp; play_pending_ai_turns, activate_game — the post-new/load ritual that keeps terminal and GUI from drifting apart.</p>
+        </div>
+      </div>
+    </div>
+
+    <div class="connector"><span class="arrow">▾</span></div>
+
+    <div class="tier game">
+      <div class="tier-head">
+        <span class="tier-tag">03</span>
+        <span class="label tier-name">Orchestration layer</span>
+        <span class="tier-role">one module per concern, all folding into Game</span>
+      </div>
+      <div class="mod-grid">
+        <div class="box"><span class="path">mod.rs</span><p class="desc">Game state + sealed queries</p></div>
+        <div class="box"><span class="path">scenario.rs</span><p class="desc">TOML schema, validation, build_state</p></div>
+        <div class="box"><span class="path">turn.rs</span><p class="desc">end_turn/begin_turn, TurnPhase</p></div>
+        <div class="box"><span class="path">orders/</span><p class="desc">movement.rs, attack.rs</p></div>
+        <div class="box"><span class="path">victory.rs</span><p class="desc">score_victory, VictoryReport</p></div>
+        <div class="box"><span class="path">reinforcements.rs</span><p class="desc">scheduled arrivals</p></div>
+        <div class="box"><span class="path">events.rs</span><p class="desc">scripted event firing</p></div>
+        <div class="box"><span class="path">supply.rs</span><p class="desc">faction_supplied_hexes</p></div>
+        <div class="box"><span class="path">refit.rs</span><p class="desc">turn-start repair/replace</p></div>
+        <div class="box"><span class="path">interdiction.rs</span><p class="desc">interdict, coverage</p></div>
+        <div class="box"><span class="path">leaders.rs</span><p class="desc">roster, reassign_leader</p></div>
+        <div class="box"><span class="path">doctrine.rs</span><p class="desc">faction + personal doctrine</p></div>
+        <div class="box"><span class="path">detection.rs</span><p class="desc">fog-of-war display gate</p></div>
+        <div class="box"><span class="path">entrenchment.rs</span><p class="desc">fort_level tick</p></div>
+      </div>
+    </div>
+
+    <div class="connector"><span class="arrow">▾</span></div>
+
+    <div class="tier core">
+      <div class="tier-head">
+        <span class="tier-tag">04</span>
+        <span class="label tier-name">Foundation</span>
+        <span class="tier-role">data model + pure algorithms — no game:: or file I/O</span>
+      </div>
+      <div class="boxes cols-2">
+        <div class="box">
+          <span class="path">core/</span>
+          <p class="desc">State (map, units, toe, elements, leaders, supply_sources) · Map · Location (hex, terrain) · Unit/Toe · Leader · SupplySource</p>
+        </div>
+        <div class="box">
+          <span class="path">procedures/</span>
+          <p class="desc">combat.rs (snapshots in, BattleReport out) · pathfinding.rs (hexx a*) · supply.rs (flood fill) — pure, testable in isolation</p>
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+  <div class="notes-head">
+    <span class="label">Field notes</span>
+    <span style="font-size:0.78rem; color: var(--ink-soft);">— load-bearing, not obvious from the file tree</span>
+  </div>
+
+  <div class="notes">
+    <div class="note">
+      <div class="n-title label"><span class="tag">▸</span>Sealed state</div>
+      <p><code>Game.state</code> is private. Everything outside <code>game/</code> reads through Game's own query methods — never <code>game.state.*</code> directly. A new frontend need is a new query, not wider field visibility.</p>
+    </div>
+    <div class="note">
+      <div class="n-title label"><span class="tag">▸</span>One game, one mutex</div>
+      <p>Terminal and GUI run against a single <code>Game</code> behind an <code>Arc&lt;Mutex&lt;Option&lt;Game&gt;&gt;&gt;</code>. There is no syncing step — each side's next read simply sees the other's last write.</p>
+    </div>
+    <div class="note">
+      <div class="n-title label"><span class="tag">▸</span>Turn flow is a flat index</div>
+      <p><code>player_on_turn</code> is one index into faction-grouped players. Most turn handoffs are a plain pass to the next player; <code>begin_turn</code>/doctrine settlement fire once per faction per turn, at its first/last player only.</p>
+    </div>
+    <div class="note">
+      <div class="n-title label"><span class="tag">▸</span>Config / runtime split</div>
+      <p>TOML-facing config types split from runtime types wherever postcard's untagged-enum limit or a scenario-dependent default forces it — not a blanket rule, only where one of those two reasons applies.</p>
+    </div>
+  </div>
+
+  <footer>
+    <span><span class="accent-flag">Snapshot</span> — reflects docs/architecture.md as of 2026-07-25</span>
+    <span>Not wired into the "update docs in the same pass" rule — see the README beside this file</span>
+  </footer>
+
+</div>
